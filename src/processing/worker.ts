@@ -5,6 +5,7 @@ import { processColorRegions } from './color-regions';
 import { cannyEdges, sobelEdges } from './edges';
 import { toGrayscale } from './grayscale';
 import { bilateralFilter, strengthToParams } from './bilateral';
+import { getWebGpuProcessor } from './webgpu';
 import type { ValueConfig, ColorConfig, EdgeConfig } from '../types';
 
 type WorkerMessage =
@@ -13,15 +14,18 @@ type WorkerMessage =
   | { type: 'edges'; imageData: ImageData; config: EdgeConfig }
   | { type: 'grayscale'; imageData: ImageData };
 
-self.onmessage = (e: MessageEvent<WorkerMessage>) => {
-  const { type } = e.data;
+async function handleMessage(data: WorkerMessage) {
+  const { type } = data;
+  const gpu = await getWebGpuProcessor();
 
   try {
     if (type === 'value-study') {
-      const result = processValueStudy(e.data.imageData, e.data.config);
+      const result = gpu
+        ? await gpu.processValueStudy(data.imageData, data.config)
+        : processValueStudy(data.imageData, data.config);
       self.postMessage({ type: 'result', result, requestType: type }, [result.data.buffer]);
     } else if (type === 'color-regions') {
-      const result = processColorRegions(e.data.imageData, e.data.config);
+      const result = await processColorRegions(data.imageData, data.config, gpu ?? undefined);
       self.postMessage({
         type: 'result',
         result: result.imageData,
@@ -30,14 +34,16 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         requestType: type,
       }, [result.imageData.data.buffer]);
     } else if (type === 'edges') {
-      const gray = toGrayscale(e.data.imageData);
-      const cfg = e.data.config;
+      const gray = toGrayscale(data.imageData);
+      const cfg = data.config;
       let edgeData: ImageData;
       if (cfg.method === 'simplified') {
         // Simplified: bilateral-smooth the grayscale image first to reduce noise,
         // then run Canny — produces cleaner, more structured contours.
         const { sigmaS, sigmaR } = strengthToParams(0.5);
-        const smoothed = bilateralFilter(gray, sigmaS, sigmaR);
+        const smoothed = gpu
+          ? await gpu.bilateralGrayscale(data.imageData, sigmaS, sigmaR)
+          : bilateralFilter(gray, sigmaS, sigmaR);
         edgeData = cannyEdges(smoothed, cfg.detail);
       } else if (cfg.method === 'canny') {
         edgeData = cannyEdges(gray, cfg.detail);
@@ -46,12 +52,20 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
       }
       self.postMessage({ type: 'result', result: edgeData, requestType: type }, [edgeData.data.buffer]);
     } else if (type === 'grayscale') {
-      const result = toGrayscale(e.data.imageData);
+      const result = gpu ? await gpu.toGrayscale(data.imageData) : toGrayscale(data.imageData);
       self.postMessage({ type: 'result', result, requestType: type }, [result.data.buffer]);
     }
   } catch (err) {
     self.postMessage({ type: 'error', error: String(err) });
   }
+}
+
+let queue = Promise.resolve();
+
+self.onmessage = (e: MessageEvent<WorkerMessage>) => {
+  queue = queue.then(() => handleMessage(e.data)).catch((err) => {
+    self.postMessage({ type: 'error', error: String(err) });
+  });
 };
 
 export {};

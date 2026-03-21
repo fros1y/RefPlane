@@ -3,6 +3,7 @@ import { oklabToOklch, oklchToOklab } from '../color/oklch';
 import { bilateralFilterLab, strengthToParams } from './bilateral';
 import { quantize } from './quantize';
 import { kMeans } from './kmeans';
+import type { WebGpuProcessor } from './webgpu';
 import type { ColorConfig } from '../types';
 
 export interface ColorRegionsResult {
@@ -11,7 +12,11 @@ export interface ColorRegionsResult {
   paletteBands: number[];
 }
 
-export function processColorRegions(imageData: ImageData, config: ColorConfig): ColorRegionsResult {
+export async function processColorRegions(
+  imageData: ImageData,
+  config: ColorConfig,
+  gpu?: WebGpuProcessor,
+): Promise<ColorRegionsResult> {
   const { data, width, height } = imageData;
   const numPixels = width * height;
 
@@ -25,7 +30,9 @@ export function processColorRegions(imageData: ImageData, config: ColorConfig): 
   }
 
   const { sigmaS, sigmaR } = strengthToParams(config.strength);
-  const filteredLab = bilateralFilterLab(labData, width, height, sigmaS, sigmaR);
+  const filteredLab = gpu
+    ? await gpu.bilateralLab(labData, width, height, sigmaS, sigmaR)
+    : bilateralFilterLab(labData, width, height, sigmaS, sigmaR);
 
   const bandAssignments = new Int32Array(numPixels);
   for (let i = 0; i < numPixels; i++) {
