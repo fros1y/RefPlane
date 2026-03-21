@@ -3,6 +3,7 @@ import preact from '@preact/preset-vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: '/refplane/',
   plugins: [
     preact(),
     VitePWA({
