@@ -8,6 +8,7 @@ import type { ColorConfig } from '../types';
 export interface ColorRegionsResult {
   imageData: ImageData;
   palette: string[];
+  paletteBands: number[];
 }
 
 export function processColorRegions(imageData: ImageData, config: ColorConfig): ColorRegionsResult {
@@ -33,6 +34,7 @@ export function processColorRegions(imageData: ImageData, config: ColorConfig): 
   }
 
   const palette: string[] = [];
+  const paletteBands: number[] = [];
   const allCentroids: Array<{ band: number; centroid: { L: number; a: number; b: number } }> = [];
 
   for (let band = 0; band < config.bands; band++) {
@@ -81,9 +83,18 @@ export function processColorRegions(imageData: ImageData, config: ColorConfig): 
     return { band, centroid: c };
   });
 
-  for (const { centroid } of emphasizedCentroids) {
+  for (const { band, centroid } of emphasizedCentroids) {
     const [r, g, b] = oklabToRgb(centroid.L, centroid.a, centroid.b);
     palette.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`);
+    paletteBands.push(band);
+  }
+
+  // Pre-group centroids by band index to avoid repeated filter() calls in the pixel loop
+  const centroidsByBand: Array<Array<{ L: number; a: number; b: number }>> = Array.from(
+    { length: config.bands }, () => []
+  );
+  for (const { band, centroid } of emphasizedCentroids) {
+    centroidsByBand[band]?.push(centroid);
   }
 
   const out = new ImageData(width, height);
@@ -91,7 +102,7 @@ export function processColorRegions(imageData: ImageData, config: ColorConfig): 
 
   for (let i = 0; i < numPixels; i++) {
     const band = bandAssignments[i];
-    const bandCentroids = emphasizedCentroids.filter(x => x.band === band);
+    const bandCentroids = centroidsByBand[band] ?? [];
     if (bandCentroids.length === 0) {
       outData[i * 4] = data[i * 4];
       outData[i * 4 + 1] = data[i * 4 + 1];
@@ -101,8 +112,8 @@ export function processColorRegions(imageData: ImageData, config: ColorConfig): 
     }
 
     const pL = filteredLab[i * 3], pa = filteredLab[i * 3 + 1], pb = filteredLab[i * 3 + 2];
-    let bestDist = Infinity, bestC = bandCentroids[0].centroid;
-    for (const { centroid } of bandCentroids) {
+    let bestDist = Infinity, bestC = bandCentroids[0];
+    for (const centroid of bandCentroids) {
       const dL = pL - centroid.L, da = pa - centroid.a, db = pb - centroid.b;
       const dist = dL * dL + da * da + db * db;
       if (dist < bestDist) { bestDist = dist; bestC = centroid; }
@@ -112,5 +123,5 @@ export function processColorRegions(imageData: ImageData, config: ColorConfig): 
     outData[i * 4] = r; outData[i * 4 + 1] = g; outData[i * 4 + 2] = b; outData[i * 4 + 3] = 255;
   }
 
-  return { imageData: out, palette };
+  return { imageData: out, palette, paletteBands };
 }

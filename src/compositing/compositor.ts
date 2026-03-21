@@ -10,6 +10,20 @@ export interface CompositeOptions {
   isolationThresholds?: number[];
 }
 
+/** Create a canvas, falling back to HTMLCanvasElement on platforms where OffscreenCanvas is unavailable (e.g. some iOS Safari versions). */
+function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(w, h);
+  }
+  const el = document.createElement('canvas');
+  el.width = w;
+  el.height = h;
+  return el;
+}
+
+// Cached scratch canvas for grid rendering — reused across frames to avoid per-render allocations.
+let gridScratch: OffscreenCanvas | HTMLCanvasElement | null = null;
+
 export function composite(
   displayCanvas: HTMLCanvasElement,
   source: ImageData,
@@ -40,9 +54,14 @@ export function composite(
   }
 
   if (gridConfig.enabled) {
-    const gridCanvas = new OffscreenCanvas(width, height);
-    renderGrid(gridCanvas, width, height, gridConfig);
-    ctx.drawImage(gridCanvas, 0, 0);
+    if (!gridScratch || gridScratch.width !== width || gridScratch.height !== height) {
+      gridScratch = makeCanvas(width, height);
+    } else {
+      // Clear the cached canvas so previous frame's grid lines don't bleed through
+      (gridScratch.getContext('2d') as CanvasRenderingContext2D).clearRect(0, 0, width, height);
+    }
+    renderGrid(gridScratch, width, height, gridConfig);
+    ctx.drawImage(gridScratch, 0, 0);
   }
 }
 

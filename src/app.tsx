@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals';
+import { signal, computed } from '@preact/signals';
 import { useEffect, useRef, useCallback } from 'preact/hooks';
 import { ModeBar } from './components/ModeBar';
 import { OverlayToggles } from './components/OverlayToggles';
@@ -17,6 +17,17 @@ import './styles/global.css';
 
 // 1600px keeps memory and processing time reasonable on mobile devices
 const MAX_WORKING_SIZE = 1600;
+
+/** Create a canvas, falling back to HTMLCanvasElement on platforms where OffscreenCanvas is unavailable (e.g. some iOS Safari versions). */
+function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(w, h);
+  }
+  const el = document.createElement('canvas');
+  el.width = w;
+  el.height = h;
+  return el;
+}
 
 const defaultGridConfig: GridConfig = {
   enabled: false,
@@ -60,6 +71,8 @@ const defaultColorConfig: ColorConfig = {
   minRegionSize: 'small',
 };
 
+// originalImageData is never overwritten by crop — non-destructive crop derives sourceImageData from it.
+const originalImageData = signal<ImageData | null>(null);
 const sourceImageData = signal<ImageData | null>(null);
 const activeMode = signal<Mode>('original');
 const processedImage = signal<ImageData | null>(null);
@@ -68,8 +81,12 @@ const gridConfig = signal<GridConfig>(defaultGridConfig);
 const edgeConfig = signal<EdgeConfig>(defaultEdgeConfig);
 const valueConfig = signal<ValueConfig>(defaultValueConfig);
 const colorConfig = signal<ColorConfig>(defaultColorConfig);
-const isProcessing = signal(false);
+// Track number of outstanding worker requests; spinner shows while any are pending.
+const processingCount = signal(0);
+const isProcessing = computed(() => processingCount.value > 0);
 const paletteColors = signal<string[]>([]);
+// Maps each palette swatch index to its value-band index for correct band isolation.
+const swatchBands = signal<number[]>([]);
 const showCompare = signal(false);
 const showCropOverlay = signal(false);
 const isolatedBand = signal<number | null>(null);
@@ -90,10 +107,10 @@ export function App() {
     workerRef.current = worker;
 
     worker.onmessage = (e) => {
-      const { type, result, palette, requestType, error } = e.data;
+      const { type, result, palette, paletteBands, requestType, error } = e.data;
       if (type === 'error') {
         console.error('Worker error:', error);
-        isProcessing.value = false;
+        processingCount.value = Math.max(0, processingCount.value - 1);
         return;
       }
       if (type === 'result') {
@@ -101,9 +118,20 @@ export function App() {
           edgeDataSignal.value = result;
         } else {
           processedImage.value = result;
-          if (palette) paletteColors.value = palette;
+          if (palette) {
+            paletteColors.value = palette;
+            swatchBands.value = paletteBands ?? [];
+          }
+          // Post edges using the freshly-computed result, not a stale processedImage value.
+          if (edgeConfig.value.enabled && sourceImageData.value) {
+            const src = sourceImageData.value;
+            const displaySrc = activeMode.value === 'original' ? src : result;
+            const imgCopy = new ImageData(new Uint8ClampedArray(displaySrc.data), displaySrc.width, displaySrc.height);
+            processingCount.value++;
+            worker.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value }, [imgCopy.data.buffer]);
+          }
         }
-        isProcessing.value = false;
+        processingCount.value = Math.max(0, processingCount.value - 1);
       }
     };
 
@@ -118,28 +146,34 @@ export function App() {
     if (!worker) return;
 
     if (mode === 'grayscale') {
-      isProcessing.value = true;
+      processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
       worker.postMessage({ type: 'grayscale', imageData: imgCopy }, [imgCopy.data.buffer]);
     } else if (mode === 'value') {
-      isProcessing.value = true;
+      processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
       worker.postMessage({ type: 'value-study', imageData: imgCopy, config: valueConfig.value }, [imgCopy.data.buffer]);
     } else if (mode === 'color') {
-      isProcessing.value = true;
+      processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
       worker.postMessage({ type: 'color-regions', imageData: imgCopy, config: colorConfig.value }, [imgCopy.data.buffer]);
     } else {
       processedImage.value = null;
       paletteColors.value = [];
+      swatchBands.value = [];
     }
 
-    if (edgeConfig.value.enabled) {
-      const displaySrc = mode === 'original' ? src : (processedImage.value ?? src);
-      const imgCopy2 = new ImageData(new Uint8ClampedArray(displaySrc.data), displaySrc.width, displaySrc.height);
-      worker.postMessage({ type: 'edges', imageData: imgCopy2, config: edgeConfig.value }, [imgCopy2.data.buffer]);
-    } else {
-      edgeDataSignal.value = null;
+    // For non-original modes, edges are posted in the onmessage handler after the main result
+    // arrives so they're always computed from the correct (freshly-processed) image.
+    // For original mode there is no main processing, so post edges immediately.
+    if (mode === 'original') {
+      if (edgeConfig.value.enabled) {
+        const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+        processingCount.value++;
+        worker.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value }, [imgCopy.data.buffer]);
+      } else {
+        edgeDataSignal.value = null;
+      }
     }
   }, []);
 
@@ -151,8 +185,12 @@ export function App() {
     if (edgeConfig.value.enabled) {
       const src = sourceImageData.value;
       if (!src || !workerRef.current) return;
+      // Use the latest available processed image as the edge base. If main processing
+      // is still in-flight, processedImage.value may lag behind the current config; the
+      // in-flight result will post fresh edges via the onmessage handler once it arrives.
       const displaySrc = activeMode.value === 'original' ? src : (processedImage.value ?? src);
       const imgCopy = new ImageData(new Uint8ClampedArray(displaySrc.data), displaySrc.width, displaySrc.height);
+      processingCount.value++;
       workerRef.current.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value }, [imgCopy.data.buffer]);
     } else {
       edgeDataSignal.value = null;
@@ -171,13 +209,15 @@ export function App() {
       targetW = Math.round(targetW * scale);
       targetH = Math.round(targetH * scale);
     }
-    const canvas = new OffscreenCanvas(targetW, targetH);
-    const ctx = canvas.getContext('2d')!;
+    const canvas = makeCanvas(targetW, targetH);
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     ctx.drawImage(bitmap, 0, 0, targetW, targetH);
     const imgData = ctx.getImageData(0, 0, targetW, targetH);
+    originalImageData.value = imgData;
     sourceImageData.value = imgData;
     processedImage.value = null;
     paletteColors.value = [];
+    swatchBands.value = [];
     edgeDataSignal.value = null;
     isolatedBand.value = null;
     triggerProcessing();
@@ -191,18 +231,20 @@ export function App() {
   };
 
   const handleCropConfirm = (crop: { x: number; y: number; width: number; height: number }) => {
-    const src = sourceImageData.value;
-    if (!src) return;
-    const croppedCanvas = new OffscreenCanvas(crop.width, crop.height);
-    const ctx = croppedCanvas.getContext('2d')!;
-    const tmpCanvas = new OffscreenCanvas(src.width, src.height);
-    const tmpCtx = tmpCanvas.getContext('2d')!;
-    tmpCtx.putImageData(src, 0, 0);
-    ctx.drawImage(tmpCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
-    const newImgData = ctx.getImageData(0, 0, crop.width, crop.height);
+    // Always crop from the original image to support non-destructive re-cropping.
+    const original = originalImageData.value;
+    if (!original) return;
+    const croppedCanvas = makeCanvas(crop.width, crop.height);
+    const croppedCtx = croppedCanvas.getContext('2d') as CanvasRenderingContext2D;
+    const tmpCanvas = makeCanvas(original.width, original.height);
+    const tmpCtx = tmpCanvas.getContext('2d') as CanvasRenderingContext2D;
+    tmpCtx.putImageData(original, 0, 0);
+    croppedCtx.drawImage(tmpCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    const newImgData = croppedCtx.getImageData(0, 0, crop.width, crop.height);
     sourceImageData.value = newImgData;
     processedImage.value = null;
     paletteColors.value = [];
+    swatchBands.value = [];
     edgeDataSignal.value = null;
     isolatedBand.value = null;
     showCropOverlay.value = false;
@@ -212,8 +254,10 @@ export function App() {
   const compositeOptions = {
     showTemperatureMap: showTemperatureMap.value,
     tempIntensity: 1.0,
-    isolatedBand: isolatedBand.value,
-    isolationThresholds: activeMode.value === 'value' ? valueConfig.value.thresholds : colorConfig.value.thresholds,
+    // Only apply band isolation in 'color' mode; switching modes would otherwise
+    // continue to dim the image even after the palette strip is hidden.
+    isolatedBand: activeMode.value === 'color' ? isolatedBand.value : null,
+    isolationThresholds: colorConfig.value.thresholds,
   };
 
   const currentImageData = activeMode.value === 'original'
@@ -290,10 +334,10 @@ export function App() {
           </button>
         )}
 
-        {showCropOverlay.value && sourceImageData.value && (
+        {showCropOverlay.value && originalImageData.value && (
           <CropOverlay
-            imageWidth={sourceImageData.value.width}
-            imageHeight={sourceImageData.value.height}
+            imageWidth={originalImageData.value.width}
+            imageHeight={originalImageData.value.height}
             initialCrop={null}
             onCropChange={handleCropConfirm}
             onConfirm={() => {}}
@@ -343,6 +387,7 @@ export function App() {
         {paletteColors.value.length > 0 && (
           <PaletteStrip
             colors={paletteColors.value}
+            bands={swatchBands.value}
             isolatedBand={isolatedBand.value}
             onIsolate={(band) => { isolatedBand.value = band; }}
           />

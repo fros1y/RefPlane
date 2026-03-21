@@ -1,5 +1,16 @@
 import type { EdgeConfig } from '../types';
 
+/** Create a canvas, falling back to HTMLCanvasElement when OffscreenCanvas is unavailable. */
+function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(w, h);
+  }
+  const el = document.createElement('canvas');
+  el.width = w;
+  el.height = h;
+  return el;
+}
+
 export function compositeEdges(
   destCtx: CanvasRenderingContext2D,
   edgeData: ImageData,
@@ -10,15 +21,15 @@ export function compositeEdges(
   const { compositeMode, lineColor, lineCustomColor, lineOpacity, edgesOnlyPolarity, lineKnockoutColor, lineKnockoutCustomColor } = config;
   const { width, height } = edgeData;
 
-  const tmpCanvas = new OffscreenCanvas(width, height);
-  const tmpCtx = tmpCanvas.getContext('2d')!;
+  const tmpCanvas = makeCanvas(width, height);
+  const tmpCtx = tmpCanvas.getContext('2d') as CanvasRenderingContext2D;
   tmpCtx.putImageData(edgeData, 0, 0);
 
   switch (compositeMode) {
     case 'lines-over': {
       const color = lineColor === 'custom' ? lineCustomColor : lineColor;
-      const colorCanvas = new OffscreenCanvas(width, height);
-      const colorCtx = colorCanvas.getContext('2d')!;
+      const colorCanvas = makeCanvas(width, height);
+      const colorCtx = colorCanvas.getContext('2d') as CanvasRenderingContext2D;
       colorCtx.putImageData(edgeData, 0, 0);
       colorCtx.globalCompositeOperation = 'source-in';
       colorCtx.fillStyle = color;
@@ -42,8 +53,8 @@ export function compositeEdges(
           inv.data[i + 2] = 255 - v;
           inv.data[i + 3] = v > 128 ? 255 : 0;
         }
-        const invCanvas = new OffscreenCanvas(width, height);
-        invCanvas.getContext('2d')!.putImageData(inv, 0, 0);
+        const invCanvas = makeCanvas(width, height);
+        (invCanvas.getContext('2d') as CanvasRenderingContext2D).putImageData(inv, 0, 0);
         destCtx.drawImage(invCanvas, 0, 0);
       } else {
         destCtx.fillStyle = 'black';
@@ -63,8 +74,8 @@ export function compositeEdges(
     case 'knockout': {
       const color = lineKnockoutColor === 'custom' ? lineKnockoutCustomColor :
         lineKnockoutColor === 'dark-gray' ? '#333333' : 'black';
-      const strokeCanvas = new OffscreenCanvas(width, height);
-      const strokeCtx = strokeCanvas.getContext('2d')!;
+      const strokeCanvas = makeCanvas(width, height);
+      const strokeCtx = strokeCanvas.getContext('2d') as CanvasRenderingContext2D;
       strokeCtx.putImageData(edgeData, 0, 0);
       strokeCtx.globalCompositeOperation = 'source-in';
       strokeCtx.fillStyle = color;

@@ -23,9 +23,11 @@ export function ThresholdSlider({ thresholds, onChange }: Props) {
     const handleMove = (me: PointerEvent) => {
       const newVal = getRelativeX(me.clientX);
       const updated = [...thresholds];
-      updated[index] = newVal;
-      // keep sorted
-      updated.sort((a, b) => a - b);
+      // Clamp between neighbors to preserve ordering without re-sorting,
+      // which would cause handles to jump and break pointer capture.
+      const lowerBound = index > 0 ? thresholds[index - 1] : 0;
+      const upperBound = index < thresholds.length - 1 ? thresholds[index + 1] : 1;
+      updated[index] = Math.max(lowerBound, Math.min(upperBound, newVal));
       onChange(updated);
     };
 
