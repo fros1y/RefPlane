@@ -29,3 +29,35 @@ VSCode will start the Vite dev server in the background and open the app in a de
 ```bash
 npm run build
 ```
+
+### Tests
+
+Install Playwright browsers once before running browser tests:
+
+```bash
+npx playwright install chromium
+```
+
+Fast unit and component tests:
+
+```bash
+npm run test:unit
+```
+
+Browser workflow tests:
+
+```bash
+npm run test:e2e
+```
+
+Visual baseline tests:
+
+```bash
+npm run test:visual
+```
+
+If you need to record or refresh screenshot baselines:
+
+```bash
+npm run test:visual:update
+```

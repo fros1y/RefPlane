@@ -29,6 +29,22 @@ function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
   return el;
 }
 
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to decode image file'));
+    };
+    img.src = url;
+  });
+}
+
 const defaultGridConfig: GridConfig = {
   enabled: false,
   divisions: 4,
@@ -278,9 +294,15 @@ export function App() {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
-    const bitmap = await createImageBitmap(file);
-    let targetW = bitmap.width;
-    let targetH = bitmap.height;
+    let source: ImageBitmap | HTMLImageElement;
+    try {
+      source = await createImageBitmap(file);
+    } catch {
+      source = await loadImageFromFile(file);
+    }
+
+    let targetW = source.width;
+    let targetH = source.height;
     if (Math.max(targetW, targetH) > MAX_WORKING_SIZE) {
       const scale = MAX_WORKING_SIZE / Math.max(targetW, targetH);
       targetW = Math.round(targetW * scale);
@@ -288,7 +310,10 @@ export function App() {
     }
     const canvas = makeCanvas(targetW, targetH);
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-    ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+    ctx.drawImage(source, 0, 0, targetW, targetH);
+    if (typeof ImageBitmap !== 'undefined' && source instanceof ImageBitmap) {
+      source.close();
+    }
     const imgData = ctx.getImageData(0, 0, targetW, targetH);
     originalImageData.value = imgData;
     sourceImageData.value = imgData;
