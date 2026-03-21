@@ -15,44 +15,54 @@ function makeConfig(method: SimplifyConfig['method'], strength = 0.5): SimplifyC
 }
 
 describe('runSimplify', () => {
-  it('returns input unchanged for method "none"', () => {
+  it('returns input unchanged for method "none"', async () => {
     const image = createImageData(4, 4, [128, 128, 128, 255]);
-    const result = runSimplify(image, makeConfig('none'));
+    const result = await runSimplify(image, makeConfig('none'));
     expect(result.data).toEqual(image.data);
   });
 
-  it('applies bilateral filter when method is "bilateral"', () => {
+  it('applies bilateral filter when method is "bilateral"', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
-    const result = runSimplify(image, makeConfig('bilateral'));
+    const result = await runSimplify(image, makeConfig('bilateral'));
     expect(result.width).toBe(8);
     expect(result.height).toBe(8);
   });
 
-  it('applies kuwahara filter when method is "kuwahara"', () => {
+  it('applies kuwahara filter when method is "kuwahara"', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
-    const result = runSimplify(image, makeConfig('kuwahara'));
+    const result = await runSimplify(image, makeConfig('kuwahara'));
     expect(result.width).toBe(8);
     expect(result.height).toBe(8);
   });
 
-  it('applies mean-shift filter when method is "mean-shift"', () => {
+  it('applies mean-shift filter when method is "mean-shift"', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
-    const result = runSimplify(image, makeConfig('mean-shift'));
+    const result = await runSimplify(image, makeConfig('mean-shift'));
     expect(result.width).toBe(8);
     expect(result.height).toBe(8);
   });
 
-  it('applies anisotropic filter when method is "anisotropic"', () => {
+  it('applies anisotropic filter when method is "anisotropic"', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
-    const result = runSimplify(image, makeConfig('anisotropic'));
+    const result = await runSimplify(image, makeConfig('anisotropic'));
     expect(result.width).toBe(8);
     expect(result.height).toBe(8);
   });
 
-  it('passes progress callback through to algorithm', () => {
+  it('passes progress callback through to algorithm', async () => {
     const image = createImageData(10, 10, [128, 128, 128, 255]);
     const updates: number[] = [];
-    runSimplify(image, makeConfig('bilateral'), (p) => { updates.push(p); });
+    await runSimplify(image, makeConfig('bilateral'), (p) => { updates.push(p); });
     expect(updates.length).toBeGreaterThan(0);
+  });
+
+  it('aborts simplify when abort signal is already set', async () => {
+    const image = createImageData(8, 8, [128, 128, 128, 255]);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(runSimplify(image, makeConfig('bilateral'), undefined, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
   });
 });

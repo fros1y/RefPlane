@@ -1,9 +1,12 @@
-export function bilateralFilter(
+import { throwIfAborted, yieldToEventLoop } from './cancel';
+
+export async function bilateralFilter(
   imageData: ImageData,
   sigmaS: number,
   sigmaR: number,
   onProgress?: (percent: number) => void,
-): ImageData {
+  abortSignal?: AbortSignal,
+): Promise<ImageData> {
   const { data, width, height } = imageData;
   const out = new ImageData(width, height);
   const outData = out.data;
@@ -11,8 +14,13 @@ export function bilateralFilter(
   const sigmaS2 = 2 * sigmaS * sigmaS;
   const sigmaR2 = 2 * sigmaR * sigmaR;
   const progressInterval = Math.max(1, Math.floor(height / 20));
+  const yieldInterval = 8;
 
   for (let y = 0; y < height; y++) {
+    throwIfAborted(abortSignal);
+    if (y > 0 && y % yieldInterval === 0) {
+      await yieldToEventLoop();
+    }
     if (onProgress && y % progressInterval === 0) {
       onProgress((y / height) * 100);
     }

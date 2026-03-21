@@ -3,42 +3,42 @@ import { anisotropicDiffusion } from '../../../src/processing/simplify/anisotrop
 import { createImageData, setPixel } from '../../utils/image';
 
 describe('anisotropicDiffusion', () => {
-  it('preserves a uniform image', () => {
+  it('preserves a uniform image', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
-    const result = anisotropicDiffusion(image, 5, 20);
+    const result = await anisotropicDiffusion(image, 5, 20);
     for (let i = 0; i < result.data.length; i += 4) {
       expect(result.data[i]).toBeCloseTo(128, -1);
     }
   });
 
-  it('produces output with same dimensions as input', () => {
+  it('produces output with same dimensions as input', async () => {
     const image = createImageData(16, 12, [100, 100, 100, 255]);
-    const result = anisotropicDiffusion(image, 3, 15);
+    const result = await anisotropicDiffusion(image, 3, 15);
     expect(result.width).toBe(16);
     expect(result.height).toBe(12);
   });
 
-  it('preserves alpha channel', () => {
+  it('preserves alpha channel', async () => {
     const image = createImageData(4, 4, [100, 100, 100, 190]);
-    const result = anisotropicDiffusion(image, 2, 20);
+    const result = await anisotropicDiffusion(image, 2, 20);
     for (let i = 3; i < result.data.length; i += 4) {
       expect(result.data[i]).toBe(190);
     }
   });
 
-  it('smooths interior while preserving strong edges', () => {
+  it('smooths interior while preserving strong edges', async () => {
     const image = createImageData(20, 10, [50, 50, 50, 255]);
     for (let y = 0; y < 10; y++) {
       for (let x = 10; x < 20; x++) {
         setPixel(image, x, y, [200, 200, 200, 255]);
       }
     }
-    const result = anisotropicDiffusion(image, 10, 15);
+    const result = await anisotropicDiffusion(image, 10, 15);
     expect(result.data[(5 * 20 + 2) * 4]).toBeLessThan(80);
     expect(result.data[(5 * 20 + 17) * 4]).toBeGreaterThan(170);
   });
 
-  it('more iterations produce smoother output', () => {
+  it('more iterations produce smoother output', async () => {
     const image = createImageData(20, 20, [128, 128, 128, 255]);
     for (let y = 0; y < 20; y++) {
       for (let x = 0; x < 20; x++) {
@@ -46,8 +46,8 @@ describe('anisotropicDiffusion', () => {
         setPixel(image, x, y, [v, v, v, 255]);
       }
     }
-    const few = anisotropicDiffusion(image, 2, 20);
-    const many = anisotropicDiffusion(image, 20, 20);
+    const few = await anisotropicDiffusion(image, 2, 20);
+    const many = await anisotropicDiffusion(image, 20, 20);
 
     function variance(img: ImageData): number {
       let sum = 0, sum2 = 0, count = 0;
@@ -63,10 +63,10 @@ describe('anisotropicDiffusion', () => {
     expect(variance(many)).toBeLessThan(variance(few));
   });
 
-  it('accepts a progress callback', () => {
+  it('accepts a progress callback', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
     const updates: number[] = [];
-    anisotropicDiffusion(image, 5, 20, (percent) => { updates.push(percent); });
+    await anisotropicDiffusion(image, 5, 20, (percent) => { updates.push(percent); });
     expect(updates.length).toBeGreaterThan(0);
   });
 });

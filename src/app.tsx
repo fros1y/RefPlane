@@ -164,8 +164,11 @@ export function App() {
       const roundTripMs = requestTiming ? performance.now() - requestTiming.sentAt : undefined;
       requestTimingsRef.current.delete(requestId);
       if (type === 'error') {
+        const isAbort = error === 'AbortError';
         logProcessingTiming(requestType, requestId, meta, roundTripMs, true, error);
-        console.error('Worker error:', error);
+        if (!isAbort) {
+          console.error('Worker error:', error);
+        }
         processingCount.value = Math.max(0, processingCount.value - 1);
         return;
       }

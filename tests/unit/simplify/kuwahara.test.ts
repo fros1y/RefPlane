@@ -3,30 +3,30 @@ import { kuwaharaFilter } from '../../../src/processing/simplify/kuwahara';
 import { createImageData, setPixel } from '../../utils/image';
 
 describe('kuwaharaFilter', () => {
-  it('preserves a uniform image', () => {
+  it('preserves a uniform image', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
-    const result = kuwaharaFilter(image, 3);
+    const result = await kuwaharaFilter(image, 3);
     for (let i = 0; i < result.data.length; i += 4) {
       expect(result.data[i]).toBeCloseTo(128, -1);
     }
   });
 
-  it('produces output with same dimensions as input', () => {
+  it('produces output with same dimensions as input', async () => {
     const image = createImageData(16, 12, [100, 100, 100, 255]);
-    const result = kuwaharaFilter(image, 5);
+    const result = await kuwaharaFilter(image, 5);
     expect(result.width).toBe(16);
     expect(result.height).toBe(12);
   });
 
-  it('preserves alpha channel', () => {
+  it('preserves alpha channel', async () => {
     const image = createImageData(4, 4, [100, 100, 100, 180]);
-    const result = kuwaharaFilter(image, 3);
+    const result = await kuwaharaFilter(image, 3);
     for (let i = 3; i < result.data.length; i += 4) {
       expect(result.data[i]).toBe(180);
     }
   });
 
-  it('reduces variance within uniform regions', () => {
+  it('reduces variance within uniform regions', async () => {
     const image = createImageData(20, 20, [128, 128, 128, 255]);
     for (let y = 0; y < 20; y++) {
       for (let x = 0; x < 20; x++) {
@@ -34,17 +34,17 @@ describe('kuwaharaFilter', () => {
         setPixel(image, x, y, [v, v, v, 255]);
       }
     }
-    const result = kuwaharaFilter(image, 5);
+    const result = await kuwaharaFilter(image, 5);
     const centerIdx = (10 * 20 + 10) * 4;
     const centerVal = result.data[centerIdx];
     const neighborVal = result.data[centerIdx + 4];
     expect(Math.abs(centerVal - neighborVal)).toBeLessThan(16);
   });
 
-  it('accepts a progress callback', () => {
+  it('accepts a progress callback', async () => {
     const image = createImageData(10, 10, [128, 128, 128, 255]);
     const updates: number[] = [];
-    kuwaharaFilter(image, 3, (percent) => { updates.push(percent); });
+    await kuwaharaFilter(image, 3, (percent) => { updates.push(percent); });
     expect(updates.length).toBeGreaterThan(0);
   });
 });

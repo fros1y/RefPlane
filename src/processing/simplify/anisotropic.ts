@@ -1,9 +1,12 @@
-export function anisotropicDiffusion(
+import { throwIfAborted, yieldToEventLoop } from './cancel';
+
+export async function anisotropicDiffusion(
   imageData: ImageData,
   iterations: number,
   kappa: number,
   onProgress?: (percent: number) => void,
-): ImageData {
+  abortSignal?: AbortSignal,
+): Promise<ImageData> {
   const { data, width, height } = imageData;
   const numPixels = width * height;
   const lambda = 0.25; // stability for 4-connected
@@ -27,6 +30,10 @@ export function anisotropicDiffusion(
   }
 
   for (let iter = 0; iter < iterations; iter++) {
+    throwIfAborted(abortSignal);
+    if (iter > 0) {
+      await yieldToEventLoop();
+    }
     if (onProgress) {
       onProgress((iter / iterations) * 100);
     }

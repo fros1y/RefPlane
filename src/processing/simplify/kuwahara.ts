@@ -1,15 +1,23 @@
-export function kuwaharaFilter(
+import { throwIfAborted, yieldToEventLoop } from './cancel';
+
+export async function kuwaharaFilter(
   imageData: ImageData,
   kernelSize: number,
   onProgress?: (percent: number) => void,
-): ImageData {
+  abortSignal?: AbortSignal,
+): Promise<ImageData> {
   const { data, width, height } = imageData;
   const out = new ImageData(width, height);
   const outData = out.data;
   const radius = Math.floor(kernelSize / 2);
   const progressInterval = Math.max(1, Math.floor(height / 20));
+  const yieldInterval = 8;
 
   for (let y = 0; y < height; y++) {
+    throwIfAborted(abortSignal);
+    if (y > 0 && y % yieldInterval === 0) {
+      await yieldToEventLoop();
+    }
     if (onProgress && y % progressInterval === 0) {
       onProgress((y / height) * 100);
     }

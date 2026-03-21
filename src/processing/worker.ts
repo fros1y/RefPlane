@@ -62,12 +62,17 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
 
   try {
     if (type === 'simplify') {
+      const controller = new AbortController();
+      currentSimplifyController = controller;
       const reporter = createProgressReporter(requestId);
       const result = await measureStage(stages, 'simplify', () =>
-        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent))
+        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal)
       );
       const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
+      if (currentSimplifyController === controller) {
+        currentSimplifyController = null;
+      }
     } else if (type === 'value-study') {
       const result = gpu
         ? await measureStage(stages, 'value-study-gpu', () => gpu.processValueStudy(data.imageData, data.config))
@@ -107,13 +112,22 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
     }
   } catch (err) {
     const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
-    self.postMessage({ type: 'error', error: String(err), requestType: type, requestId, meta });
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    self.postMessage({ type: 'error', error: isAbort ? 'AbortError' : String(err), requestType: type, requestId, meta });
+  } finally {
+    if (type === 'simplify') {
+      currentSimplifyController = null;
+    }
   }
 }
 
 let queue = Promise.resolve();
+let currentSimplifyController: AbortController | null = null;
 
 self.onmessage = (e: MessageEvent<WorkerMessage>) => {
+  if (e.data.type === 'simplify' && currentSimplifyController) {
+    currentSimplifyController.abort();
+  }
   const queuedAt = performance.now();
   queue = queue.then(() => handleMessage(e.data, queuedAt)).catch((err) => {
     self.postMessage({ type: 'error', error: String(err) });

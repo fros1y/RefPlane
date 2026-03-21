@@ -1,9 +1,12 @@
-export function meanShiftFilter(
+import { throwIfAborted, yieldToEventLoop } from './cancel';
+
+export async function meanShiftFilter(
   imageData: ImageData,
   spatialRadius: number,
   colorRadius: number,
   onProgress?: (percent: number) => void,
-): ImageData {
+  abortSignal?: AbortSignal,
+): Promise<ImageData> {
   const { data, width, height } = imageData;
   const out = new ImageData(width, height);
   const outData = out.data;
@@ -12,8 +15,13 @@ export function meanShiftFilter(
   const spatialR2 = spatialRadius * spatialRadius;
   const colorR2 = colorRadius * colorRadius;
   const progressInterval = Math.max(1, Math.floor(height / 20));
+  const yieldInterval = 8;
 
   for (let y = 0; y < height; y++) {
+    throwIfAborted(abortSignal);
+    if (y > 0 && y % yieldInterval === 0) {
+      await yieldToEventLoop();
+    }
     if (onProgress && y % progressInterval === 0) {
       onProgress((y / height) * 100);
     }
