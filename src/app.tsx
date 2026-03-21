@@ -102,9 +102,14 @@ export function App() {
   const requestSeqRef = useRef(0);
   const latestMainRequestIdRef = useRef(0);
   const latestEdgeRequestIdRef = useRef(0);
+  const requestTimingsRef = useRef(new Map<number, { sentAt: number; requestType: string }>());
 
   useEffect(() => {
     initInstallPrompt(() => { showInstallBanner.value = true; });
+  }, []);
+
+  useEffect(() => {
+    console.log('[Perf] RefPlane timing logs enabled');
   }, []);
 
   useEffect(() => {
@@ -112,16 +117,22 @@ export function App() {
     workerRef.current = worker;
 
     worker.onmessage = (e) => {
-      const { type, result, palette, paletteBands, requestType, error, requestId } = e.data;
+      const { type, result, palette, paletteBands, requestType, error, requestId, meta } = e.data;
       const isEdgeRequest = requestType === 'edges';
       const latestRequestId = isEdgeRequest ? latestEdgeRequestIdRef.current : latestMainRequestIdRef.current;
+      const requestTiming = requestTimingsRef.current.get(requestId);
+      const roundTripMs = requestTiming ? performance.now() - requestTiming.sentAt : undefined;
+      requestTimingsRef.current.delete(requestId);
       if (type === 'error') {
+        logProcessingTiming(requestType, requestId, meta, roundTripMs, true, error);
         console.error('Worker error:', error);
         processingCount.value = Math.max(0, processingCount.value - 1);
         return;
       }
       if (type === 'result') {
         processingCount.value = Math.max(0, processingCount.value - 1);
+        const isStale = requestId !== latestRequestId;
+        logProcessingTiming(requestType, requestId, meta, roundTripMs, isStale);
         if (requestId !== latestRequestId) {
           return;
         }
@@ -146,6 +157,7 @@ export function App() {
     return () => {
       if (processingTimerRef.current !== null) window.clearTimeout(processingTimerRef.current);
       if (edgeTimerRef.current !== null) window.clearTimeout(edgeTimerRef.current);
+      requestTimingsRef.current.clear();
       worker.terminate();
     };
   }, []);
@@ -164,18 +176,24 @@ export function App() {
       latestMainRequestIdRef.current = requestId;
       processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'grayscale' });
+      console.log(`[Perf] dispatch grayscale#${requestId} | size=${src.width}x${src.height}`);
       worker.postMessage({ type: 'grayscale', imageData: imgCopy, requestId }, [imgCopy.data.buffer]);
     } else if (mode === 'value') {
       const requestId = nextRequestId();
       latestMainRequestIdRef.current = requestId;
       processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'value-study' });
+      console.log(`[Perf] dispatch value-study#${requestId} | size=${src.width}x${src.height}`);
       worker.postMessage({ type: 'value-study', imageData: imgCopy, config: valueConfig.value, requestId }, [imgCopy.data.buffer]);
     } else if (mode === 'color') {
       const requestId = nextRequestId();
       latestMainRequestIdRef.current = requestId;
       processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'color-regions' });
+      console.log(`[Perf] dispatch color-regions#${requestId} | size=${src.width}x${src.height}`);
       worker.postMessage({ type: 'color-regions', imageData: imgCopy, config: colorConfig.value, requestId }, [imgCopy.data.buffer]);
     } else {
       latestMainRequestIdRef.current = nextRequestId();
@@ -201,6 +219,8 @@ export function App() {
       latestEdgeRequestIdRef.current = requestId;
       processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'edges' });
+      console.log(`[Perf] dispatch edges#${requestId} | size=${src.width}x${src.height}`);
       worker.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value, requestId }, [imgCopy.data.buffer]);
     }, delay);
   }, [nextRequestId]);
@@ -468,4 +488,35 @@ export function App() {
       </div>
     </div>
   );
+}
+
+function logProcessingTiming(
+  requestType: string,
+  requestId: number,
+  meta: {
+    backend?: string;
+    queueWaitMs?: number;
+    totalMs?: number;
+    width?: number;
+    height?: number;
+    stages?: Array<{ label: string; ms: number }>;
+  } | undefined,
+  roundTripMs?: number,
+  stale?: boolean,
+  error?: string,
+) {
+  const stageSummary = meta?.stages?.map(stage => `${stage.label}=${stage.ms.toFixed(1)}ms`).join(', ');
+  const parts = [
+    `[Perf] ${requestType}#${requestId}`,
+    stale ? 'stale' : 'current',
+  ];
+  if (meta?.backend) parts.push(`backend=${meta.backend}`);
+  if (meta?.queueWaitMs !== undefined) parts.push(`queue=${meta.queueWaitMs.toFixed(1)}ms`);
+  if (meta?.totalMs !== undefined) parts.push(`worker=${meta.totalMs.toFixed(1)}ms`);
+  if (roundTripMs !== undefined) parts.push(`roundTrip=${roundTripMs.toFixed(1)}ms`);
+  if (meta?.width && meta?.height) parts.push(`size=${meta.width}x${meta.height}`);
+  if (stageSummary) parts.push(`stages=[${stageSummary}]`);
+  if (error) parts.push(`error=${error}`);
+
+  console.log(parts.join(' | '));
 }
