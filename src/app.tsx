@@ -8,10 +8,14 @@ import { ColorSettings } from './components/ColorSettings';
 import { PaletteStrip } from './components/PaletteStrip';
 import { ActionBar } from './components/ActionBar';
 import { CompareView } from './components/CompareView';
+import { CropOverlay } from './components/CropOverlay';
 import { exportImage } from './export/export';
+import { initInstallPrompt, triggerInstall } from './pwa/install-prompt';
 import { getDefaultThresholds } from './processing/quantize';
 import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig } from './types';
 import './styles/global.css';
+
+const MAX_WORKING_SIZE = 1600;
 
 const defaultGridConfig: GridConfig = {
   enabled: false,
@@ -66,11 +70,19 @@ const colorConfig = signal<ColorConfig>(defaultColorConfig);
 const isProcessing = signal(false);
 const paletteColors = signal<string[]>([]);
 const showCompare = signal(false);
+const showCropOverlay = signal(false);
+const isolatedBand = signal<number | null>(null);
+const showTemperatureMap = signal(false);
+const showInstallBanner = signal(false);
 
 export function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const workerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    initInstallPrompt(() => { showInstallBanner.value = true; });
+  }, []);
 
   useEffect(() => {
     const worker = new Worker(new URL('./processing/worker.ts', import.meta.url), { type: 'module' });
@@ -151,20 +163,56 @@ export function App() {
     if (!file) return;
 
     const bitmap = await createImageBitmap(file);
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    let targetW = bitmap.width;
+    let targetH = bitmap.height;
+    if (Math.max(targetW, targetH) > MAX_WORKING_SIZE) {
+      const scale = MAX_WORKING_SIZE / Math.max(targetW, targetH);
+      targetW = Math.round(targetW * scale);
+      targetH = Math.round(targetH * scale);
+    }
+    const canvas = new OffscreenCanvas(targetW, targetH);
     const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(bitmap, 0, 0);
-    const imgData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+    const imgData = ctx.getImageData(0, 0, targetW, targetH);
     sourceImageData.value = imgData;
     processedImage.value = null;
     paletteColors.value = [];
     edgeDataSignal.value = null;
+    isolatedBand.value = null;
     triggerProcessing();
   };
 
   const handleExport = async () => {
-    if (!displayCanvasRef.current) return;
-    await exportImage(displayCanvasRef.current);
+    const canvas = displayCanvasRef.current;
+    if (!canvas) return;
+    const modeSlug = activeMode.value === 'original' ? 'original' : activeMode.value;
+    await exportImage(canvas, modeSlug);
+  };
+
+  const handleCropConfirm = (crop: { x: number; y: number; width: number; height: number }) => {
+    const src = sourceImageData.value;
+    if (!src) return;
+    const croppedCanvas = new OffscreenCanvas(crop.width, crop.height);
+    const ctx = croppedCanvas.getContext('2d')!;
+    const tmpCanvas = new OffscreenCanvas(src.width, src.height);
+    const tmpCtx = tmpCanvas.getContext('2d')!;
+    tmpCtx.putImageData(src, 0, 0);
+    ctx.drawImage(tmpCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    const newImgData = ctx.getImageData(0, 0, crop.width, crop.height);
+    sourceImageData.value = newImgData;
+    processedImage.value = null;
+    paletteColors.value = [];
+    edgeDataSignal.value = null;
+    isolatedBand.value = null;
+    showCropOverlay.value = false;
+    triggerProcessing();
+  };
+
+  const compositeOptions = {
+    showTemperatureMap: showTemperatureMap.value,
+    tempIntensity: 1.0,
+    isolatedBand: isolatedBand.value,
+    isolationThresholds: activeMode.value === 'value' ? valueConfig.value.thresholds : colorConfig.value.thresholds,
   };
 
   const currentImageData = activeMode.value === 'original'
@@ -173,6 +221,35 @@ export function App() {
 
   return (
     <div id="app-root" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {showInstallBanner.value && (
+        <div style={{
+          background: '#1a2744',
+          color: 'white',
+          padding: '10px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '14px',
+          flexShrink: 0,
+        }}>
+          <span>📲 Add RefPlane to home screen</span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              style={{ background: '#5b8def', color: 'white', borderRadius: '8px', padding: '6px 14px', fontSize: '13px', fontWeight: 600 }}
+              onClick={async () => { await triggerInstall(); showInstallBanner.value = false; }}
+            >
+              Install
+            </button>
+            <button
+              style={{ background: 'transparent', color: 'rgba(255,255,255,0.6)', border: 'none', padding: '6px', fontSize: '16px' }}
+              onClick={() => { showInstallBanner.value = false; }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       <input
         ref={fileInputRef}
         type="file"
@@ -190,6 +267,8 @@ export function App() {
           edgeConfig={edgeConfig.value}
           edgeData={edgeDataSignal.value}
           isProcessing={isProcessing.value}
+          externalRef={displayCanvasRef}
+          compositeOptions={compositeOptions}
         />
 
         {!sourceImageData.value && (
@@ -207,6 +286,17 @@ export function App() {
           >
             Open Image
           </button>
+        )}
+
+        {showCropOverlay.value && sourceImageData.value && (
+          <CropOverlay
+            imageWidth={sourceImageData.value.width}
+            imageHeight={sourceImageData.value.height}
+            initialCrop={null}
+            onCropChange={handleCropConfirm}
+            onConfirm={() => {}}
+            onCancel={() => { showCropOverlay.value = false; }}
+          />
         )}
 
         {showCompare.value && (
@@ -227,8 +317,10 @@ export function App() {
         <OverlayToggles
           gridConfig={gridConfig.value}
           edgeConfig={edgeConfig.value}
+          showTemperatureMap={showTemperatureMap.value}
           onGridChange={(cfg) => { gridConfig.value = { ...gridConfig.value, ...cfg }; }}
           onEdgeChange={(cfg) => { edgeConfig.value = { ...edgeConfig.value, ...cfg }; }}
+          onTemperatureMapChange={(enabled) => { showTemperatureMap.value = enabled; }}
         />
 
         <div class="scrollable" style={{ flex: 1 }}>
@@ -247,20 +339,29 @@ export function App() {
         </div>
 
         {paletteColors.value.length > 0 && (
-          <PaletteStrip colors={paletteColors.value} />
+          <PaletteStrip
+            colors={paletteColors.value}
+            isolatedBand={isolatedBand.value}
+            onIsolate={(band) => { isolatedBand.value = band; }}
+          />
         )}
 
         <ActionBar
           hasImage={sourceImageData.value !== null}
-          showCrop={false}
+          showCrop={showCropOverlay.value}
           showCompare={showCompare.value}
-          onCrop={() => fileInputRef.current?.click()}
-          onCompare={() => { showCompare.value = !showCompare.value; }}
+          onCrop={() => {
+            if (sourceImageData.value) {
+              showCropOverlay.value = !showCropOverlay.value;
+              showCompare.value = false;
+            } else {
+              fileInputRef.current?.click();
+            }
+          }}
+          onCompare={() => { showCompare.value = !showCompare.value; showCropOverlay.value = false; }}
           onExport={handleExport}
         />
       </div>
-
-      <canvas ref={displayCanvasRef} style={{ display: 'none' }} aria-hidden="true" />
     </div>
   );
 }

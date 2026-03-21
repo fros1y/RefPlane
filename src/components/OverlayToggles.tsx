@@ -6,11 +6,13 @@ import { EdgeSettings } from './EdgeSettings';
 interface Props {
   gridConfig: GridConfig;
   edgeConfig: EdgeConfig;
+  showTemperatureMap: boolean;
   onGridChange: (cfg: Partial<GridConfig>) => void;
   onEdgeChange: (cfg: Partial<EdgeConfig>) => void;
+  onTemperatureMapChange: (enabled: boolean) => void;
 }
 
-export function OverlayToggles({ gridConfig, edgeConfig, onGridChange, onEdgeChange }: Props) {
+export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onGridChange, onEdgeChange, onTemperatureMapChange }: Props) {
   const [showGridSettings, setShowGridSettings] = useState(false);
   const [showEdgeSettings, setShowEdgeSettings] = useState(false);
 
@@ -71,6 +73,17 @@ export function OverlayToggles({ gridConfig, edgeConfig, onGridChange, onEdgeCha
           </div>
         )}
       </div>
+
+      <button
+        class={`overlay-btn ${showTemperatureMap ? 'active' : ''}`}
+        onClick={() => onTemperatureMapChange(!showTemperatureMap)}
+        title="Temperature map overlay"
+      >
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/>
+        </svg>
+        Temp
+      </button>
     </div>
   );
 }

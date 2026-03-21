@@ -1,5 +1,6 @@
 import type { ValueConfig } from '../types';
 import { getDefaultThresholds } from '../processing/quantize';
+import { ThresholdSlider } from './ThresholdSlider';
 
 interface Props {
   config: ValueConfig;
@@ -11,8 +12,23 @@ export function ValueSettings({ config, onChange }: Props) {
     onChange({ levels, thresholds: getDefaultThresholds(levels) });
   };
 
+  const applyNotan = () => {
+    onChange({ levels: 2, strength: 0.8, thresholds: [0.5] });
+  };
+
   return (
     <div class="settings-group">
+      <div class="settings-row" style={{ justifyContent: 'flex-end', paddingBottom: '4px' }}>
+        <button
+          class="btn-ghost"
+          style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(91,141,239,0.5)', color: '#5b8def' }}
+          onClick={applyNotan}
+          title="Set 2-tone Notan preset"
+        >
+          Notan
+        </button>
+      </div>
+
       <div class="settings-row">
         <label>Levels</label>
         <input
@@ -21,6 +37,16 @@ export function ValueSettings({ config, onChange }: Props) {
           style="flex:1"
         />
         <span style="min-width:16px;text-align:right">{config.levels}</span>
+      </div>
+
+      <div class="settings-row">
+        <label>Thresholds</label>
+        <div style={{ flex: 1 }}>
+          <ThresholdSlider
+            thresholds={config.thresholds}
+            onChange={(thresholds) => onChange({ thresholds })}
+          />
+        </div>
       </div>
 
       <div class="settings-row">
