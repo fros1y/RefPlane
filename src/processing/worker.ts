@@ -66,9 +66,10 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
       currentSimplifyController = controller;
       const reporter = createProgressReporter(requestId);
       const result = await measureStage(stages, 'simplify', () =>
-        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal)
+        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal, gpu)
       );
-      const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
+      const simplifyBackend: ProcessingMeta['backend'] = gpu && data.config.method !== 'none' ? 'gpu' : 'cpu';
+      const meta = finalizeMeta(stages, simplifyBackend, data.imageData, queuedAt, startedAt);
       self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
       if (currentSimplifyController === controller) {
         currentSimplifyController = null;
@@ -80,9 +81,10 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
       const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
     } else if (type === 'color-regions') {
-      const result = await measureStage(stages, 'color-regions-cpu', () =>
-        processColorRegions(data.imageData, data.config));
-      const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
+      const stageLabel = gpu ? 'color-regions-mixed' : 'color-regions-cpu';
+      const result = await measureStage(stages, stageLabel, () =>
+        processColorRegions(data.imageData, data.config, gpu ? gpu.kMeansAssign.bind(gpu) : undefined));
+      const meta = finalizeMeta(stages, gpu ? 'mixed' : 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({
         type: 'result',
         result: result.imageData,
@@ -97,11 +99,15 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
       const cfg = data.config;
       let edgeData: ImageData;
       if (cfg.method === 'canny') {
-        edgeData = await measureStage(stages, 'canny', () => cannyEdges(gray, cfg.detail));
+        edgeData = gpu
+          ? await measureStage(stages, 'canny-gpu', () => gpu.cannyEdges(gray, cfg.detail))
+          : await measureStage(stages, 'canny', () => cannyEdges(gray, cfg.detail));
       } else {
-        edgeData = await measureStage(stages, 'sobel', () => sobelEdges(gray, cfg.sensitivity));
+        edgeData = gpu
+          ? await measureStage(stages, 'sobel-gpu', () => gpu.sobelEdges(gray, cfg.sensitivity))
+          : await measureStage(stages, 'sobel', () => sobelEdges(gray, cfg.sensitivity));
       }
-      const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
+      const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({ type: 'result', result: edgeData, requestType: type, requestId, meta }, [edgeData.data.buffer]);
     } else if (type === 'grayscale') {
       const result = gpu

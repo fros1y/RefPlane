@@ -10,10 +10,18 @@ export interface ColorRegionsResult {
   paletteBands: number[];
 }
 
-export function processColorRegions(
+type KMeansGpuAssigner = (
+  pixels: Float32Array,
+  numPixels: number,
+  centroids: Float32Array,
+  lWeight: number,
+) => Promise<Int32Array>;
+
+export async function processColorRegions(
   imageData: ImageData,
   config: ColorConfig,
-): ColorRegionsResult {
+  gpuAssigner?: KMeansGpuAssigner,
+): Promise<ColorRegionsResult> {
   const { data, width, height } = imageData;
   const numPixels = width * height;
 
@@ -58,7 +66,7 @@ export function processColorRegions(
 
     // Downweight luminance in k-means since pixels are already split by
     // brightness band — focus clustering on hue/chroma differentiation
-    const { centroids } = kMeans(pixelLab, samplePixels.length, config.colorsPerBand, 0.1);
+    const { centroids } = await kMeans(pixelLab, samplePixels.length, config.colorsPerBand, 0.1, gpuAssigner);
     for (const c of centroids) {
       allCentroids.push({ band, centroid: c });
     }

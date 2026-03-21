@@ -4,6 +4,13 @@ export { rgbToOklab, oklabToRgb };
 
 export interface Centroid { L: number; a: number; b: number; }
 
+type GpuAssigner = (
+  pixels: Float32Array,
+  numPixels: number,
+  centroids: Float32Array,
+  lWeight: number,
+) => Promise<Int32Array>;
+
 function initCentroids(pixels: Float32Array, k: number, numPixels: number, lWeight: number): Centroid[] {
   const centroids: Centroid[] = [];
   const first = Math.floor(Math.random() * numPixels);
@@ -35,7 +42,13 @@ function initCentroids(pixels: Float32Array, k: number, numPixels: number, lWeig
   return centroids;
 }
 
-export function kMeans(pixels: Float32Array, numPixels: number, k: number, lWeight = 1.0): { centroids: Centroid[]; assignments: Int32Array } {
+export async function kMeans(
+  pixels: Float32Array,
+  numPixels: number,
+  k: number,
+  lWeight = 1.0,
+  gpuAssigner?: GpuAssigner,
+): Promise<{ centroids: Centroid[]; assignments: Int32Array }> {
   if (numPixels === 0 || k === 0) return { centroids: [], assignments: new Int32Array(0) };
   k = Math.min(k, numPixels);
 
@@ -43,16 +56,27 @@ export function kMeans(pixels: Float32Array, numPixels: number, k: number, lWeig
   const assignments = new Int32Array(numPixels).fill(0);
 
   for (let iter = 0; iter < 20; iter++) {
-    for (let i = 0; i < numPixels; i++) {
-      let bestDist = Infinity, bestC = 0;
-      for (let ci = 0; ci < centroids.length; ci++) {
-        const dL = pixels[i * 3] - centroids[ci].L;
-        const da = pixels[i * 3 + 1] - centroids[ci].a;
-        const db = pixels[i * 3 + 2] - centroids[ci].b;
-        const dist = lWeight * dL * dL + da * da + db * db;
-        if (dist < bestDist) { bestDist = dist; bestC = ci; }
+    if (gpuAssigner) {
+      const centroidBuffer = new Float32Array(k * 3);
+      for (let ci = 0; ci < k; ci++) {
+        centroidBuffer[ci * 3] = centroids[ci].L;
+        centroidBuffer[ci * 3 + 1] = centroids[ci].a;
+        centroidBuffer[ci * 3 + 2] = centroids[ci].b;
       }
-      assignments[i] = bestC;
+      const gpuAssignments = await gpuAssigner(pixels, numPixels, centroidBuffer, lWeight);
+      assignments.set(gpuAssignments);
+    } else {
+      for (let i = 0; i < numPixels; i++) {
+        let bestDist = Infinity, bestC = 0;
+        for (let ci = 0; ci < centroids.length; ci++) {
+          const dL = pixels[i * 3] - centroids[ci].L;
+          const da = pixels[i * 3 + 1] - centroids[ci].a;
+          const db = pixels[i * 3 + 2] - centroids[ci].b;
+          const dist = lWeight * dL * dL + da * da + db * db;
+          if (dist < bestDist) { bestDist = dist; bestC = ci; }
+        }
+        assignments[i] = bestC;
+      }
     }
 
     const newCentroids: Centroid[] = Array.from({ length: k }, () => ({ L: 0, a: 0, b: 0 }));
