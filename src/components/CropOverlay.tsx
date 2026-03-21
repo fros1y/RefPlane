@@ -242,6 +242,7 @@ export function CropOverlay({ imageWidth, imageHeight, initialCrop, onCropChange
               minHeight: '28px',
             }}
             onClick={toggleOrientation}
+            aria-label={landscape ? 'Switch to portrait' : 'Switch to landscape'}
             title="Toggle landscape/portrait"
           >
             {landscape ? '⇔' : '⇕'}

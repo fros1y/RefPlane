@@ -47,6 +47,7 @@ export function composite(
 }
 
 const DIMMED_ALPHA = 0.2;
+// App background is #1a1a1a (26,26,26); blend isolated pixels toward it
 const DIMMED_BG = 26;
 
 function getLumaBand(luma: number, thresholds: number[]): number {

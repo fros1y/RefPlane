@@ -32,10 +32,12 @@ export function ThresholdSlider({ thresholds, onChange }: Props) {
     const handleUp = () => {
       target.removeEventListener('pointermove', handleMove as EventListener);
       target.removeEventListener('pointerup', handleUp);
+      target.removeEventListener('pointercancel', handleUp);
     };
 
     target.addEventListener('pointermove', handleMove as EventListener);
     target.addEventListener('pointerup', handleUp);
+    target.addEventListener('pointercancel', handleUp);
   }, [thresholds, onChange]);
 
   return (

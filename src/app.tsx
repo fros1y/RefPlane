@@ -15,6 +15,7 @@ import { getDefaultThresholds } from './processing/quantize';
 import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig } from './types';
 import './styles/global.css';
 
+// 1600px keeps memory and processing time reasonable on mobile devices
 const MAX_WORKING_SIZE = 1600;
 
 const defaultGridConfig: GridConfig = {
@@ -241,6 +242,7 @@ export function App() {
               Install
             </button>
             <button
+              aria-label="Close install banner"
               style={{ background: 'transparent', color: 'rgba(255,255,255,0.6)', border: 'none', padding: '6px', fontSize: '16px' }}
               onClick={() => { showInstallBanner.value = false; }}
             >
