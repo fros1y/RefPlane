@@ -16,20 +16,20 @@
     "test:visual:update": "playwright test tests/e2e/visual.spec.ts --update-snapshots"
   },
   "dependencies": {
-    "@preact/signals": "^1.3.0",
-    "preact": "^10.22.0"
+    "@preact/signals": "^2.8.2",
+    "preact": "^10.29.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@preact/preset-vite": "^2.8.1",
+    "@preact/preset-vite": "^2.10.5",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/preact": "^3.2.4",
     "jsdom": "^29.0.1",
-    "typescript": "^5.4.5",
-    "vite": "^5.3.1",
-    "vite-plugin-pwa": "^0.20.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.0",
-    "workbox-window": "^7.1.0"
+    "workbox-window": "^7.4.0"
   }
 }
