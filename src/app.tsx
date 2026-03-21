@@ -371,13 +371,6 @@ export function App() {
     value: 'Value',
     color: 'Color',
   }[activeMode.value];
-  const activeModeDescription = {
-    original: 'Study the source image with clean overlays and crop tools.',
-    grayscale: 'Read the structure as light and dark without color distraction.',
-    value: 'Tune grouped light shapes and threshold boundaries for clearer value design.',
-    color: 'Explore clustered palettes, banding, and warm-cool relationships.',
-  }[activeMode.value];
-
   return (
     <div id="app-root" class="app-shell">
       {showInstallBanner.value && (
@@ -455,7 +448,6 @@ export function App() {
               <h1 class="panel-title">RefPlane</h1>
               <span class="panel-title-tag">{activeModeLabel} Mode</span>
             </div>
-            <p class="panel-description">{activeModeDescription}</p>
           </div>
 
           <div class="panel-body scrollable">
@@ -464,7 +456,6 @@ export function App() {
                 <div class="panel-card-header">
                   <div class="panel-card-title">
                     <strong>Modes</strong>
-                    <span>Choose the lens for the study you want to produce.</span>
                   </div>
                   <span class="panel-chip">View</span>
                 </div>
@@ -478,7 +469,6 @@ export function App() {
                 <div class="panel-card-header">
                   <div class="panel-card-title">
                     <strong>Overlays</strong>
-                    <span>Layer compositional guides over the live canvas.</span>
                   </div>
                   <span class="panel-chip">Tools</span>
                 </div>
@@ -496,7 +486,6 @@ export function App() {
                 <div class="panel-card-header">
                   <div class="panel-card-title">
                     <strong>Adjustments</strong>
-                    <span>Shape the current mode without burying the canvas in controls.</span>
                   </div>
                   <span class="panel-chip">Edit</span>
                 </div>
@@ -512,13 +501,6 @@ export function App() {
                     onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
                   />
                 )}
-                {(activeMode.value === 'original' || activeMode.value === 'grayscale') && (
-                  <div class="panel-placeholder">
-                    {activeMode.value === 'original'
-                      ? 'Original mode keeps the source clean. Use overlays, crop, compare, or export from here.'
-                      : 'Grayscale mode is intentionally simple. Switch to Value Study or Color Regions for deeper tuning.'}
-                  </div>
-                )}
               </section>
 
               {paletteColors.value.length > 0 && (
@@ -526,7 +508,6 @@ export function App() {
                   <div class="panel-card-header">
                     <div class="panel-card-title">
                       <strong>Palette</strong>
-                      <span>Tap a swatch to copy its hex code and isolate that band on the canvas.</span>
                     </div>
                     <span class="panel-chip">{paletteColors.value.length} tones</span>
                   </div>
@@ -543,7 +524,6 @@ export function App() {
                 <div class="panel-card-header">
                   <div class="panel-card-title">
                     <strong>Actions</strong>
-                    <span>Move between crop, compare, and export without leaving the canvas context.</span>
                   </div>
                   <span class="panel-chip">Output</span>
                 </div>
@@ -551,6 +531,7 @@ export function App() {
                   hasImage={sourceImageData.value !== null}
                   showCrop={showCropOverlay.value}
                   showCompare={showCompare.value}
+                  onOpenImage={() => fileInputRef.current?.click()}
                   onCrop={() => {
                     if (sourceImageData.value) {
                       showCropOverlay.value = !showCropOverlay.value;

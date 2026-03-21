@@ -20,6 +20,7 @@ export function ModeBar({ activeMode, onModeChange }: Props) {
           key={m.id}
           class={`mode-tab ${activeMode === m.id ? 'active' : ''}`}
           onClick={() => onModeChange(m.id)}
+          title={m.hint}
         >
           <span class="mode-tab-content">
             <span class="mode-tab-label">{m.label}</span>

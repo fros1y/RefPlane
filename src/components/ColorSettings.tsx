@@ -13,7 +13,7 @@ export function ColorSettings({ config, onChange }: Props) {
 
   return (
     <div class="settings-group">
-      <div class="settings-row">
+      <div class="settings-row" title="Number of brightness bands to split the image into">
         <label>Value Bands</label>
         <input
           type="range" min="2" max="6" step="1" value={config.bands}
@@ -23,7 +23,7 @@ export function ColorSettings({ config, onChange }: Props) {
         <span class="settings-value">{config.bands}</span>
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Number of dominant colors to extract per brightness band">
         <label>Colors/Band</label>
         <input
           type="range" min="1" max="4" step="1" value={config.colorsPerBand}
@@ -33,7 +33,7 @@ export function ColorSettings({ config, onChange }: Props) {
         <span class="settings-value">{config.colorsPerBand}</span>
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="How much to blur boundaries between color regions">
         <label>Smoothing</label>
         <input
           type="range" min="0" max="1" step="0.05" value={config.strength}
@@ -42,7 +42,7 @@ export function ColorSettings({ config, onChange }: Props) {
         />
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Emphasize warm/cool color temperature separation">
         <label>Warm/Cool</label>
         <input
           type="range" min="0" max="1" step="0.05" value={config.warmCoolEmphasis}
@@ -51,7 +51,7 @@ export function ColorSettings({ config, onChange }: Props) {
         />
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Merge small isolated patches into neighboring regions">
         <label>Min Region</label>
         <select value={config.minRegionSize} onChange={e => onChange({ minRegionSize: (e.target as HTMLSelectElement).value as ColorConfig['minRegionSize'] })}>
           <option value="off">Off</option>

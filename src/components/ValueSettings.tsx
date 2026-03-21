@@ -29,7 +29,7 @@ export function ValueSettings({ config, onChange }: Props) {
         </button>
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Number of distinct value groups to create">
         <label>Levels</label>
         <input
           type="range" min="2" max="8" step="1" value={config.levels}
@@ -39,7 +39,7 @@ export function ValueSettings({ config, onChange }: Props) {
         <span class="settings-value">{config.levels}</span>
       </div>
 
-      <div class="settings-row settings-row-split">
+      <div class="settings-row settings-row-split" title="Drag handles to adjust where value bands split">
         <label>Thresholds</label>
         <div style={{ width: '100%' }}>
           <ThresholdSlider
@@ -49,7 +49,7 @@ export function ValueSettings({ config, onChange }: Props) {
         </div>
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="How much to blur boundaries between value groups">
         <label>Smoothing</label>
         <input
           type="range" min="0" max="1" step="0.05" value={config.strength}
@@ -58,7 +58,7 @@ export function ValueSettings({ config, onChange }: Props) {
         />
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Merge small isolated patches into neighboring regions">
         <label>Min Region</label>
         <select value={config.minRegionSize} onChange={e => onChange({ minRegionSize: (e.target as HTMLSelectElement).value as ValueConfig['minRegionSize'] })}>
           <option value="off">Off</option>

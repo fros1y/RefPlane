@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import type { GridConfig, EdgeConfig } from '../types';
 import { GridSettings } from './GridSettings';
 import { EdgeSettings } from './EdgeSettings';
@@ -15,13 +15,31 @@ interface Props {
 export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onGridChange, onEdgeChange, onTemperatureMapChange }: Props) {
   const [showGridSettings, setShowGridSettings] = useState(false);
   const [showEdgeSettings, setShowEdgeSettings] = useState(false);
+  const gridItemRef = useRef<HTMLDivElement>(null);
+  const edgeItemRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showGridSettings && !showEdgeSettings) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (showGridSettings && gridItemRef.current && !gridItemRef.current.contains(target)) {
+        setShowGridSettings(false);
+      }
+      if (showEdgeSettings && edgeItemRef.current && !edgeItemRef.current.contains(target)) {
+        setShowEdgeSettings(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, [showGridSettings, showEdgeSettings]);
 
   return (
     <div class="overlay-bar">
-      <div class="overlay-item">
+      <div class="overlay-item" ref={gridItemRef}>
         <button
           class={`overlay-btn ${gridConfig.enabled ? 'active' : ''}`}
           onClick={() => onGridChange({ enabled: !gridConfig.enabled })}
+          title="Toggle compositional grid overlay"
         >
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
             <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18" />
@@ -45,10 +63,11 @@ export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onG
         )}
       </div>
 
-      <div class="overlay-item">
+      <div class="overlay-item" ref={edgeItemRef}>
         <button
           class={`overlay-btn ${edgeConfig.enabled ? 'active' : ''}`}
           onClick={() => onEdgeChange({ enabled: !edgeConfig.enabled })}
+          title="Toggle edge detection overlay"
         >
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
             <path d="M4 4l16 16M4 20L20 4" />
@@ -75,7 +94,7 @@ export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onG
       <button
         class={`overlay-btn ${showTemperatureMap ? 'active' : ''}`}
         onClick={() => onTemperatureMapChange(!showTemperatureMap)}
-        title="Temperature map overlay"
+        title="Toggle warm/cool temperature map overlay"
       >
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
           <path d="M14 14.76V3.5a2.5 2.5 0 00-5 0v11.26a4.5 4.5 0 105 0z"/>

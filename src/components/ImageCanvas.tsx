@@ -181,12 +181,10 @@ function UploadPrompt({ onOpenImage }: { onOpenImage?: () => void }) {
         <path d="M21 15l-5-5L5 21" />
       </svg>
       <h2>Open an Image</h2>
-      <p>Drop in a reference and pivot between value, grayscale, edges, and color studies in one studio workspace.</p>
       <div class="upload-prompt-actions">
         <button class="btn-primary" type="button" onClick={onOpenImage}>
           Open Image
         </button>
-        <span class="upload-pill">Built for study, not clutter</span>
       </div>
     </div>
   );

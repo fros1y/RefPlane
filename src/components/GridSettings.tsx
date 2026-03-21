@@ -8,7 +8,7 @@ interface Props {
 export function GridSettings({ config, onChange }: Props) {
   return (
     <div class="settings-group">
-      <div class="settings-row">
+      <div class="settings-row" title="Number of grid divisions along each axis">
         <label>Divisions</label>
         <input
           type="range" min="2" max="20" value={config.divisions}
@@ -18,7 +18,7 @@ export function GridSettings({ config, onChange }: Props) {
         <span class="settings-value">{config.divisions}</span>
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Whether grid cells are square or match the image aspect ratio">
         <label>Cell Shape</label>
         <select value={config.cellAspect} onChange={e => onChange({ cellAspect: (e.target as HTMLSelectElement).value as CellAspect })}>
           <option value="square">Square</option>
@@ -26,7 +26,7 @@ export function GridSettings({ config, onChange }: Props) {
         </select>
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Color of the grid lines">
         <label>Line Style</label>
         <select value={config.lineStyle} onChange={e => onChange({ lineStyle: (e.target as HTMLSelectElement).value as LineStyle })}>
           <option value="auto-contrast">Auto Contrast</option>
@@ -39,7 +39,7 @@ export function GridSettings({ config, onChange }: Props) {
         )}
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row" title="Transparency of the grid lines">
         <label>Opacity</label>
         <input
           type="range" min="0.1" max="1" step="0.05" value={config.opacity}
@@ -48,7 +48,7 @@ export function GridSettings({ config, onChange }: Props) {
         />
       </div>
 
-      <div class="settings-row settings-row-split">
+      <div class="settings-row settings-row-split" title="Additional compositional guides">
         <label>Guides</label>
         <div class="settings-toggle-group">
           <label class="settings-check">
