@@ -435,9 +435,11 @@ export function App() {
     isolationThresholds: colorConfig.value.thresholds,
   };
 
+  const displayBaseImage = simplifiedImageData.value ?? sourceImageData.value;
+
   const currentImageData = activeMode.value === 'original'
-    ? sourceImageData.value
-    : (processedImage.value ?? sourceImageData.value);
+    ? displayBaseImage
+    : (processedImage.value ?? displayBaseImage);
   const activeModeLabel = {
     original: 'Source',
     grayscale: 'Tonal',
@@ -482,7 +484,7 @@ export function App() {
       <div class="app-workspace">
         <div class="workspace-stage">
           <ImageCanvas
-            sourceImageData={sourceImageData.value}
+            sourceImageData={displayBaseImage}
             processedImageData={processedImage.value}
             activeMode={activeMode.value}
             gridConfig={gridConfig.value}
@@ -529,6 +531,19 @@ export function App() {
               <section class="panel-card">
                 <div class="panel-card-header">
                   <div class="panel-card-title">
+                    <strong>Simplify</strong>
+                  </div>
+                  <span class="panel-chip">Pre</span>
+                </div>
+                <SimplifySettings
+                  config={simplifyConfig.value}
+                  onChange={(cfg) => { simplifyConfig.value = { ...simplifyConfig.value, ...cfg }; }}
+                />
+              </section>
+
+              <section class="panel-card">
+                <div class="panel-card-header">
+                  <div class="panel-card-title">
                     <strong>Modes</strong>
                   </div>
                   <span class="panel-chip">View</span>
@@ -539,18 +554,45 @@ export function App() {
                 />
               </section>
 
-              <section class="panel-card">
-                <div class="panel-card-header">
-                  <div class="panel-card-title">
-                    <strong>Simplify</strong>
+              {(activeMode.value === 'value' || activeMode.value === 'color') && (
+                <section class="panel-card">
+                  <div class="panel-card-header">
+                    <div class="panel-card-title">
+                      <strong>Adjustments</strong>
+                    </div>
+                    <span class="panel-chip">Edit</span>
                   </div>
-                  <span class="panel-chip">Pre</span>
-                </div>
-                <SimplifySettings
-                  config={simplifyConfig.value}
-                  onChange={(cfg) => { simplifyConfig.value = { ...simplifyConfig.value, ...cfg }; }}
-                />
-              </section>
+                  {activeMode.value === 'value' && (
+                    <ValueSettings
+                      config={valueConfig.value}
+                      onChange={(cfg) => { valueConfig.value = { ...valueConfig.value, ...cfg }; }}
+                    />
+                  )}
+                  {activeMode.value === 'color' && (
+                    <ColorSettings
+                      config={colorConfig.value}
+                      onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
+                    />
+                  )}
+                </section>
+              )}
+
+              {activeMode.value === 'color' && paletteColors.value.length > 0 && (
+                <section class="panel-card">
+                  <div class="panel-card-header">
+                    <div class="panel-card-title">
+                      <strong>Palette</strong>
+                    </div>
+                    <span class="panel-chip">{paletteColors.value.length} tones</span>
+                  </div>
+                  <PaletteStrip
+                    colors={paletteColors.value}
+                    bands={swatchBands.value}
+                    isolatedBand={isolatedBand.value}
+                    onIsolate={(band) => { isolatedBand.value = band; }}
+                  />
+                </section>
+              )}
 
               <section class="panel-card">
                 <div class="panel-card-header">
@@ -568,44 +610,6 @@ export function App() {
                   onTemperatureMapChange={(enabled) => { showTemperatureMap.value = enabled; }}
                 />
               </section>
-
-              <section class="panel-card">
-                <div class="panel-card-header">
-                  <div class="panel-card-title">
-                    <strong>Adjustments</strong>
-                  </div>
-                  <span class="panel-chip">Edit</span>
-                </div>
-                {activeMode.value === 'value' && (
-                  <ValueSettings
-                    config={valueConfig.value}
-                    onChange={(cfg) => { valueConfig.value = { ...valueConfig.value, ...cfg }; }}
-                  />
-                )}
-                {activeMode.value === 'color' && (
-                  <ColorSettings
-                    config={colorConfig.value}
-                    onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
-                  />
-                )}
-              </section>
-
-              {paletteColors.value.length > 0 && (
-                <section class="panel-card">
-                  <div class="panel-card-header">
-                    <div class="panel-card-title">
-                      <strong>Palette</strong>
-                    </div>
-                    <span class="panel-chip">{paletteColors.value.length} tones</span>
-                  </div>
-                  <PaletteStrip
-                    colors={paletteColors.value}
-                    bands={swatchBands.value}
-                    isolatedBand={isolatedBand.value}
-                    onIsolate={(band) => { isolatedBand.value = band; }}
-                  />
-                </section>
-              )}
 
               <section class="panel-card">
                 <div class="panel-card-header">
