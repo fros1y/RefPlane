@@ -15,6 +15,7 @@ interface Props {
   onOpenImage?: () => void;
   externalRef?: RefObject<HTMLCanvasElement>;
   compositeOptions?: CompositeOptions;
+  processingProgress?: { stage: string; percent: number } | null;
 }
 
 export function ImageCanvas({
@@ -28,6 +29,7 @@ export function ImageCanvas({
   onOpenImage,
   externalRef,
   compositeOptions,
+  processingProgress,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -162,6 +164,12 @@ export function ImageCanvas({
       {isProcessing && (
         <div class="processing-overlay">
           <div class="spinner" />
+        </div>
+      )}
+      {processingProgress && (
+        <div class="progress-bar-container">
+          <div class="progress-bar" style={{ width: `${processingProgress.percent}%` }} />
+          <span class="progress-label">{processingProgress.stage}</span>
         </div>
       )}
     </div>

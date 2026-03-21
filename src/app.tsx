@@ -9,10 +9,11 @@ import { PaletteStrip } from './components/PaletteStrip';
 import { ActionBar } from './components/ActionBar';
 import { CompareView } from './components/CompareView';
 import { CropOverlay } from './components/CropOverlay';
+import { SimplifySettings } from './components/SimplifySettings';
 import { exportImage } from './export/export';
 import { initInstallPrompt, triggerInstall } from './pwa/install-prompt';
 import { getDefaultThresholds } from './processing/quantize';
-import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig } from './types';
+import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig } from './types';
 import './styles/global.css';
 
 // 1600px keeps memory and processing time reasonable on mobile devices
@@ -85,6 +86,19 @@ const defaultColorConfig: ColorConfig = {
   minRegionSize: 'small',
 };
 
+const defaultSimplifyConfig: SimplifyConfig = {
+  method: 'none',
+  strength: 0.5,
+  bilateral: { sigmaS: 10, sigmaR: 0.15 },
+  kuwahara: { kernelSize: 7 },
+  meanShift: { spatialRadius: 15, colorRadius: 25 },
+  anisotropic: { iterations: 10, kappa: 20 },
+};
+
+const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);
+const simplifiedImageData = signal<ImageData | null>(null);
+const processingProgress = signal<{ stage: string; percent: number } | null>(null);
+
 // originalImageData is never overwritten by crop — non-destructive crop derives sourceImageData from it.
 const originalImageData = signal<ImageData | null>(null);
 const sourceImageData = signal<ImageData | null>(null);
@@ -113,9 +127,11 @@ export function App() {
   const workerRef = useRef<Worker | null>(null);
   const processingTimerRef = useRef<number | null>(null);
   const edgeTimerRef = useRef<number | null>(null);
+  const simplifyTimerRef = useRef<number | null>(null);
   const requestSeqRef = useRef(0);
   const latestMainRequestIdRef = useRef(0);
   const latestEdgeRequestIdRef = useRef(0);
+  const latestSimplifyRequestIdRef = useRef(0);
   const requestTimingsRef = useRef(new Map<number, { sentAt: number; requestType: string }>());
 
   useEffect(() => {
@@ -132,8 +148,18 @@ export function App() {
 
     worker.onmessage = (e) => {
       const { type, result, palette, paletteBands, requestType, error, requestId, meta } = e.data;
+      if (type === 'progress') {
+        if (requestId === latestSimplifyRequestIdRef.current) {
+          processingProgress.value = { stage: e.data.stage, percent: e.data.percent };
+        }
+        return;
+      }
       const isEdgeRequest = requestType === 'edges';
-      const latestRequestId = isEdgeRequest ? latestEdgeRequestIdRef.current : latestMainRequestIdRef.current;
+      const latestRequestId = isEdgeRequest
+        ? latestEdgeRequestIdRef.current
+        : requestType === 'simplify'
+          ? latestSimplifyRequestIdRef.current
+          : latestMainRequestIdRef.current;
       const requestTiming = requestTimingsRef.current.get(requestId);
       const roundTripMs = requestTiming ? performance.now() - requestTiming.sentAt : undefined;
       requestTimingsRef.current.delete(requestId);
@@ -149,6 +175,16 @@ export function App() {
         logProcessingTiming(requestType, requestId, meta, roundTripMs, isStale);
         if (requestId !== latestRequestId) {
           return;
+        }
+        if (requestType === 'simplify') {
+          processingProgress.value = null;
+          simplifiedImageData.value = result;
+          // Trigger downstream analysis
+          triggerProcessing(0);
+          return;
+        }
+        if (requestType !== 'simplify') {
+          processingProgress.value = null;
         }
         if (requestType === 'edges') {
           edgeDataSignal.value = result;
@@ -171,6 +207,7 @@ export function App() {
     return () => {
       if (processingTimerRef.current !== null) window.clearTimeout(processingTimerRef.current);
       if (edgeTimerRef.current !== null) window.clearTimeout(edgeTimerRef.current);
+      if (simplifyTimerRef.current !== null) window.clearTimeout(simplifyTimerRef.current);
       requestTimingsRef.current.clear();
       worker.terminate();
     };
@@ -181,9 +218,10 @@ export function App() {
     return requestSeqRef.current;
   }, []);
 
-  const postMainRequest = useCallback((src: ImageData) => {
+  const postMainRequest = useCallback(() => {
     const worker = workerRef.current;
-    if (!worker) return;
+    const src = simplifiedImageData.value;
+    if (!worker || !src) return;
     const mode = activeMode.value;
     if (mode === 'grayscale') {
       const requestId = nextRequestId();
@@ -239,16 +277,42 @@ export function App() {
     }, delay);
   }, [nextRequestId]);
 
+  const postSimplifyRequest = useCallback((src: ImageData) => {
+    const worker = workerRef.current;
+    if (!worker) return;
+    const requestId = nextRequestId();
+    latestSimplifyRequestIdRef.current = requestId;
+    processingCount.value++;
+    const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+    requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'simplify' });
+    console.log(`[Perf] dispatch simplify#${requestId} | method=${simplifyConfig.value.method} | size=${src.width}x${src.height}`);
+    worker.postMessage({ type: 'simplify', imageData: imgCopy, config: simplifyConfig.value, requestId }, [imgCopy.data.buffer]);
+  }, [nextRequestId]);
+
+  const triggerSimplify = useCallback((delay = 120) => {
+    if (simplifyTimerRef.current !== null) {
+      window.clearTimeout(simplifyTimerRef.current);
+    }
+    simplifyTimerRef.current = window.setTimeout(() => {
+      simplifyTimerRef.current = null;
+      const src = sourceImageData.value;
+      if (!src) return;
+      if (simplifyConfig.value.method === 'none') {
+        simplifiedImageData.value = src;
+        triggerProcessing(0);
+        return;
+      }
+      postSimplifyRequest(src);
+    }, delay);
+  }, [postSimplifyRequest]);
+
   const runProcessing = useCallback(() => {
-    const src = sourceImageData.value;
+    const src = simplifiedImageData.value;
     if (!src) return;
     const mode = activeMode.value;
 
-    postMainRequest(src);
+    postMainRequest();
 
-    // For non-original modes, edges are posted in the onmessage handler after the main result
-    // arrives so they're always computed from the correct (freshly-processed) image.
-    // For original mode there is no main processing, so post edges immediately.
     if (mode === 'original') {
       if (edgeConfig.value.enabled) {
         postEdgeRequest(src, 0);
@@ -269,17 +333,22 @@ export function App() {
     }, delay);
   }, [runProcessing]);
 
+  // Stage 1: source or simplify config changes → re-simplify
   useEffect(() => {
+    if (!sourceImageData.value) return;
+    triggerSimplify();
+  }, [sourceImageData.value, simplifyConfig.value]);
+
+  // Stage 2: simplified result or analysis config changes → re-analyze
+  useEffect(() => {
+    if (!simplifiedImageData.value) return;
     triggerProcessing(120);
   }, [activeMode.value, valueConfig.value, colorConfig.value]);
 
   useEffect(() => {
     if (edgeConfig.value.enabled) {
-      const src = sourceImageData.value;
+      const src = simplifiedImageData.value ?? sourceImageData.value;
       if (!src || !workerRef.current) return;
-      // Use the latest available processed image as the edge base. If main processing
-      // is still in-flight, processedImage.value may lag behind the current config; the
-      // in-flight result will post fresh edges via the onmessage handler once it arrives.
       const displaySrc = activeMode.value === 'original' ? src : (processedImage.value ?? src);
       postEdgeRequest(displaySrc, 80);
     } else {
@@ -315,12 +384,12 @@ export function App() {
     const imgData = ctx.getImageData(0, 0, targetW, targetH);
     originalImageData.value = imgData;
     sourceImageData.value = imgData;
+    simplifiedImageData.value = null;
     processedImage.value = null;
     paletteColors.value = [];
     swatchBands.value = [];
     edgeDataSignal.value = null;
     isolatedBand.value = null;
-    runProcessing();
   };
 
   const handleExport = async () => {
@@ -342,13 +411,13 @@ export function App() {
     croppedCtx.drawImage(tmpCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
     const newImgData = croppedCtx.getImageData(0, 0, crop.width, crop.height);
     sourceImageData.value = newImgData;
+    simplifiedImageData.value = null;
     processedImage.value = null;
     paletteColors.value = [];
     swatchBands.value = [];
     edgeDataSignal.value = null;
     isolatedBand.value = null;
     showCropOverlay.value = false;
-    runProcessing();
   };
 
   const compositeOptions = {
@@ -417,6 +486,7 @@ export function App() {
             onOpenImage={() => fileInputRef.current?.click()}
             externalRef={displayCanvasRef}
             compositeOptions={compositeOptions}
+            processingProgress={processingProgress.value}
           />
 
           {showCropOverlay.value && originalImageData.value && (
@@ -460,6 +530,19 @@ export function App() {
                 <ModeBar
                   activeMode={activeMode.value}
                   onModeChange={(mode) => { activeMode.value = mode; }}
+                />
+              </section>
+
+              <section class="panel-card">
+                <div class="panel-card-header">
+                  <div class="panel-card-title">
+                    <strong>Simplify</strong>
+                  </div>
+                  <span class="panel-chip">Pre</span>
+                </div>
+                <SimplifySettings
+                  config={simplifyConfig.value}
+                  onChange={(cfg) => { simplifyConfig.value = { ...simplifyConfig.value, ...cfg }; }}
                 />
               </section>
 

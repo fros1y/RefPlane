@@ -800,6 +800,31 @@ label {
   backdrop-filter: blur(4px);
 }
 
+.progress-bar-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  z-index: 10;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--accent, #4a9eff);
+  transition: width 0.1s ease-out;
+}
+
+.progress-label {
+  position: absolute;
+  left: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
 .action-bar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
