@@ -14,7 +14,7 @@ const PRESETS: AspectPreset[] = [
   { label: '3:2', ratio: 3 / 2 },
   { label: '16:9', ratio: 16 / 9 },
   { label: '5:4', ratio: 5 / 4 },
-  { label: 'φ', ratio: 1.618 },
+  { label: 'φ', ratio: (1 + Math.sqrt(5)) / 2 },
 ];
 
 interface Props {

@@ -64,7 +64,8 @@ function applyBandIsolation(source: ImageData, band: number, thresholds: number[
 
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-    const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    // Use BT.709 coefficients to match grayscale.ts luminance conversion
+    const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
     const pixelBand = getLumaBand(luma, thresholds);
     if (pixelBand === band) {
       outData[i] = r; outData[i + 1] = g; outData[i + 2] = b; outData[i + 3] = a;
