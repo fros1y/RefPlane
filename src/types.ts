@@ -1,5 +1,5 @@
 export type Mode = "original" | "grayscale" | "value" | "color";
-export type EdgeMethod = "canny" | "sobel" | "simplified";
+export type EdgeMethod = "canny" | "sobel";
 export type EdgeCompositeMode = "lines-over" | "edges-only" | "multiply" | "knockout";
 export type LineStyle = "auto-contrast" | "black" | "white" | "custom";
 export type CellAspect = "square" | "match-image";
@@ -36,7 +36,7 @@ export interface EdgeConfig {
 
 export interface ValueConfig {
   levels: number;
-  strength: number;
+  strength?: number;
   thresholds: number[];
   minRegionSize: "off" | "small" | "medium" | "large";
 }
@@ -44,10 +44,21 @@ export interface ValueConfig {
 export interface ColorConfig {
   bands: number;
   colorsPerBand: number;
-  strength: number;
+  strength?: number;
   warmCoolEmphasis: number;
   thresholds: number[];
   minRegionSize: "off" | "small" | "medium" | "large";
+}
+
+export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic";
+
+export interface SimplifyConfig {
+  method: SimplifyMethod;
+  strength: number;
+  bilateral: { sigmaS: number; sigmaR: number };
+  kuwahara: { kernelSize: number };
+  meanShift: { spatialRadius: number; colorRadius: number };
+  anisotropic: { iterations: number; kappa: number };
 }
 
 export interface AppState {
