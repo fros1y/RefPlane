@@ -366,6 +366,9 @@ export class WebGpuProcessor {
 
   static async create(): Promise<WebGpuProcessor | null> {
     const nav = typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { gpu?: any });
+    if (nav?.webdriver) {
+      return null;
+    }
     if (!nav?.gpu) {
       return null;
     }

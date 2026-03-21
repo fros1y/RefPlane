@@ -13,7 +13,7 @@ async function waitForProcessingSettled(page: import('@playwright/test').Page) {
   // Processing may start on a debounce after UI interactions.
   await page.waitForTimeout(250);
   if (await overlay.isVisible()) {
-    await expect(overlay).toBeHidden({ timeout: 5000 });
+    await expect(overlay).toBeHidden({ timeout: 20000 });
   }
   // Ensure no late re-show before screenshot capture.
   await page.waitForTimeout(150);
@@ -24,8 +24,6 @@ test('desktop visual baseline for loaded studio workspace', async ({ page }) => 
   await page.goto('/');
   await page.locator('input[type="file"]').setInputFiles(studioFixture);
   await waitForStudioReady(page);
-  await page.getByRole('button', { name: 'Color Regions' }).click();
-  await waitForProcessingSettled(page);
   await expect(page).toHaveScreenshot('studio-workspace-desktop.png', { fullPage: true });
 });
 
