@@ -16,9 +16,7 @@ export function composite(
 
   ctx.putImageData(source, 0, 0);
 
-  if (edgeConfig.enabled && edgeData && edgeConfig.compositeMode !== 'edges-only') {
-    compositeEdges(ctx, edgeData, edgeConfig);
-  } else if (edgeConfig.enabled && edgeData && edgeConfig.compositeMode === 'edges-only') {
+  if (edgeConfig.enabled && edgeData) {
     compositeEdges(ctx, edgeData, edgeConfig);
   }
 

@@ -260,7 +260,7 @@ export function App() {
         />
       </div>
 
-      <canvas ref={displayCanvasRef} style={{ display: 'none' }} />
+      <canvas ref={displayCanvasRef} style={{ display: 'none' }} aria-hidden="true" />
     </div>
   );
 }
