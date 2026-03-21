@@ -36,7 +36,6 @@ export interface EdgeConfig {
 
 export interface ValueConfig {
   levels: number;
-  strength?: number;
   thresholds: number[];
   minRegionSize: "off" | "small" | "medium" | "large";
 }
@@ -44,7 +43,6 @@ export interface ValueConfig {
 export interface ColorConfig {
   bands: number;
   colorsPerBand: number;
-  strength?: number;
   warmCoolEmphasis: number;
   thresholds: number[];
   minRegionSize: "off" | "small" | "medium" | "large";

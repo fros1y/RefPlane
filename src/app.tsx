@@ -73,7 +73,6 @@ const defaultEdgeConfig: EdgeConfig = {
 
 const defaultValueConfig: ValueConfig = {
   levels: 3,
-  strength: 0.5,
   thresholds: getDefaultThresholds(3),
   minRegionSize: 'small',
 };
@@ -81,7 +80,6 @@ const defaultValueConfig: ValueConfig = {
 const defaultColorConfig: ColorConfig = {
   bands: 3,
   colorsPerBand: 2,
-  strength: 0.5,
   warmCoolEmphasis: 0,
   thresholds: getDefaultThresholds(3),
   minRegionSize: 'small',

@@ -33,15 +33,6 @@ export function ColorSettings({ config, onChange }: Props) {
         <span class="settings-value">{config.colorsPerBand}</span>
       </div>
 
-      <div class="settings-row" title="How much to blur boundaries between color regions">
-        <label>Smoothing</label>
-        <input
-          type="range" min="0" max="1" step="0.05" value={config.strength}
-          onInput={e => onChange({ strength: Number((e.target as HTMLInputElement).value) })}
-          style="flex:1"
-        />
-      </div>
-
       <div class="settings-row" title="Emphasize warm/cool color temperature separation">
         <label>Warm/Cool</label>
         <input

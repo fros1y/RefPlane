@@ -13,7 +13,7 @@ export function ValueSettings({ config, onChange }: Props) {
   };
 
   const applyNotan = () => {
-    onChange({ levels: 2, strength: 0.8, thresholds: [0.5] });
+    onChange({ levels: 2, thresholds: [0.5] });
   };
 
   return (
@@ -47,15 +47,6 @@ export function ValueSettings({ config, onChange }: Props) {
             onChange={(thresholds) => onChange({ thresholds })}
           />
         </div>
-      </div>
-
-      <div class="settings-row" title="How much to blur boundaries between value groups">
-        <label>Smoothing</label>
-        <input
-          type="range" min="0" max="1" step="0.05" value={config.strength}
-          onInput={e => onChange({ strength: Number((e.target as HTMLInputElement).value) })}
-          style="flex:1"
-        />
       </div>
 
       <div class="settings-row" title="Merge small isolated patches into neighboring regions">

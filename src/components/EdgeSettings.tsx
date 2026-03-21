@@ -13,11 +13,10 @@ export function EdgeSettings({ config, onChange }: Props) {
         <select value={config.method} onChange={e => onChange({ method: (e.target as HTMLSelectElement).value as EdgeMethod })}>
           <option value="canny">Canny</option>
           <option value="sobel">Sobel</option>
-          <option value="simplified">Simplified</option>
         </select>
       </div>
 
-      {(config.method === 'canny' || config.method === 'simplified') && (
+      {config.method === 'canny' && (
         <div class="settings-row" title="How many edges to detect — higher means more detail">
           <label>Line Density</label>
           <input

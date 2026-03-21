@@ -4,11 +4,13 @@ import { processValueStudy } from './value-study';
 import { processColorRegions } from './color-regions';
 import { cannyEdges, sobelEdges } from './edges';
 import { toGrayscale } from './grayscale';
-import { bilateralFilter, strengthToParams } from './bilateral';
+import { runSimplify } from './simplify/index';
+import { createProgressReporter } from './progress';
 import { getWebGpuProcessor } from './webgpu';
-import type { ValueConfig, ColorConfig, EdgeConfig } from '../types';
+import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig } from '../types';
 
 type WorkerMessage =
+  | { type: 'simplify'; imageData: ImageData; config: SimplifyConfig; requestId: number }
   | { type: 'value-study'; imageData: ImageData; config: ValueConfig; requestId: number }
   | { type: 'color-regions'; imageData: ImageData; config: ColorConfig; requestId: number }
   | { type: 'edges'; imageData: ImageData; config: EdgeConfig; requestId: number }
@@ -59,16 +61,23 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
   const gpu = await getWebGpuProcessor();
 
   try {
-    if (type === 'value-study') {
+    if (type === 'simplify') {
+      const reporter = createProgressReporter(requestId);
+      const result = await measureStage(stages, 'simplify', () =>
+        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent))
+      );
+      const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
+      self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
+    } else if (type === 'value-study') {
       const result = gpu
         ? await measureStage(stages, 'value-study-gpu', () => gpu.processValueStudy(data.imageData, data.config))
         : await measureStage(stages, 'value-study-cpu', () => processValueStudy(data.imageData, data.config));
       const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
     } else if (type === 'color-regions') {
-      const result = await measureStage(stages, gpu ? 'color-regions-mixed' : 'color-regions-cpu', () =>
-        processColorRegions(data.imageData, data.config, gpu ?? undefined));
-      const meta = finalizeMeta(stages, gpu ? 'mixed' : 'cpu', data.imageData, queuedAt, startedAt);
+      const result = await measureStage(stages, 'color-regions-cpu', () =>
+        processColorRegions(data.imageData, data.config));
+      const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({
         type: 'result',
         result: result.imageData,
@@ -82,22 +91,12 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
       const gray = await measureStage(stages, 'grayscale', () => toGrayscale(data.imageData));
       const cfg = data.config;
       let edgeData: ImageData;
-      let backend: ProcessingMeta['backend'] = 'cpu';
-      if (cfg.method === 'simplified') {
-        // Simplified: bilateral-smooth the grayscale image first to reduce noise,
-        // then run Canny — produces cleaner, more structured contours.
-        const { sigmaS, sigmaR } = strengthToParams(0.5);
-        const smoothed = gpu
-          ? await measureStage(stages, 'simplified-bilateral-gpu', () => gpu.bilateralGrayscale(data.imageData, sigmaS, sigmaR))
-          : await measureStage(stages, 'simplified-bilateral-cpu', () => bilateralFilter(gray, sigmaS, sigmaR));
-        edgeData = await measureStage(stages, 'canny', () => cannyEdges(smoothed, cfg.detail));
-        backend = gpu ? 'mixed' : 'cpu';
-      } else if (cfg.method === 'canny') {
+      if (cfg.method === 'canny') {
         edgeData = await measureStage(stages, 'canny', () => cannyEdges(gray, cfg.detail));
       } else {
         edgeData = await measureStage(stages, 'sobel', () => sobelEdges(gray, cfg.sensitivity));
       }
-      const meta = finalizeMeta(stages, backend, data.imageData, queuedAt, startedAt);
+      const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({ type: 'result', result: edgeData, requestType: type, requestId, meta }, [edgeData.data.buffer]);
     } else if (type === 'grayscale') {
       const result = gpu

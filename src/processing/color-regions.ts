@@ -1,9 +1,7 @@
 import { rgbToOklab, oklabToRgb } from '../color/oklab';
 import { oklabToOklch, oklchToOklab } from '../color/oklch';
-import { bilateralFilterLab, strengthToParams } from './bilateral';
 import { quantize } from './quantize';
 import { kMeans } from './kmeans';
-import type { WebGpuProcessor } from './webgpu';
 import type { ColorConfig } from '../types';
 
 export interface ColorRegionsResult {
@@ -12,11 +10,10 @@ export interface ColorRegionsResult {
   paletteBands: number[];
 }
 
-export async function processColorRegions(
+export function processColorRegions(
   imageData: ImageData,
   config: ColorConfig,
-  gpu?: WebGpuProcessor,
-): Promise<ColorRegionsResult> {
+): ColorRegionsResult {
   const { data, width, height } = imageData;
   const numPixels = width * height;
 
@@ -29,14 +26,9 @@ export async function processColorRegions(
     labData[i * 3 + 2] = lab.b;
   }
 
-  const { sigmaS, sigmaR } = strengthToParams(config.strength);
-  const filteredLab = gpu
-    ? await gpu.bilateralLab(labData, width, height, sigmaS, sigmaR)
-    : bilateralFilterLab(labData, width, height, sigmaS, sigmaR);
-
   const bandAssignments = new Int32Array(numPixels);
   for (let i = 0; i < numPixels; i++) {
-    const L = filteredLab[i * 3];
+    const L = labData[i * 3];
     bandAssignments[i] = quantize(L, config.thresholds);
   }
 
@@ -59,12 +51,14 @@ export async function processColorRegions(
     const pixelLab = new Float32Array(samplePixels.length * 3);
     for (let i = 0; i < samplePixels.length; i++) {
       const pi = samplePixels[i];
-      pixelLab[i * 3] = filteredLab[pi * 3];
-      pixelLab[i * 3 + 1] = filteredLab[pi * 3 + 1];
-      pixelLab[i * 3 + 2] = filteredLab[pi * 3 + 2];
+      pixelLab[i * 3] = labData[pi * 3];
+      pixelLab[i * 3 + 1] = labData[pi * 3 + 1];
+      pixelLab[i * 3 + 2] = labData[pi * 3 + 2];
     }
 
-    const { centroids } = kMeans(pixelLab, samplePixels.length, config.colorsPerBand);
+    // Downweight luminance in k-means since pixels are already split by
+    // brightness band — focus clustering on hue/chroma differentiation
+    const { centroids } = kMeans(pixelLab, samplePixels.length, config.colorsPerBand, 0.1);
     for (const c of centroids) {
       allCentroids.push({ band, centroid: c });
     }
@@ -118,7 +112,7 @@ export async function processColorRegions(
       continue;
     }
 
-    const pL = filteredLab[i * 3], pa = filteredLab[i * 3 + 1], pb = filteredLab[i * 3 + 2];
+    const pL = labData[i * 3], pa = labData[i * 3 + 1], pb = labData[i * 3 + 2];
     let bestDist = Infinity, bestC = bandCentroids[0];
     for (const centroid of bandCentroids) {
       const dL = pL - centroid.L, da = pa - centroid.a, db = pb - centroid.b;

@@ -1,5 +1,4 @@
 import { cleanupRegions } from './regions';
-import { strengthToParams } from './bilateral';
 import type { ValueConfig } from '../types';
 
 const WORKGROUP_SIZE = 64;
@@ -494,26 +493,31 @@ export class WebGpuProcessor {
 
   async processValueStudy(imageData: ImageData, config: ValueConfig): Promise<ImageData> {
     const pixelCount = imageData.width * imageData.height;
-    const { sigmaS, sigmaR } = strengthToParams(config.strength);
     const packed = imageDataToPackedRgba(imageData);
+
+    // Stage 1: Grayscale
     const srcBuffer = createBufferWithData(
       this.device,
       packed,
       GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
     );
-    const filteredBuffer = this.device.createBuffer({
+    const grayBuffer = this.device.createBuffer({
       size: packed.byteLength,
       usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC | GPUBufferUsageRef.COPY_DST,
     });
+    const grayParamsBuffer = createBufferWithData(
+      this.device,
+      createPixelCountParams(pixelCount),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+
+    this.runCompute(this.grayscalePipeline, [srcBuffer, grayBuffer, grayParamsBuffer], pixelCount);
+
+    // Stage 2: Quantize (no bilateral — input is pre-simplified upstream)
     const quantizedBuffer = this.device.createBuffer({
       size: packed.byteLength,
       usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
     });
-    const bilateralParamsBuffer = createBufferWithData(
-      this.device,
-      createBilateralParams(imageData.width, imageData.height, Math.ceil(2 * sigmaS), sigmaS, sigmaR),
-      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
-    );
     const quantizeParamsBuffer = createBufferWithData(
       this.device,
       createQuantizeParams(pixelCount, config.thresholds.length),
@@ -525,11 +529,10 @@ export class WebGpuProcessor {
       GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
     );
 
-    this.runCompute(this.bilateralGrayPipeline, [srcBuffer, filteredBuffer, bilateralParamsBuffer], pixelCount);
-    this.runCompute(this.quantizePipeline, [filteredBuffer, quantizedBuffer, quantizeParamsBuffer, thresholdBuffer], pixelCount);
+    this.runCompute(this.quantizePipeline, [grayBuffer, quantizedBuffer, quantizeParamsBuffer, thresholdBuffer], pixelCount);
 
     const quantizedPacked = new Uint32Array(await readBackBuffer(this.device, quantizedBuffer, packed.byteLength));
-    destroyBuffers(srcBuffer, filteredBuffer, quantizedBuffer, bilateralParamsBuffer, quantizeParamsBuffer, thresholdBuffer);
+    destroyBuffers(srcBuffer, grayBuffer, grayParamsBuffer, quantizedBuffer, quantizeParamsBuffer, thresholdBuffer);
 
     const quantized = packedRgbaToImageData(quantizedPacked, imageData.width, imageData.height);
     if (config.minRegionSize === 'off') {
