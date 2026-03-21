@@ -10,7 +10,7 @@ export function CompareView({ beforeData, afterData, onClose }: Props) {
   const beforeRef = useRef<HTMLCanvasElement>(null);
   const afterRef = useRef<HTMLCanvasElement>(null);
   const [split, setSplit] = useState(0.5);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (beforeRef.current && beforeData) {
@@ -26,26 +26,37 @@ export function CompareView({ beforeData, afterData, onClose }: Props) {
   }, [beforeData, afterData]);
 
   const handlePointerMove = (e: PointerEvent) => {
-    const rect = containerRef.current?.getBoundingClientRect();
+    const rect = stageRef.current?.getBoundingClientRect();
     if (!rect) return;
     setSplit(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
   };
 
   if (!beforeData && !afterData) return null;
 
+  const baseWidth = beforeData?.width ?? afterData?.width ?? 1;
+  const baseHeight = beforeData?.height ?? afterData?.height ?? 1;
+  const aspectRatio = baseWidth / baseHeight;
+
   return (
     <div
       class="compare-view"
-      ref={containerRef}
       onPointerMove={handlePointerMove}
     >
-      <div class="compare-stage">
-        <canvas ref={beforeRef} class="compare-canvas" />
+      <div
+        ref={stageRef}
+        class="compare-stage"
+        style={{
+          width: `min(calc(100vw - 40px), 1100px)`,
+          maxHeight: 'calc(100vh - 40px)',
+          aspectRatio: `${baseWidth} / ${baseHeight}`,
+        }}
+      >
+        <canvas ref={beforeRef} class="compare-canvas compare-canvas-layer" />
         <div
           class="compare-slice"
           style={{ clipPath: `inset(0 ${Math.round((1 - split) * 100)}% 0 0)` }}
         >
-          <canvas ref={afterRef} class="compare-canvas" />
+          <canvas ref={afterRef} class="compare-canvas compare-canvas-layer" />
         </div>
         <div class="compare-badge compare-badge-left">Before</div>
         <div class="compare-badge compare-badge-right">After</div>
