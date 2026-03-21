@@ -46,8 +46,7 @@ export function CompareView({ beforeData, afterData, onClose }: Props) {
         ref={stageRef}
         class="compare-stage"
         style={{
-          width: `min(calc(100vw - 40px), 1100px)`,
-          maxHeight: 'calc(100vh - 40px)',
+          width: `min(min(calc(100vw - 40px), 1100px), calc((100vh - 40px) * ${aspectRatio}))`,
           aspectRatio: `${baseWidth} / ${baseHeight}`,
         }}
       >
