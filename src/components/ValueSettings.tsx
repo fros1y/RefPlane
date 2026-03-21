@@ -18,10 +18,10 @@ export function ValueSettings({ config, onChange }: Props) {
 
   return (
     <div class="settings-group">
-      <div class="settings-row" style={{ justifyContent: 'flex-end', paddingBottom: '4px' }}>
+      <div class="settings-row settings-actions">
         <button
           class="btn-ghost"
-          style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(91,141,239,0.5)', color: '#5b8def' }}
+          style={{ fontSize: '11px', padding: '4px 12px', borderRadius: '999px' }}
           onClick={applyNotan}
           title="Set 2-tone Notan preset"
         >
@@ -36,12 +36,12 @@ export function ValueSettings({ config, onChange }: Props) {
           onInput={e => handleLevelsChange(Number((e.target as HTMLInputElement).value))}
           style="flex:1"
         />
-        <span style="min-width:16px;text-align:right">{config.levels}</span>
+        <span class="settings-value">{config.levels}</span>
       </div>
 
-      <div class="settings-row">
+      <div class="settings-row settings-row-split">
         <label>Thresholds</label>
-        <div style={{ flex: 1 }}>
+        <div style={{ width: '100%' }}>
           <ThresholdSlider
             thresholds={config.thresholds}
             onChange={(thresholds) => onChange({ thresholds })}

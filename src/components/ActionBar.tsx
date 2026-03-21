@@ -11,7 +11,7 @@ export function ActionBar({ hasImage, showCrop, showCompare, onCrop, onCompare, 
   return (
     <div class="action-bar">
       <button
-        class={`btn-ghost ${showCrop ? 'active' : ''}`}
+        class={`btn-ghost action-button ${showCrop ? 'active' : ''}`}
         onClick={onCrop}
         disabled={!hasImage}
         title="Crop"
@@ -22,7 +22,7 @@ export function ActionBar({ hasImage, showCrop, showCompare, onCrop, onCompare, 
         <span style="margin-left:4px">Crop</span>
       </button>
       <button
-        class={`btn-ghost ${showCompare ? 'active' : ''}`}
+        class={`btn-ghost action-button ${showCompare ? 'active' : ''}`}
         onClick={onCompare}
         disabled={!hasImage}
         title="Compare"
@@ -33,7 +33,7 @@ export function ActionBar({ hasImage, showCrop, showCompare, onCrop, onCompare, 
         <span style="margin-left:4px">Compare</span>
       </button>
       <button
-        class="btn-primary"
+        class="btn-primary action-button action-button-primary"
         onClick={onExport}
         disabled={!hasImage}
         title="Export"

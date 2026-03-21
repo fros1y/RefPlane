@@ -18,25 +18,39 @@ export function applyTemperatureMap(imageData: ImageData, intensity: number): Im
   const { data, width, height } = imageData;
   const out = new ImageData(width, height);
   const outData = out.data;
+  const warmColor = [244, 146, 84];
+  const coolColor = [92, 156, 255];
+  const neutralColor = [196, 196, 196];
 
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
     const lab = rgbToOklab(r, g, b);
     const lch = oklabToOklch(lab);
     const temp = getTemperature(lab);
+    const luma = Math.max(0, Math.min(1, lab.L));
 
-    let tr = r, tg = g, tb = b;
-    const tintStrength = Math.min(1, lch.C * intensity * 2);
+    let target = neutralColor;
+    let blend = 0.18 + intensity * 0.16;
+
     if (temp === "warm") {
-      tr = Math.min(255, r + 40 * tintStrength);
-      tg = Math.min(255, g + 10 * tintStrength);
-      tb = Math.max(0, b - 30 * tintStrength);
+      target = warmColor;
+      blend = 0.34 + Math.min(0.56, lch.C * (0.9 + intensity));
     } else if (temp === "cool") {
-      tr = Math.max(0, r - 30 * tintStrength);
-      tg = Math.min(255, g + 10 * tintStrength);
-      tb = Math.min(255, b + 40 * tintStrength);
+      target = coolColor;
+      blend = 0.34 + Math.min(0.56, lch.C * (0.9 + intensity));
+    } else {
+      blend = 0.12 + Math.min(0.18, lch.C * 0.6);
     }
-    outData[i] = tr; outData[i + 1] = tg; outData[i + 2] = tb; outData[i + 3] = a;
+
+    const mappedR = target[0] * (0.28 + luma * 0.72);
+    const mappedG = target[1] * (0.28 + luma * 0.72);
+    const mappedB = target[2] * (0.28 + luma * 0.72);
+    const mix = Math.max(0, Math.min(0.9, blend));
+
+    outData[i] = Math.round(r * (1 - mix) + mappedR * mix);
+    outData[i + 1] = Math.round(g * (1 - mix) + mappedG * mix);
+    outData[i + 2] = Math.round(b * (1 - mix) + mappedB * mix);
+    outData[i + 3] = a;
   }
   return out;
 }

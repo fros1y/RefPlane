@@ -20,7 +20,7 @@ export function ColorSettings({ config, onChange }: Props) {
           onInput={e => handleBandsChange(Number((e.target as HTMLInputElement).value))}
           style="flex:1"
         />
-        <span style="min-width:16px;text-align:right">{config.bands}</span>
+        <span class="settings-value">{config.bands}</span>
       </div>
 
       <div class="settings-row">
@@ -30,7 +30,7 @@ export function ColorSettings({ config, onChange }: Props) {
           onInput={e => onChange({ colorsPerBand: Number((e.target as HTMLInputElement).value) })}
           style="flex:1"
         />
-        <span style="min-width:16px;text-align:right">{config.colorsPerBand}</span>
+        <span class="settings-value">{config.colorsPerBand}</span>
       </div>
 
       <div class="settings-row">

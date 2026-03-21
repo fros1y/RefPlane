@@ -17,8 +17,8 @@ export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onG
   const [showEdgeSettings, setShowEdgeSettings] = useState(false);
 
   return (
-    <div class="overlay-bar" style="position:relative">
-      <div style="position:relative">
+    <div class="overlay-bar">
+      <div class="overlay-item">
         <button
           class={`overlay-btn ${gridConfig.enabled ? 'active' : ''}`}
           onClick={() => onGridChange({ enabled: !gridConfig.enabled })}
@@ -29,8 +29,7 @@ export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onG
           Grid
         </button>
         <button
-          class="btn-ghost"
-          style="min-width:24px;min-height:24px;padding:2px;margin-left:2px"
+          class={`overlay-settings-btn ${showGridSettings ? 'active' : ''}`}
           onClick={() => { setShowGridSettings(!showGridSettings); setShowEdgeSettings(false); }}
           title="Grid settings"
         >
@@ -46,7 +45,7 @@ export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onG
         )}
       </div>
 
-      <div style="position:relative">
+      <div class="overlay-item">
         <button
           class={`overlay-btn ${edgeConfig.enabled ? 'active' : ''}`}
           onClick={() => onEdgeChange({ enabled: !edgeConfig.enabled })}
@@ -57,8 +56,7 @@ export function OverlayToggles({ gridConfig, edgeConfig, showTemperatureMap, onG
           Edges
         </button>
         <button
-          class="btn-ghost"
-          style="min-width:24px;min-height:24px;padding:2px;margin-left:2px"
+          class={`overlay-settings-btn ${showEdgeSettings ? 'active' : ''}`}
           onClick={() => { setShowEdgeSettings(!showEdgeSettings); setShowGridSettings(false); }}
           title="Edge settings"
         >

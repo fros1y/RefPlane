@@ -55,7 +55,8 @@ export function sobelEdges(imageData: ImageData, sensitivity: number): ImageData
   const { data, width, height } = imageData;
   const out = new ImageData(width, height);
   const outData = out.data;
-  const threshold = sensitivity * 0.5;
+  // Higher sensitivity should reveal more lines, so lower the threshold as it increases.
+  const threshold = 0.16 - sensitivity * 0.145;
 
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
@@ -78,8 +79,10 @@ export function sobelEdges(imageData: ImageData, sensitivity: number): ImageData
 }
 
 export function cannyEdges(imageData: ImageData, detail: number): ImageData {
-  const T_low = 0.15 - detail * (0.15 - 0.03);
-  const T_high = 0.40 - detail * (0.40 - 0.10);
+  // Bias the top end of the detail slider to open up many more candidate lines.
+  const boostedDetail = Math.pow(detail, 0.72);
+  const T_low = 0.08 - boostedDetail * (0.08 - 0.006);
+  const T_high = 0.24 - boostedDetail * (0.24 - 0.022);
 
   const { width, height } = imageData;
   const blurred = gaussianBlur(imageData, 1.4);

@@ -5,11 +5,11 @@ interface Props {
   onModeChange: (mode: Mode) => void;
 }
 
-const MODES: { id: Mode; label: string }[] = [
-  { id: 'original', label: 'Original' },
-  { id: 'grayscale', label: 'Grayscale' },
-  { id: 'value', label: 'Value Study' },
-  { id: 'color', label: 'Color Regions' },
+const MODES: { id: Mode; label: string; hint: string }[] = [
+  { id: 'original', label: 'Original', hint: 'Reference the untouched source.' },
+  { id: 'grayscale', label: 'Grayscale', hint: 'Reduce the image to tonal structure.' },
+  { id: 'value', label: 'Value Study', hint: 'Shape the scene into clear light groups.' },
+  { id: 'color', label: 'Color Regions', hint: 'Organize palette clusters and temperature.' },
 ];
 
 export function ModeBar({ activeMode, onModeChange }: Props) {
@@ -21,7 +21,10 @@ export function ModeBar({ activeMode, onModeChange }: Props) {
           class={`mode-tab ${activeMode === m.id ? 'active' : ''}`}
           onClick={() => onModeChange(m.id)}
         >
-          {m.label}
+          <span class="mode-tab-content">
+            <span class="mode-tab-label">{m.label}</span>
+            <span class="mode-tab-hint">{m.hint}</span>
+          </span>
         </button>
       ))}
     </div>

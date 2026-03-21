@@ -50,7 +50,7 @@ const defaultEdgeConfig: EdgeConfig = {
   lineCustomColor: '#000000',
   lineOpacity: 0.8,
   edgesOnlyPolarity: 'dark-on-light',
-  lineWeight: 1,
+  lineWeight: 2,
   lineKnockoutColor: 'black',
   lineKnockoutCustomColor: '#000000',
 };
@@ -340,31 +340,38 @@ export function App() {
   const currentImageData = activeMode.value === 'original'
     ? sourceImageData.value
     : (processedImage.value ?? sourceImageData.value);
+  const activeModeLabel = {
+    original: 'Source',
+    grayscale: 'Tonal',
+    value: 'Value',
+    color: 'Color',
+  }[activeMode.value];
+  const activeModeDescription = {
+    original: 'Study the source image with clean overlays and crop tools.',
+    grayscale: 'Read the structure as light and dark without color distraction.',
+    value: 'Tune grouped light shapes and threshold boundaries for clearer value design.',
+    color: 'Explore clustered palettes, banding, and warm-cool relationships.',
+  }[activeMode.value];
 
   return (
-    <div id="app-root" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div id="app-root" class="app-shell">
       {showInstallBanner.value && (
-        <div style={{
-          background: '#1a2744',
-          color: 'white',
-          padding: '10px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '14px',
-          flexShrink: 0,
-        }}>
-          <span>📲 Add RefPlane to home screen</span>
-          <div style={{ display: 'flex', gap: '8px' }}>
+        <div class="install-banner">
+          <div class="install-banner-copy">
+            <span class="install-banner-kicker">Install</span>
+            <strong>Add RefPlane to your home screen</strong>
+            <span>Keep the studio one tap away for quick visual studies.</span>
+          </div>
+          <div class="install-banner-actions">
             <button
-              style={{ background: '#5b8def', color: 'white', borderRadius: '8px', padding: '6px 14px', fontSize: '13px', fontWeight: 600 }}
+              class="btn-primary"
               onClick={async () => { await triggerInstall(); showInstallBanner.value = false; }}
             >
               Install
             </button>
             <button
               aria-label="Close install banner"
-              style={{ background: 'transparent', color: 'rgba(255,255,255,0.6)', border: 'none', padding: '6px', fontSize: '16px' }}
+              class="btn-ghost"
               onClick={() => { showInstallBanner.value = false; }}
             >
               ✕
@@ -381,110 +388,159 @@ export function App() {
         onChange={handleFileChange}
       />
 
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#0d0d0d' }}>
-        <ImageCanvas
-          sourceImageData={sourceImageData.value}
-          processedImageData={processedImage.value}
-          activeMode={activeMode.value}
-          gridConfig={gridConfig.value}
-          edgeConfig={edgeConfig.value}
-          edgeData={edgeDataSignal.value}
-          isProcessing={isProcessing.value}
-          externalRef={displayCanvasRef}
-          compositeOptions={compositeOptions}
-        />
-
-        {!sourceImageData.value && (
-          <button
-            style={{
-              position: 'absolute', bottom: '24px', left: '50%',
-              transform: 'translateX(-50%)',
-              background: '#5b8def', color: 'white',
-              padding: '12px 32px', borderRadius: '24px',
-              fontWeight: 600, fontSize: '16px',
-              boxShadow: '0 4px 16px rgba(91,141,239,0.4)',
-              minHeight: '48px',
-            }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Open Image
-          </button>
-        )}
-
-        {showCropOverlay.value && originalImageData.value && (
-          <CropOverlay
-            imageWidth={originalImageData.value.width}
-            imageHeight={originalImageData.value.height}
-            initialCrop={null}
-            onCropChange={handleCropConfirm}
-            onConfirm={() => {}}
-            onCancel={() => { showCropOverlay.value = false; }}
+      <div class="app-workspace">
+        <div class="workspace-stage">
+          <ImageCanvas
+            sourceImageData={sourceImageData.value}
+            processedImageData={processedImage.value}
+            activeMode={activeMode.value}
+            gridConfig={gridConfig.value}
+            edgeConfig={edgeConfig.value}
+            edgeData={edgeDataSignal.value}
+            isProcessing={isProcessing.value}
+            onOpenImage={() => fileInputRef.current?.click()}
+            externalRef={displayCanvasRef}
+            compositeOptions={compositeOptions}
           />
-        )}
 
-        {showCompare.value && (
-          <CompareView
-            beforeData={sourceImageData.value}
-            afterData={currentImageData}
-            onClose={() => { showCompare.value = false; }}
-          />
-        )}
-      </div>
-
-      <div class="bottom-sheet">
-        <ModeBar
-          activeMode={activeMode.value}
-          onModeChange={(mode) => { activeMode.value = mode; }}
-        />
-
-        <OverlayToggles
-          gridConfig={gridConfig.value}
-          edgeConfig={edgeConfig.value}
-          showTemperatureMap={showTemperatureMap.value}
-          onGridChange={(cfg) => { gridConfig.value = { ...gridConfig.value, ...cfg }; }}
-          onEdgeChange={(cfg) => { edgeConfig.value = { ...edgeConfig.value, ...cfg }; }}
-          onTemperatureMapChange={(enabled) => { showTemperatureMap.value = enabled; }}
-        />
-
-        <div class="scrollable" style={{ flex: 1 }}>
-          {activeMode.value === 'value' && (
-            <ValueSettings
-              config={valueConfig.value}
-              onChange={(cfg) => { valueConfig.value = { ...valueConfig.value, ...cfg }; }}
+          {showCropOverlay.value && originalImageData.value && (
+            <CropOverlay
+              imageWidth={originalImageData.value.width}
+              imageHeight={originalImageData.value.height}
+              initialCrop={null}
+              onCropChange={handleCropConfirm}
+              onConfirm={() => {}}
+              onCancel={() => { showCropOverlay.value = false; }}
             />
           )}
-          {activeMode.value === 'color' && (
-            <ColorSettings
-              config={colorConfig.value}
-              onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
+
+          {showCompare.value && (
+            <CompareView
+              beforeData={sourceImageData.value}
+              afterData={currentImageData}
+              onClose={() => { showCompare.value = false; }}
             />
           )}
         </div>
 
-        {paletteColors.value.length > 0 && (
-          <PaletteStrip
-            colors={paletteColors.value}
-            bands={swatchBands.value}
-            isolatedBand={isolatedBand.value}
-            onIsolate={(band) => { isolatedBand.value = band; }}
-          />
-        )}
+        <aside class="control-panel">
+          <div class="panel-header">
+            <span class="panel-eyebrow">RefPlane Studio</span>
+            <div class="panel-title-row">
+              <h1 class="panel-title">RefPlane</h1>
+              <span class="panel-title-tag">{activeModeLabel} Mode</span>
+            </div>
+            <p class="panel-description">{activeModeDescription}</p>
+          </div>
 
-        <ActionBar
-          hasImage={sourceImageData.value !== null}
-          showCrop={showCropOverlay.value}
-          showCompare={showCompare.value}
-          onCrop={() => {
-            if (sourceImageData.value) {
-              showCropOverlay.value = !showCropOverlay.value;
-              showCompare.value = false;
-            } else {
-              fileInputRef.current?.click();
-            }
-          }}
-          onCompare={() => { showCompare.value = !showCompare.value; showCropOverlay.value = false; }}
-          onExport={handleExport}
-        />
+          <div class="panel-body scrollable">
+            <div class="bottom-sheet">
+              <section class="panel-card">
+                <div class="panel-card-header">
+                  <div class="panel-card-title">
+                    <strong>Modes</strong>
+                    <span>Choose the lens for the study you want to produce.</span>
+                  </div>
+                  <span class="panel-chip">View</span>
+                </div>
+                <ModeBar
+                  activeMode={activeMode.value}
+                  onModeChange={(mode) => { activeMode.value = mode; }}
+                />
+              </section>
+
+              <section class="panel-card">
+                <div class="panel-card-header">
+                  <div class="panel-card-title">
+                    <strong>Overlays</strong>
+                    <span>Layer compositional guides over the live canvas.</span>
+                  </div>
+                  <span class="panel-chip">Tools</span>
+                </div>
+                <OverlayToggles
+                  gridConfig={gridConfig.value}
+                  edgeConfig={edgeConfig.value}
+                  showTemperatureMap={showTemperatureMap.value}
+                  onGridChange={(cfg) => { gridConfig.value = { ...gridConfig.value, ...cfg }; }}
+                  onEdgeChange={(cfg) => { edgeConfig.value = { ...edgeConfig.value, ...cfg }; }}
+                  onTemperatureMapChange={(enabled) => { showTemperatureMap.value = enabled; }}
+                />
+              </section>
+
+              <section class="panel-card">
+                <div class="panel-card-header">
+                  <div class="panel-card-title">
+                    <strong>Adjustments</strong>
+                    <span>Shape the current mode without burying the canvas in controls.</span>
+                  </div>
+                  <span class="panel-chip">Edit</span>
+                </div>
+                {activeMode.value === 'value' && (
+                  <ValueSettings
+                    config={valueConfig.value}
+                    onChange={(cfg) => { valueConfig.value = { ...valueConfig.value, ...cfg }; }}
+                  />
+                )}
+                {activeMode.value === 'color' && (
+                  <ColorSettings
+                    config={colorConfig.value}
+                    onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
+                  />
+                )}
+                {(activeMode.value === 'original' || activeMode.value === 'grayscale') && (
+                  <div class="panel-placeholder">
+                    {activeMode.value === 'original'
+                      ? 'Original mode keeps the source clean. Use overlays, crop, compare, or export from here.'
+                      : 'Grayscale mode is intentionally simple. Switch to Value Study or Color Regions for deeper tuning.'}
+                  </div>
+                )}
+              </section>
+
+              {paletteColors.value.length > 0 && (
+                <section class="panel-card">
+                  <div class="panel-card-header">
+                    <div class="panel-card-title">
+                      <strong>Palette</strong>
+                      <span>Tap a swatch to copy its hex code and isolate that band on the canvas.</span>
+                    </div>
+                    <span class="panel-chip">{paletteColors.value.length} tones</span>
+                  </div>
+                  <PaletteStrip
+                    colors={paletteColors.value}
+                    bands={swatchBands.value}
+                    isolatedBand={isolatedBand.value}
+                    onIsolate={(band) => { isolatedBand.value = band; }}
+                  />
+                </section>
+              )}
+
+              <section class="panel-card">
+                <div class="panel-card-header">
+                  <div class="panel-card-title">
+                    <strong>Actions</strong>
+                    <span>Move between crop, compare, and export without leaving the canvas context.</span>
+                  </div>
+                  <span class="panel-chip">Output</span>
+                </div>
+                <ActionBar
+                  hasImage={sourceImageData.value !== null}
+                  showCrop={showCropOverlay.value}
+                  showCompare={showCompare.value}
+                  onCrop={() => {
+                    if (sourceImageData.value) {
+                      showCropOverlay.value = !showCropOverlay.value;
+                      showCompare.value = false;
+                    } else {
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  onCompare={() => { showCompare.value = !showCompare.value; showCropOverlay.value = false; }}
+                  onExport={handleExport}
+                />
+              </section>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

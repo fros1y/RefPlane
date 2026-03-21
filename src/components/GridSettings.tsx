@@ -15,7 +15,7 @@ export function GridSettings({ config, onChange }: Props) {
           onInput={e => onChange({ divisions: Number((e.target as HTMLInputElement).value) })}
           style="flex:1"
         />
-        <span style="min-width:20px;text-align:right">{config.divisions}</span>
+        <span class="settings-value">{config.divisions}</span>
       </div>
 
       <div class="settings-row">
@@ -48,15 +48,18 @@ export function GridSettings({ config, onChange }: Props) {
         />
       </div>
 
-      <div class="settings-row">
-        <label>
+      <div class="settings-row settings-row-split">
+        <label>Guides</label>
+        <div class="settings-toggle-group">
+          <label class="settings-check">
           <input type="checkbox" checked={config.showDiagonals} onChange={e => onChange({ showDiagonals: (e.target as HTMLInputElement).checked })} />
           {' '}Diagonals
-        </label>
-        <label>
+          </label>
+          <label class="settings-check">
           <input type="checkbox" checked={config.showCenterLines} onChange={e => onChange({ showCenterLines: (e.target as HTMLInputElement).checked })} />
           {' '}Center Lines
-        </label>
+          </label>
+        </div>
       </div>
     </div>
   );

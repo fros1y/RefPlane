@@ -12,6 +12,7 @@ interface Props {
   edgeConfig: EdgeConfig;
   edgeData: ImageData | null;
   isProcessing: boolean;
+  onOpenImage?: () => void;
   externalRef?: RefObject<HTMLCanvasElement>;
   compositeOptions?: CompositeOptions;
 }
@@ -24,6 +25,7 @@ export function ImageCanvas({
   edgeConfig,
   edgeData,
   isProcessing,
+  onOpenImage,
   externalRef,
   compositeOptions,
 }: Props) {
@@ -145,17 +147,17 @@ export function ImageCanvas({
     <div
       ref={containerRef}
       style={containerStyle}
-      onPointerDown={handlePointerDown as any}
-      onPointerMove={handlePointerMove as any}
-      onPointerUp={handlePointerUp as any}
-      onPointerCancel={handlePointerUp as any}
+      onPointerDown={displaySource ? handlePointerDown as any : undefined}
+      onPointerMove={displaySource ? handlePointerMove as any : undefined}
+      onPointerUp={displaySource ? handlePointerUp as any : undefined}
+      onPointerCancel={displaySource ? handlePointerUp as any : undefined}
     >
       {displaySource ? (
         <div ref={wrapperRef} style={wrapperStyle}>
           <canvas ref={setCanvasRef} style={canvasStyle} />
         </div>
       ) : (
-        <UploadPrompt />
+        <UploadPrompt onOpenImage={onOpenImage} />
       )}
       {isProcessing && (
         <div class="processing-overlay">
@@ -166,16 +168,26 @@ export function ImageCanvas({
   );
 }
 
-function UploadPrompt() {
+function UploadPrompt({ onOpenImage }: { onOpenImage?: () => void }) {
   return (
-    <div class="upload-prompt">
+    <div
+      class="upload-prompt"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       <svg width="80" height="80" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
         <rect x="3" y="3" width="18" height="18" rx="2" />
         <circle cx="8.5" cy="8.5" r="1.5" />
         <path d="M21 15l-5-5L5 21" />
       </svg>
       <h2>Open an Image</h2>
-      <p>Tap the button below to choose a photo</p>
+      <p>Drop in a reference and pivot between value, grayscale, edges, and color studies in one studio workspace.</p>
+      <div class="upload-prompt-actions">
+        <button class="btn-primary" type="button" onClick={onOpenImage}>
+          Open Image
+        </button>
+        <span class="upload-pill">Built for study, not clutter</span>
+      </div>
     </div>
   );
 }

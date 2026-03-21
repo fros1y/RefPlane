@@ -35,49 +35,30 @@ export function CompareView({ beforeData, afterData, onClose }: Props) {
 
   return (
     <div
+      class="compare-view"
       ref={containerRef}
-      style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: '#0d0d0d', overflow: 'hidden', userSelect: 'none',
-      }}
       onPointerMove={handlePointerMove}
     >
-      <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%' }}>
-        <canvas ref={beforeRef} style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
-        <div style={{
-          position: 'absolute', inset: 0, overflow: 'hidden',
-          clipPath: `inset(0 ${Math.round((1 - split) * 100)}% 0 0)`,
-        }}>
-          <canvas ref={afterRef} style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
+      <div class="compare-stage">
+        <canvas ref={beforeRef} class="compare-canvas" />
+        <div
+          class="compare-slice"
+          style={{ clipPath: `inset(0 ${Math.round((1 - split) * 100)}% 0 0)` }}
+        >
+          <canvas ref={afterRef} class="compare-canvas" />
         </div>
-        <div style={{
-          position: 'absolute', top: 0, bottom: 0,
-          left: `${split * 100}%`, width: '2px',
-          background: 'white', transform: 'translateX(-1px)',
-          boxShadow: '0 0 4px rgba(0,0,0,0.5)',
-        }}>
-          <div style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%,-50%)',
-            width: '32px', height: '32px',
-            background: 'white', borderRadius: '50%',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="16" height="16" fill="#333" viewBox="0 0 24 24">
+        <div class="compare-badge compare-badge-left">Before</div>
+        <div class="compare-badge compare-badge-right">After</div>
+        <div class="compare-divider" style={{ left: `${split * 100}%` }}>
+          <div class="compare-handle">
+            <svg width="16" height="16" fill="#44372d" viewBox="0 0 24 24">
               <path d="M18 8l4 4-4 4M6 8l-4 4 4 4M14 4l-4 16"/>
             </svg>
           </div>
         </div>
       </div>
       <button
-        style={{
-          position: 'absolute', top: '16px', right: '16px',
-          background: 'rgba(0,0,0,0.5)', color: 'white',
-          borderRadius: '50%', width: '40px', height: '40px',
-          fontSize: '20px', minWidth: '40px',
-        }}
+        class="compare-close"
         onClick={onClose}
       >
         ×

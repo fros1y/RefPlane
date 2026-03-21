@@ -137,57 +137,38 @@ export function CropOverlay({ imageWidth, imageHeight, initialCrop, onCropChange
     onConfirm();
   };
 
-  const handleStyle: preact.JSX.CSSProperties = {
-    position: 'absolute',
-    width: '24px',
-    height: '24px',
-    background: 'rgba(91,141,239,0.9)',
-    borderRadius: '50%',
-    transform: 'translate(-50%, -50%)',
-    cursor: 'nwse-resize',
-    touchAction: 'none',
-  };
-
   return (
     <div
       ref={containerRef}
-      style={{ position: 'absolute', inset: 0 }}
+      class="crop-shell"
       onPointerMove={handlePointerMove as any}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {/* Dark overlay outside crop */}
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', pointerEvents: 'none' }} />
+      <div class="crop-mask" />
 
-      {/* Crop rect */}
       <div
+        class="crop-rect"
         style={{
-          position: 'absolute',
           left: `${crop.x * 100}%`,
           top: `${crop.y * 100}%`,
           width: `${crop.width * 100}%`,
           height: `${crop.height * 100}%`,
-          border: '2px solid rgba(255,255,255,0.9)',
-          boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)',
-          cursor: 'move',
-          touchAction: 'none',
         }}
         onPointerDown={(e) => handleRectPointerDown('move', e as unknown as PointerEvent)}
       >
-        {/* Rule-of-thirds lines */}
         {[1/3, 2/3].map((t) => (
           <Fragment key={t}>
-            <div style={{ position:'absolute', left:0, right:0, top:`${t*100}%`, height:'1px', background:'rgba(255,255,255,0.3)', pointerEvents:'none' }} />
-            <div style={{ position:'absolute', top:0, bottom:0, left:`${t*100}%`, width:'1px', background:'rgba(255,255,255,0.3)', pointerEvents:'none' }} />
+            <div class="crop-guide" style={{ left: 0, right: 0, top: `${t * 100}%`, height: '1px' }} />
+            <div class="crop-guide" style={{ top: 0, bottom: 0, left: `${t * 100}%`, width: '1px' }} />
           </Fragment>
         ))}
 
-        {/* Corner handles */}
         {(['nw','ne','sw','se'] as const).map((corner) => (
           <div
             key={corner}
+            class="crop-handle"
             style={{
-              ...handleStyle,
               left: corner.includes('e') ? '100%' : '0%',
               top: corner.includes('s') ? '100%' : '0%',
               cursor: (corner === 'nw' || corner === 'se') ? 'nwse-resize' : 'nesw-resize',
@@ -197,33 +178,11 @@ export function CropOverlay({ imageWidth, imageHeight, initialCrop, onCropChange
         ))}
       </div>
 
-      {/* Aspect ratio presets */}
-      <div style={{
-        position: 'absolute',
-        top: '12px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        display: 'flex',
-        gap: '6px',
-        background: 'rgba(0,0,0,0.75)',
-        borderRadius: '20px',
-        padding: '6px 10px',
-        alignItems: 'center',
-      }}>
+      <div class="crop-toolbar">
         {PRESETS.map((p, i) => (
           <button
             key={i}
-            style={{
-              background: activePreset === i ? '#5b8def' : 'transparent',
-              color: 'white',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '4px 8px',
-              fontSize: '11px',
-              fontWeight: activePreset === i ? 700 : 400,
-              cursor: 'pointer',
-              minHeight: '28px',
-            }}
+            class={`crop-preset ${activePreset === i ? 'active' : ''}`}
             onClick={() => handlePresetClick(i)}
           >
             {p.label}
@@ -231,16 +190,7 @@ export function CropOverlay({ imageWidth, imageHeight, initialCrop, onCropChange
         ))}
         {activePreset > 0 && (
           <button
-            style={{
-              background: 'transparent',
-              color: 'rgba(255,255,255,0.7)',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '8px',
-              padding: '4px 6px',
-              fontSize: '11px',
-              cursor: 'pointer',
-              minHeight: '28px',
-            }}
+            class="crop-preset"
             onClick={toggleOrientation}
             aria-label={landscape ? 'Switch to portrait' : 'Switch to landscape'}
             title="Toggle landscape/portrait"
@@ -250,13 +200,9 @@ export function CropOverlay({ imageWidth, imageHeight, initialCrop, onCropChange
         )}
       </div>
 
-      {/* Bottom buttons */}
-      <div style={{
-        position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', gap: '12px',
-      }}>
-        <button style={{ background: 'rgba(0,0,0,0.7)', color: 'white', borderRadius: '8px', padding: '10px 20px' }} onClick={onCancel}>Cancel</button>
-        <button style={{ background: '#5b8def', color: 'white', borderRadius: '8px', padding: '10px 20px', fontWeight: 600 }} onClick={handleCropConfirm}>Apply Crop</button>
+      <div class="crop-actions">
+        <button class="crop-secondary" onClick={onCancel}>Cancel</button>
+        <button class="btn-primary" onClick={handleCropConfirm}>Apply Crop</button>
       </div>
     </div>
   );

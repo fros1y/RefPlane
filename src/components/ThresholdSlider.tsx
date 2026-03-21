@@ -46,39 +46,15 @@ export function ThresholdSlider({ thresholds, onChange }: Props) {
     <div style={{ position: 'relative', margin: '8px 0' }}>
       <div
         ref={barRef}
-        style={{
-          height: '16px',
-          borderRadius: '4px',
-          background: 'linear-gradient(to right, #000, #fff)',
-          position: 'relative',
-        }}
+        class="threshold-track"
       >
         {thresholds.map((t, i) => (
           <div
             key={i}
-            style={{
-              position: 'absolute',
-              left: `${t * 100}%`,
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '16px',
-              height: '22px',
-              cursor: 'ew-resize',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              touchAction: 'none',
-            }}
+            class="threshold-handle"
+            style={{ left: `${t * 100}%` }}
             onPointerDown={(e) => handlePointerDown(i, e as unknown as PointerEvent)}
-          >
-            <div style={{
-              width: 0, height: 0,
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderBottom: '10px solid #5b8def',
-              filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
-            }} />
-          </div>
+          />
         ))}
       </div>
     </div>

@@ -32,19 +32,18 @@ export function PaletteStrip({ colors, bands, isolatedBand, onIsolate }: Props) 
         const isIsolated = isolatedBand === band;
         const isDimmed = isolatedBand != null && !isIsolated;
         return (
-          <div
+          <button
             key={i}
-            class="palette-swatch"
+            type="button"
+            class={`palette-swatch ${isIsolated ? 'isolated' : ''}`}
             style={{
               backgroundColor: color,
-              outline: isIsolated ? '2px solid #5b8def' : 'none',
-              outlineOffset: '-2px',
               opacity: isDimmed ? 0.45 : 1,
-              transition: 'opacity 0.15s, outline 0.15s',
             }}
+            data-color={color}
             title={color}
             onClick={() => handleClick(i)}
-          />
+          ></button>
         );
       })}
     </div>

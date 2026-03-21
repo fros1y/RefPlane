@@ -19,23 +19,25 @@ export function EdgeSettings({ config, onChange }: Props) {
 
       {(config.method === 'canny' || config.method === 'simplified') && (
         <div class="settings-row">
-          <label>Detail</label>
+          <label>Line Density</label>
           <input
             type="range" min="0" max="1" step="0.05" value={config.detail}
             onInput={e => onChange({ detail: Number((e.target as HTMLInputElement).value) })}
             style="flex:1"
           />
+          <span class="settings-value">{config.detail.toFixed(2)}</span>
         </div>
       )}
 
       {config.method === 'sobel' && (
         <div class="settings-row">
-          <label>Sensitivity</label>
+          <label>Line Density</label>
           <input
             type="range" min="0" max="1" step="0.05" value={config.sensitivity}
             onInput={e => onChange({ sensitivity: Number((e.target as HTMLInputElement).value) })}
             style="flex:1"
           />
+          <span class="settings-value">{config.sensitivity.toFixed(2)}</span>
         </div>
       )}
 
@@ -56,6 +58,17 @@ export function EdgeSettings({ config, onChange }: Props) {
           onInput={e => onChange({ lineOpacity: Number((e.target as HTMLInputElement).value) })}
           style="flex:1"
         />
+        <span class="settings-value">{config.lineOpacity.toFixed(2)}</span>
+      </div>
+
+      <div class="settings-row">
+        <label>Line Weight</label>
+        <input
+          type="range" min="1" max="6" step="1" value={config.lineWeight}
+          onInput={e => onChange({ lineWeight: Number((e.target as HTMLInputElement).value) })}
+          style="flex:1"
+        />
+        <span class="settings-value">{config.lineWeight}</span>
       </div>
     </div>
   );
