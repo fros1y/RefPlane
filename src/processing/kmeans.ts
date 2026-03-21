@@ -4,7 +4,7 @@ export { rgbToOklab, oklabToRgb };
 
 export interface Centroid { L: number; a: number; b: number; }
 
-function initCentroids(pixels: Float32Array, k: number, numPixels: number): Centroid[] {
+function initCentroids(pixels: Float32Array, k: number, numPixels: number, lWeight: number): Centroid[] {
   const centroids: Centroid[] = [];
   const first = Math.floor(Math.random() * numPixels);
   centroids.push({ L: pixels[first * 3], a: pixels[first * 3 + 1], b: pixels[first * 3 + 2] });
@@ -17,7 +17,7 @@ function initCentroids(pixels: Float32Array, k: number, numPixels: number): Cent
         const dL = pixels[i * 3] - c.L;
         const da = pixels[i * 3 + 1] - c.a;
         const db = pixels[i * 3 + 2] - c.b;
-        const dist = dL * dL + da * da + db * db;
+        const dist = lWeight * dL * dL + da * da + db * db;
         if (dist < minDist) minDist = dist;
       }
       distances[i] = minDist;
@@ -35,11 +35,11 @@ function initCentroids(pixels: Float32Array, k: number, numPixels: number): Cent
   return centroids;
 }
 
-export function kMeans(pixels: Float32Array, numPixels: number, k: number): { centroids: Centroid[]; assignments: Int32Array } {
+export function kMeans(pixels: Float32Array, numPixels: number, k: number, lWeight = 1.0): { centroids: Centroid[]; assignments: Int32Array } {
   if (numPixels === 0 || k === 0) return { centroids: [], assignments: new Int32Array(0) };
   k = Math.min(k, numPixels);
 
-  let centroids = initCentroids(pixels, k, numPixels);
+  let centroids = initCentroids(pixels, k, numPixels, lWeight);
   const assignments = new Int32Array(numPixels).fill(0);
 
   for (let iter = 0; iter < 20; iter++) {
@@ -49,7 +49,7 @@ export function kMeans(pixels: Float32Array, numPixels: number, k: number): { ce
         const dL = pixels[i * 3] - centroids[ci].L;
         const da = pixels[i * 3 + 1] - centroids[ci].a;
         const db = pixels[i * 3 + 2] - centroids[ci].b;
-        const dist = dL * dL + da * da + db * db;
+        const dist = lWeight * dL * dL + da * da + db * db;
         if (dist < bestDist) { bestDist = dist; bestC = ci; }
       }
       assignments[i] = bestC;

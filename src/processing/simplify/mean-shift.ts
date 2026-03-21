@@ -52,7 +52,6 @@ export function meanShiftFilter(
         const newR = sumR / count, newG = sumG / count, newB = sumB / count;
 
         const shift = Math.sqrt(
-          (newX - cx) * (newX - cx) + (newY - cy) * (newY - cy) +
           (newR - cR) * (newR - cR) + (newG - cG) * (newG - cG) + (newB - cB) * (newB - cB)
         );
 

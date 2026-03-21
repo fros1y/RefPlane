@@ -339,7 +339,10 @@ export function App() {
     triggerSimplify();
   }, [sourceImageData.value, simplifyConfig.value]);
 
-  // Stage 2: simplified result or analysis config changes → re-analyze
+  // Stage 2: analysis config changes → re-analyze from cached simplified image.
+  // Note: simplifiedImageData is intentionally NOT in the dep array — the worker
+  // onmessage handler calls triggerProcessing(0) directly when a new simplified
+  // result arrives, so adding it here would cause double-firing.
   useEffect(() => {
     if (!simplifiedImageData.value) return;
     triggerProcessing(120);
