@@ -1,4 +1,3 @@
-import { applyQuantization } from './quantize';
 import { cleanupRegions } from './regions';
 import { strengthToParams } from './bilateral';
 import type { ValueConfig } from '../types';
@@ -193,6 +192,46 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+const quantizeShader = /* wgsl */`
+struct QuantizeParams {
+  pixelCount: u32,
+  thresholdCount: u32,
+  totalLevels: u32,
+  _pad0: u32,
+};
+
+@group(0) @binding(0) var<storage, read> src: array<u32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(2) var<uniform> params: QuantizeParams;
+@group(0) @binding(3) var<storage, read> thresholds: array<f32>;
+
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.pixelCount) {
+    return;
+  }
+
+  let pixel = src[idx];
+  let value = f32(pixel & 0xffu) / 255.0;
+  var level = params.thresholdCount;
+  for (var i = 0u; i < params.thresholdCount; i = i + 1u) {
+    if (value < thresholds[i]) {
+      level = i;
+      break;
+    }
+  }
+
+  var gray = 128u;
+  if (params.totalLevels > 1u) {
+    gray = u32(clamp(round((f32(level) / f32(params.totalLevels - 1u)) * 255.0), 0.0, 255.0));
+  }
+
+  let alpha = (pixel >> 24u) & 0xffu;
+  dst[idx] = gray | (gray << 8u) | (gray << 16u) | (alpha << 24u);
+}
+`;
+
 function imageDataToPackedRgba(imageData: ImageData): Uint32Array {
   const { data, width, height } = imageData;
   const packed = new Uint32Array(width * height);
@@ -257,6 +296,15 @@ function createPixelCountParams(pixelCount: number): Uint8Array {
   return new Uint8Array(buffer);
 }
 
+function createQuantizeParams(pixelCount: number, thresholdCount: number): Uint8Array {
+  const buffer = new ArrayBuffer(16);
+  const view = new DataView(buffer);
+  view.setUint32(0, pixelCount, true);
+  view.setUint32(4, thresholdCount, true);
+  view.setUint32(8, thresholdCount + 1, true);
+  return new Uint8Array(buffer);
+}
+
 function alignTo(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
 }
@@ -283,6 +331,7 @@ export class WebGpuProcessor {
   private readonly grayscalePipeline: WebGpuComputePipeline;
   private readonly bilateralGrayPipeline: WebGpuComputePipeline;
   private readonly bilateralLabPipeline: WebGpuComputePipeline;
+  private readonly quantizePipeline: WebGpuComputePipeline;
 
   private constructor(private readonly device: WebGpuDevice) {
     this.grayscalePipeline = this.device.createComputePipeline({
@@ -303,6 +352,13 @@ export class WebGpuProcessor {
       layout: 'auto',
       compute: {
         module: this.device.createShaderModule({ code: bilateralLabShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.quantizePipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: quantizeShader }),
         entryPoint: 'main',
       },
     });
@@ -377,6 +433,36 @@ export class WebGpuProcessor {
     return packedRgbaToImageData(result, imageData.width, imageData.height);
   }
 
+  async quantizeGrayscale(imageData: ImageData, thresholds: number[]): Promise<ImageData> {
+    const pixelCount = imageData.width * imageData.height;
+    const packed = imageDataToPackedRgba(imageData);
+    const srcBuffer = createBufferWithData(
+      this.device,
+      packed,
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+    const dstBuffer = this.device.createBuffer({
+      size: packed.byteLength,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+    const paramsBuffer = createBufferWithData(
+      this.device,
+      createQuantizeParams(pixelCount, thresholds.length),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+    const thresholdBuffer = createBufferWithData(
+      this.device,
+      new Float32Array(thresholds.length > 0 ? thresholds : [0]),
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+
+    this.runCompute(this.quantizePipeline, [srcBuffer, dstBuffer, paramsBuffer, thresholdBuffer], pixelCount);
+
+    const result = new Uint32Array(await readBackBuffer(this.device, dstBuffer, packed.byteLength));
+    destroyBuffers(srcBuffer, dstBuffer, paramsBuffer, thresholdBuffer);
+    return packedRgbaToImageData(result, imageData.width, imageData.height);
+  }
+
   async bilateralLab(labData: Float32Array, width: number, height: number, sigmaS: number, sigmaR: number): Promise<Float32Array> {
     const pixelCount = width * height;
     const srcBuffer = createBufferWithData(
@@ -404,9 +490,48 @@ export class WebGpuProcessor {
   }
 
   async processValueStudy(imageData: ImageData, config: ValueConfig): Promise<ImageData> {
+    const pixelCount = imageData.width * imageData.height;
     const { sigmaS, sigmaR } = strengthToParams(config.strength);
-    const filtered = await this.bilateralGrayscale(imageData, sigmaS, sigmaR);
-    const quantized = applyQuantization(filtered, config.thresholds);
+    const packed = imageDataToPackedRgba(imageData);
+    const srcBuffer = createBufferWithData(
+      this.device,
+      packed,
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+    const filteredBuffer = this.device.createBuffer({
+      size: packed.byteLength,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC | GPUBufferUsageRef.COPY_DST,
+    });
+    const quantizedBuffer = this.device.createBuffer({
+      size: packed.byteLength,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+    const bilateralParamsBuffer = createBufferWithData(
+      this.device,
+      createBilateralParams(imageData.width, imageData.height, Math.ceil(2 * sigmaS), sigmaS, sigmaR),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+    const quantizeParamsBuffer = createBufferWithData(
+      this.device,
+      createQuantizeParams(pixelCount, config.thresholds.length),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+    const thresholdBuffer = createBufferWithData(
+      this.device,
+      new Float32Array(config.thresholds.length > 0 ? config.thresholds : [0]),
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+
+    this.runCompute(this.bilateralGrayPipeline, [srcBuffer, filteredBuffer, bilateralParamsBuffer], pixelCount);
+    this.runCompute(this.quantizePipeline, [filteredBuffer, quantizedBuffer, quantizeParamsBuffer, thresholdBuffer], pixelCount);
+
+    const quantizedPacked = new Uint32Array(await readBackBuffer(this.device, quantizedBuffer, packed.byteLength));
+    destroyBuffers(srcBuffer, filteredBuffer, quantizedBuffer, bilateralParamsBuffer, quantizeParamsBuffer, thresholdBuffer);
+
+    const quantized = packedRgbaToImageData(quantizedPacked, imageData.width, imageData.height);
+    if (config.minRegionSize === 'off') {
+      return quantized;
+    }
     return cleanupRegions(quantized, config.minRegionSize);
   }
 
@@ -427,6 +552,12 @@ export class WebGpuProcessor {
     pass.end();
 
     this.device.queue.submit([encoder.finish()]);
+  }
+}
+
+function destroyBuffers(...buffers: WebGpuBuffer[]): void {
+  for (const buffer of buffers) {
+    buffer.destroy();
   }
 }
 

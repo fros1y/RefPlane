@@ -97,6 +97,11 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const workerRef = useRef<Worker | null>(null);
+  const processingTimerRef = useRef<number | null>(null);
+  const edgeTimerRef = useRef<number | null>(null);
+  const requestSeqRef = useRef(0);
+  const latestMainRequestIdRef = useRef(0);
+  const latestEdgeRequestIdRef = useRef(0);
 
   useEffect(() => {
     initInstallPrompt(() => { showInstallBanner.value = true; });
@@ -107,13 +112,19 @@ export function App() {
     workerRef.current = worker;
 
     worker.onmessage = (e) => {
-      const { type, result, palette, paletteBands, requestType, error } = e.data;
+      const { type, result, palette, paletteBands, requestType, error, requestId } = e.data;
+      const isEdgeRequest = requestType === 'edges';
+      const latestRequestId = isEdgeRequest ? latestEdgeRequestIdRef.current : latestMainRequestIdRef.current;
       if (type === 'error') {
         console.error('Worker error:', error);
         processingCount.value = Math.max(0, processingCount.value - 1);
         return;
       }
       if (type === 'result') {
+        processingCount.value = Math.max(0, processingCount.value - 1);
+        if (requestId !== latestRequestId) {
+          return;
+        }
         if (requestType === 'edges') {
           edgeDataSignal.value = result;
         } else {
@@ -126,59 +137,106 @@ export function App() {
           if (edgeConfig.value.enabled && sourceImageData.value) {
             const src = sourceImageData.value;
             const displaySrc = activeMode.value === 'original' ? src : result;
-            const imgCopy = new ImageData(new Uint8ClampedArray(displaySrc.data), displaySrc.width, displaySrc.height);
-            processingCount.value++;
-            worker.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value }, [imgCopy.data.buffer]);
+            postEdgeRequest(displaySrc, 0);
           }
         }
-        processingCount.value = Math.max(0, processingCount.value - 1);
       }
     };
 
-    return () => worker.terminate();
+    return () => {
+      if (processingTimerRef.current !== null) window.clearTimeout(processingTimerRef.current);
+      if (edgeTimerRef.current !== null) window.clearTimeout(edgeTimerRef.current);
+      worker.terminate();
+    };
   }, []);
 
-  const triggerProcessing = useCallback(() => {
-    const src = sourceImageData.value;
-    if (!src) return;
-    const mode = activeMode.value;
+  const nextRequestId = useCallback(() => {
+    requestSeqRef.current += 1;
+    return requestSeqRef.current;
+  }, []);
+
+  const postMainRequest = useCallback((src: ImageData) => {
     const worker = workerRef.current;
     if (!worker) return;
-
+    const mode = activeMode.value;
     if (mode === 'grayscale') {
+      const requestId = nextRequestId();
+      latestMainRequestIdRef.current = requestId;
       processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      worker.postMessage({ type: 'grayscale', imageData: imgCopy }, [imgCopy.data.buffer]);
+      worker.postMessage({ type: 'grayscale', imageData: imgCopy, requestId }, [imgCopy.data.buffer]);
     } else if (mode === 'value') {
+      const requestId = nextRequestId();
+      latestMainRequestIdRef.current = requestId;
       processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      worker.postMessage({ type: 'value-study', imageData: imgCopy, config: valueConfig.value }, [imgCopy.data.buffer]);
+      worker.postMessage({ type: 'value-study', imageData: imgCopy, config: valueConfig.value, requestId }, [imgCopy.data.buffer]);
     } else if (mode === 'color') {
+      const requestId = nextRequestId();
+      latestMainRequestIdRef.current = requestId;
       processingCount.value++;
       const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      worker.postMessage({ type: 'color-regions', imageData: imgCopy, config: colorConfig.value }, [imgCopy.data.buffer]);
+      worker.postMessage({ type: 'color-regions', imageData: imgCopy, config: colorConfig.value, requestId }, [imgCopy.data.buffer]);
     } else {
+      latestMainRequestIdRef.current = nextRequestId();
       processedImage.value = null;
       paletteColors.value = [];
       swatchBands.value = [];
     }
+  }, [nextRequestId]);
+
+  const postEdgeRequest = useCallback((src: ImageData, delay = 80) => {
+    const worker = workerRef.current;
+    if (!worker) return;
+    if (edgeTimerRef.current !== null) {
+      window.clearTimeout(edgeTimerRef.current);
+    }
+    edgeTimerRef.current = window.setTimeout(() => {
+      edgeTimerRef.current = null;
+      if (!edgeConfig.value.enabled) {
+        edgeDataSignal.value = null;
+        return;
+      }
+      const requestId = nextRequestId();
+      latestEdgeRequestIdRef.current = requestId;
+      processingCount.value++;
+      const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      worker.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value, requestId }, [imgCopy.data.buffer]);
+    }, delay);
+  }, [nextRequestId]);
+
+  const runProcessing = useCallback(() => {
+    const src = sourceImageData.value;
+    if (!src) return;
+    const mode = activeMode.value;
+
+    postMainRequest(src);
 
     // For non-original modes, edges are posted in the onmessage handler after the main result
     // arrives so they're always computed from the correct (freshly-processed) image.
     // For original mode there is no main processing, so post edges immediately.
     if (mode === 'original') {
       if (edgeConfig.value.enabled) {
-        const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-        processingCount.value++;
-        worker.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value }, [imgCopy.data.buffer]);
+        postEdgeRequest(src, 0);
       } else {
+        latestEdgeRequestIdRef.current = nextRequestId();
         edgeDataSignal.value = null;
       }
     }
-  }, []);
+  }, [nextRequestId, postEdgeRequest, postMainRequest]);
+
+  const triggerProcessing = useCallback((delay = 120) => {
+    if (processingTimerRef.current !== null) {
+      window.clearTimeout(processingTimerRef.current);
+    }
+    processingTimerRef.current = window.setTimeout(() => {
+      processingTimerRef.current = null;
+      runProcessing();
+    }, delay);
+  }, [runProcessing]);
 
   useEffect(() => {
-    triggerProcessing();
+    triggerProcessing(120);
   }, [activeMode.value, valueConfig.value, colorConfig.value]);
 
   useEffect(() => {
@@ -189,13 +247,12 @@ export function App() {
       // is still in-flight, processedImage.value may lag behind the current config; the
       // in-flight result will post fresh edges via the onmessage handler once it arrives.
       const displaySrc = activeMode.value === 'original' ? src : (processedImage.value ?? src);
-      const imgCopy = new ImageData(new Uint8ClampedArray(displaySrc.data), displaySrc.width, displaySrc.height);
-      processingCount.value++;
-      workerRef.current.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value }, [imgCopy.data.buffer]);
+      postEdgeRequest(displaySrc, 80);
     } else {
+      latestEdgeRequestIdRef.current = nextRequestId();
       edgeDataSignal.value = null;
     }
-  }, [edgeConfig.value]);
+  }, [edgeConfig.value, nextRequestId, postEdgeRequest]);
 
   const handleFileChange = async (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -220,7 +277,7 @@ export function App() {
     swatchBands.value = [];
     edgeDataSignal.value = null;
     isolatedBand.value = null;
-    triggerProcessing();
+    runProcessing();
   };
 
   const handleExport = async () => {
@@ -248,7 +305,7 @@ export function App() {
     edgeDataSignal.value = null;
     isolatedBand.value = null;
     showCropOverlay.value = false;
-    triggerProcessing();
+    runProcessing();
   };
 
   const compositeOptions = {

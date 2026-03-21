@@ -9,13 +9,13 @@ import { getWebGpuProcessor } from './webgpu';
 import type { ValueConfig, ColorConfig, EdgeConfig } from '../types';
 
 type WorkerMessage =
-  | { type: 'value-study'; imageData: ImageData; config: ValueConfig }
-  | { type: 'color-regions'; imageData: ImageData; config: ColorConfig }
-  | { type: 'edges'; imageData: ImageData; config: EdgeConfig }
-  | { type: 'grayscale'; imageData: ImageData };
+  | { type: 'value-study'; imageData: ImageData; config: ValueConfig; requestId: number }
+  | { type: 'color-regions'; imageData: ImageData; config: ColorConfig; requestId: number }
+  | { type: 'edges'; imageData: ImageData; config: EdgeConfig; requestId: number }
+  | { type: 'grayscale'; imageData: ImageData; requestId: number };
 
 async function handleMessage(data: WorkerMessage) {
-  const { type } = data;
+  const { type, requestId } = data;
   const gpu = await getWebGpuProcessor();
 
   try {
@@ -23,7 +23,7 @@ async function handleMessage(data: WorkerMessage) {
       const result = gpu
         ? await gpu.processValueStudy(data.imageData, data.config)
         : processValueStudy(data.imageData, data.config);
-      self.postMessage({ type: 'result', result, requestType: type }, [result.data.buffer]);
+      self.postMessage({ type: 'result', result, requestType: type, requestId }, [result.data.buffer]);
     } else if (type === 'color-regions') {
       const result = await processColorRegions(data.imageData, data.config, gpu ?? undefined);
       self.postMessage({
@@ -32,6 +32,7 @@ async function handleMessage(data: WorkerMessage) {
         palette: result.palette,
         paletteBands: result.paletteBands,
         requestType: type,
+        requestId,
       }, [result.imageData.data.buffer]);
     } else if (type === 'edges') {
       const gray = toGrayscale(data.imageData);
@@ -50,13 +51,13 @@ async function handleMessage(data: WorkerMessage) {
       } else {
         edgeData = sobelEdges(gray, cfg.sensitivity);
       }
-      self.postMessage({ type: 'result', result: edgeData, requestType: type }, [edgeData.data.buffer]);
+      self.postMessage({ type: 'result', result: edgeData, requestType: type, requestId }, [edgeData.data.buffer]);
     } else if (type === 'grayscale') {
       const result = gpu ? await gpu.toGrayscale(data.imageData) : toGrayscale(data.imageData);
-      self.postMessage({ type: 'result', result, requestType: type }, [result.data.buffer]);
+      self.postMessage({ type: 'result', result, requestType: type, requestId }, [result.data.buffer]);
     }
   } catch (err) {
-    self.postMessage({ type: 'error', error: String(err) });
+    self.postMessage({ type: 'error', error: String(err), requestType: type, requestId });
   }
 }
 
