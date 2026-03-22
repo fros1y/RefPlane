@@ -87,7 +87,7 @@ const defaultColorConfig: ColorConfig = {
 };
 
 const defaultSimplifyConfig: SimplifyConfig = {
-  method: 'none',
+  method: 'slic',
   strength: 0.5,
   bilateral: { sigmaS: 10, sigmaR: 0.15 },
   kuwahara: { kernelSize: 7 },
@@ -100,7 +100,7 @@ const defaultSimplifyConfig: SimplifyConfig = {
     detailSigma: 1.5,
     saturation: 1.08, contrast: 1.08, gamma: 1.0, highlightCompression: 0.15,
   },
-  slic: { detail: 0.5, compactness: 0.5 },
+  slic: { detail: 0.55, compactness: 0.15 },
 };
 
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);
