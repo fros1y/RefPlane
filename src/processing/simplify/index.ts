@@ -3,6 +3,7 @@ import { bilateralFilter } from './bilateral';
 import { kuwaharaFilter } from './kuwahara';
 import { meanShiftFilter } from './mean-shift';
 import { anisotropicDiffusion } from './anisotropic';
+import { slicFilter } from './slic';
 
 interface SimplifyGpuProcessor {
   bilateralRgb(imageData: ImageData, sigmaS: number, sigmaR: number): Promise<ImageData>;
@@ -92,6 +93,8 @@ export async function runSimplify(
         }
       }
       return imageData;
+    case 'slic':
+      return slicFilter(imageData, config.strength, config.slic.compactness, onProgress, abortSignal);
     case 'none':
     default:
       return imageData;
@@ -102,4 +105,5 @@ export { bilateralFilter } from './bilateral';
 export { kuwaharaFilter } from './kuwahara';
 export { meanShiftFilter } from './mean-shift';
 export { anisotropicDiffusion } from './anisotropic';
+export { slicFilter } from './slic';
 export { strengthToMethodParams } from './params';

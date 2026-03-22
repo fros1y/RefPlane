@@ -5,16 +5,14 @@ import { processColorRegions } from './color-regions';
 import { cannyEdges, sobelEdges } from './edges';
 import { toGrayscale } from './grayscale';
 import { runSimplify } from './simplify/index';
-import { computePlanes } from './planes';
 import { createProgressReporter } from './progress';
 import { getWebGpuProcessor } from './webgpu';
-import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig, PlanesConfig } from '../types';
+import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig } from '../types';
 
 type WorkerMessage =
   | { type: 'simplify'; imageData: ImageData; config: SimplifyConfig; requestId: number }
   | { type: 'value-study'; imageData: ImageData; config: ValueConfig; requestId: number }
   | { type: 'color-regions'; imageData: ImageData; config: ColorConfig; requestId: number }
-  | { type: 'planes'; imageData: ImageData; config: PlanesConfig; requestId: number }
   | { type: 'edges'; imageData: ImageData; config: EdgeConfig; requestId: number }
   | { type: 'grayscale'; imageData: ImageData; requestId: number };
 
@@ -87,20 +85,6 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
       const result = await measureStage(stages, stageLabel, () =>
         processColorRegions(data.imageData, data.config, gpu ? gpu.kMeansAssign.bind(gpu) : undefined));
       const meta = finalizeMeta(stages, gpu ? 'mixed' : 'cpu', data.imageData, queuedAt, startedAt);
-      self.postMessage({
-        type: 'result',
-        result: result.imageData,
-        palette: result.palette,
-        paletteBands: result.paletteBands,
-        requestType: type,
-        requestId,
-        meta,
-      }, [result.imageData.data.buffer]);
-    } else if (type === 'planes') {
-      const reporter = createProgressReporter(requestId);
-      const result = await measureStage(stages, 'planes-cpu', () =>
-        computePlanes(data.imageData, data.config, reporter));
-      const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage({
         type: 'result',
         result: result.imageData,

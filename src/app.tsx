@@ -5,7 +5,6 @@ import { OverlayToggles } from './components/OverlayToggles';
 import { ImageCanvas } from './components/ImageCanvas';
 import { ValueSettings } from './components/ValueSettings';
 import { ColorSettings } from './components/ColorSettings';
-import { PlanesSettings } from './components/PlanesSettings';
 import { PaletteStrip } from './components/PaletteStrip';
 import { ActionBar } from './components/ActionBar';
 import { CompareView } from './components/CompareView';
@@ -14,7 +13,7 @@ import { SimplifySettings } from './components/SimplifySettings';
 import { exportImage } from './export/export';
 import { initInstallPrompt, triggerInstall } from './pwa/install-prompt';
 import { getDefaultThresholds } from './processing/quantize';
-import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig, PlanesConfig, SimplifyConfig } from './types';
+import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig } from './types';
 import './styles/global.css';
 
 // 1600px keeps memory and processing time reasonable on mobile devices
@@ -87,11 +86,6 @@ const defaultColorConfig: ColorConfig = {
   minRegionSize: 'small',
 };
 
-const defaultPlanesConfig: PlanesConfig = {
-  detail: 0.5,
-  compactness: 0.5,
-};
-
 const defaultSimplifyConfig: SimplifyConfig = {
   method: 'none',
   strength: 0.5,
@@ -106,6 +100,7 @@ const defaultSimplifyConfig: SimplifyConfig = {
     detailSigma: 1.5,
     saturation: 1.08, contrast: 1.08, gamma: 1.0, highlightCompression: 0.15,
   },
+  slic: { compactness: 0.5 },
 };
 
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);
@@ -122,7 +117,6 @@ const gridConfig = signal<GridConfig>(defaultGridConfig);
 const edgeConfig = signal<EdgeConfig>(defaultEdgeConfig);
 const valueConfig = signal<ValueConfig>(defaultValueConfig);
 const colorConfig = signal<ColorConfig>(defaultColorConfig);
-const planesConfig = signal<PlanesConfig>(defaultPlanesConfig);
 // Track number of outstanding worker requests; spinner shows while any are pending.
 const processingCount = signal(0);
 const isProcessing = computed(() => processingCount.value > 0);
@@ -264,14 +258,6 @@ export function App() {
       requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'color-regions' });
       console.log(`[Perf] dispatch color-regions#${requestId} | size=${src.width}x${src.height}`);
       worker.postMessage({ type: 'color-regions', imageData: imgCopy, config: colorConfig.value, requestId }, [imgCopy.data.buffer]);
-    } else if (mode === 'planes') {
-      const requestId = nextRequestId();
-      latestMainRequestIdRef.current = requestId;
-      processingCount.value++;
-      const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'planes' });
-      console.log(`[Perf] dispatch planes#${requestId} | size=${src.width}x${src.height}`);
-      worker.postMessage({ type: 'planes', imageData: imgCopy, config: planesConfig.value, requestId }, [imgCopy.data.buffer]);
     } else {
       latestMainRequestIdRef.current = nextRequestId();
       processedImage.value = null;
@@ -371,7 +357,7 @@ export function App() {
   useEffect(() => {
     if (!simplifiedImageData.value) return;
     triggerProcessing(120);
-  }, [activeMode.value, valueConfig.value, colorConfig.value, planesConfig.value]);
+  }, [activeMode.value, valueConfig.value, colorConfig.value]);
 
   useEffect(() => {
     if (edgeConfig.value.enabled) {
@@ -451,12 +437,8 @@ export function App() {
   const compositeOptions = {
     showTemperatureMap: showTemperatureMap.value,
     tempIntensity: 1.0,
-    // Only apply band isolation in 'color' or 'planes' mode; switching modes would otherwise
-    // continue to dim the image even after the palette strip is hidden.
-    isolatedBand: (activeMode.value === 'color' || activeMode.value === 'planes') ? isolatedBand.value : null,
-    isolationThresholds: activeMode.value === 'planes'
-      ? [0.3, 0.7] // Light family boundaries for planes mode
-      : colorConfig.value.thresholds,
+    isolatedBand: activeMode.value === 'color' ? isolatedBand.value : null,
+    isolationThresholds: colorConfig.value.thresholds,
   };
 
   const displayBaseImage = simplifiedImageData.value ?? sourceImageData.value;
@@ -469,7 +451,6 @@ export function App() {
     grayscale: 'Tonal',
     value: 'Value',
     color: 'Color',
-    planes: 'Planes',
   }[activeMode.value];
   return (
     <div id="app-root" class="app-shell">
@@ -579,7 +560,7 @@ export function App() {
                 />
               </section>
 
-              {(activeMode.value === 'value' || activeMode.value === 'color' || activeMode.value === 'planes') && (
+              {(activeMode.value === 'value' || activeMode.value === 'color') && (
                 <section class="panel-card">
                   <div class="panel-card-header">
                     <div class="panel-card-title">
@@ -599,16 +580,10 @@ export function App() {
                       onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
                     />
                   )}
-                  {activeMode.value === 'planes' && (
-                    <PlanesSettings
-                      config={planesConfig.value}
-                      onChange={(cfg) => { planesConfig.value = { ...planesConfig.value, ...cfg }; }}
-                    />
-                  )}
                 </section>
               )}
 
-              {(activeMode.value === 'color' || activeMode.value === 'planes') && paletteColors.value.length > 0 && (
+              {activeMode.value === 'color' && paletteColors.value.length > 0 && (
                 <section class="panel-card">
                   <div class="panel-card-header">
                     <div class="panel-card-title">

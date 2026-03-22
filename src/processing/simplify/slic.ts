@@ -1,29 +1,17 @@
-import { rgbToOklab, oklabToRgb } from '../color/oklab';
-import { throwIfAborted, yieldToEventLoop } from './simplify/cancel';
-import type { PlanesConfig } from '../types';
-import type { ProgressCallback } from './progress';
+import { rgbToOklab, oklabToRgb } from '../../color/oklab';
+import { throwIfAborted, yieldToEventLoop } from './cancel';
 
-export interface PlanesResult {
-  imageData: ImageData;
-  palette: string[];
-  paletteBands: number[];
+/* ── Parameter mapping helpers ────────────────────────────────── */
+
+/** Maps strength 0→aggressive merge (few planes), 1→conservative (many planes). */
+function strengthToMergeThreshold(strength: number): number {
+  const hi = 0.25; // aggressive at strength=0
+  const lo = 0.02; // conservative at strength=1
+  return hi * Math.pow(lo / hi, strength);
 }
 
-/* ── Detail → merge-threshold mapping ─────────────────────────── */
-
-function detailToMergeThreshold(detail: number): number {
-  // detail 0 ("Bold") → aggressive merge → few large planes
-  // detail 1 ("Fine") → conservative merge → many small planes
-  const hi = 0.25; // aggressive at detail=0
-  const lo = 0.02; // conservative at detail=1
-  return hi * Math.pow(lo / hi, detail);
-}
-
-/* ── Compactness → spatial weight mapping ─────────────────────── */
-
+/** Maps compactness 0→organic (follows color), 1→regular (grid-like). */
 function compactnessToSpatialWeight(compactness: number): number {
-  // compactness 0 → m=1 (very organic, follows color boundaries)
-  // compactness 1 → m=40 (very regular)
   return 1 + compactness * 39;
 }
 
@@ -71,7 +59,7 @@ async function slicIterate(
   gridStep: number,
   spatialWeight: number,
   iterations: number,
-  onProgress: ProgressCallback | undefined,
+  onProgress: ((percent: number) => void) | undefined,
   signal: AbortSignal | undefined,
 ): Promise<void> {
   const numPixels = width * height;
@@ -84,10 +72,8 @@ async function slicIterate(
   for (let iter = 0; iter < iterations; iter++) {
     throwIfAborted(signal);
 
-    // Reset distances
     distances.fill(Infinity);
 
-    // Assignment step: for each center, search its 2S×2S neighbourhood
     for (let k = 0; k < centers.length; k++) {
       const c = centers[k];
       const xMin = Math.max(0, Math.floor(c.x - gridStep));
@@ -144,17 +130,15 @@ async function slicIterate(
     }
 
     if (onProgress) {
-      // Phase 1 is 0–70%
-      onProgress('Superpixels', Math.round((iter + 1) / iterations * 70));
+      onProgress(Math.round((iter + 1) / iterations * 70));
     }
 
-    // Yield every 2 iterations to keep worker responsive
     if (iter % 2 === 1) {
       await yieldToEventLoop();
     }
   }
 
-  // Assign any orphan pixels (label -1) to nearest center
+  // Assign orphan pixels to nearest center
   for (let i = 0; i < numPixels; i++) {
     if (labels[i] >= 0) continue;
     const px = i % width;
@@ -175,22 +159,18 @@ async function slicIterate(
 interface RAGNode {
   L: number; a: number; b: number;
   area: number;
-  parent: number; // union-find parent (self = root)
+  parent: number;
 }
 
 function findRoot(nodes: RAGNode[], i: number): number {
   while (nodes[i].parent !== i) {
-    nodes[i].parent = nodes[nodes[i].parent].parent; // path compression
+    nodes[i].parent = nodes[nodes[i].parent].parent;
     i = nodes[i].parent;
   }
   return i;
 }
 
-interface RAGEdge {
-  i: number;
-  j: number;
-  dist: number;
-}
+interface RAGEdge { i: number; j: number; dist: number; }
 
 function buildRAG(
   labels: Int32Array,
@@ -203,10 +183,8 @@ function buildRAG(
 
   for (let idx = 0; idx < numPixels; idx++) {
     const x = idx % width;
-    const y = Math.floor(idx / width);
     const li = labels[idx];
 
-    // Check right and down neighbours
     if (x + 1 < width) {
       const lj = labels[idx + 1];
       if (li !== lj) {
@@ -218,7 +196,7 @@ function buildRAG(
         }
       }
     }
-    if (y + 1 < height) {
+    if (idx + width < numPixels) {
       const lj = labels[idx + width];
       if (li !== lj) {
         const key = li < lj ? `${li}-${lj}` : `${lj}-${li}`;
@@ -238,52 +216,46 @@ function mergeRAG(
   nodes: RAGNode[],
   edges: RAGEdge[],
   mergeThreshold: number,
-  onProgress: ProgressCallback | undefined,
   signal: AbortSignal | undefined,
 ): void {
-  // Sort edges by distance (ascending)
   edges.sort((a, b) => a.dist - b.dist);
-
-  const totalEdges = edges.length;
-  let processed = 0;
 
   for (const edge of edges) {
     throwIfAborted(signal);
 
     const ri = findRoot(nodes, edge.i);
     const rj = findRoot(nodes, edge.j);
-    if (ri === rj) { processed++; continue; }
+    if (ri === rj) continue;
 
-    // Recompute distance between current root colors
     const ni = nodes[ri], nj = nodes[rj];
     const dL = ni.L - nj.L, da = ni.a - nj.a, db = ni.b - nj.b;
     const dist = Math.sqrt(dL * dL + da * da + db * db);
 
-    if (dist > mergeThreshold) { processed++; continue; }
+    if (dist > mergeThreshold) continue;
 
-    // Merge j into i (area-weighted average)
     const totalArea = ni.area + nj.area;
     ni.L = (ni.L * ni.area + nj.L * nj.area) / totalArea;
     ni.a = (ni.a * ni.area + nj.a * nj.area) / totalArea;
     ni.b = (ni.b * ni.area + nj.b * nj.area) / totalArea;
     ni.area = totalArea;
     nj.parent = ri;
-
-    processed++;
-    if (onProgress && processed % 200 === 0) {
-      onProgress('Merging', 70 + Math.round(processed / totalEdges * 30));
-    }
   }
 }
 
 /* ── Public API ────────────────────────────────────────────────── */
 
-export async function computePlanes(
+/**
+ * SLIC superpixel segmentation with RAG merge.
+ * Returns a simplified ImageData where each region is filled with its
+ * average color — suitable as a simplification preprocessing step.
+ */
+export async function slicFilter(
   imageData: ImageData,
-  config: PlanesConfig,
-  onProgress?: ProgressCallback,
-  signal?: AbortSignal,
-): Promise<PlanesResult> {
+  strength: number,
+  compactness: number,
+  onProgress?: (percent: number) => void,
+  abortSignal?: AbortSignal,
+): Promise<ImageData> {
   const { data, width, height } = imageData;
   const numPixels = width * height;
 
@@ -297,16 +269,14 @@ export async function computePlanes(
     labData[i * 3 + 2] = lab.b;
   }
 
-  throwIfAborted(signal);
+  throwIfAborted(abortSignal);
 
-  // Determine grid step for ~500 superpixels, clamped to sensible range
   const targetCount = Math.max(50, Math.min(2000, Math.round(numPixels / 400)));
   const gridStep = Math.max(4, Math.sqrt(numPixels / targetCount));
 
-  const spatialWeight = compactnessToSpatialWeight(config.compactness);
-  const mergeThreshold = detailToMergeThreshold(config.detail);
+  const spatialWeight = compactnessToSpatialWeight(compactness);
+  const mergeThreshold = strengthToMergeThreshold(strength);
 
-  // Phase 1: SLIC
   const centers = initSuperpixels(labData, width, height, gridStep);
   const labels = new Int32Array(numPixels).fill(-1);
   const distances = new Float32Array(numPixels);
@@ -315,13 +285,12 @@ export async function computePlanes(
     labData, width, height,
     centers, labels, distances,
     gridStep, spatialWeight,
-    8, // iterations
-    onProgress, signal,
+    8, onProgress, abortSignal,
   );
 
-  throwIfAborted(signal);
+  throwIfAborted(abortSignal);
 
-  // Build RAG nodes from superpixel centers
+  // Build RAG nodes
   const ragNodes: RAGNode[] = centers.map(c => ({
     L: c.L, a: c.a, b: c.b,
     area: c.count,
@@ -329,59 +298,24 @@ export async function computePlanes(
   }));
   for (let i = 0; i < ragNodes.length; i++) ragNodes[i].parent = i;
 
-  // Phase 2: RAG merge
   const edges = buildRAG(labels, width, height, ragNodes);
-  mergeRAG(ragNodes, edges, mergeThreshold, onProgress, signal);
+  mergeRAG(ragNodes, edges, mergeThreshold, abortSignal);
 
-  if (onProgress) onProgress('Rendering', 95);
+  if (onProgress) onProgress(90);
 
-  // Build final label map: remap each superpixel to its merged root
-  const rootMap = new Map<number, number>(); // root index → final plane index
-  let planeIdx = 0;
-  const finalLabels = new Int32Array(numPixels);
-
-  for (let i = 0; i < numPixels; i++) {
-    const sp = labels[i];
-    const root = findRoot(ragNodes, sp);
-    let plane = rootMap.get(root);
-    if (plane === undefined) {
-      plane = planeIdx++;
-      rootMap.set(root, plane);
-    }
-    finalLabels[i] = plane;
-  }
-
-  // Build palette and band assignments from merged roots
-  const palette: string[] = [];
-  const paletteBands: number[] = [];
-  const planeColors: Array<{ L: number; a: number; b: number }> = [];
-
-  for (const [root, idx] of rootMap) {
-    const n = ragNodes[root];
-    planeColors[idx] = { L: n.L, a: n.a, b: n.b };
-    const [r, g, b] = oklabToRgb(n.L, n.a, n.b);
-    palette[idx] = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-    // Classify into light families by luminance for band isolation
-    let band: number;
-    if (n.L > 0.7) band = 0;       // Light
-    else if (n.L > 0.3) band = 1;  // Halftone
-    else band = 2;                  // Shadow
-    paletteBands[idx] = band;
-  }
-
-  // Render output: each pixel gets its plane's average color
+  // Render: each pixel gets its merged region's average color
   const out = new ImageData(width, height);
   const outData = out.data;
   for (let i = 0; i < numPixels; i++) {
-    const c = planeColors[finalLabels[i]];
-    const [r, g, b] = oklabToRgb(c.L, c.a, c.b);
+    const root = findRoot(ragNodes, labels[i]);
+    const n = ragNodes[root];
+    const [r, g, b] = oklabToRgb(n.L, n.a, n.b);
     outData[i * 4] = r;
     outData[i * 4 + 1] = g;
     outData[i * 4 + 2] = b;
     outData[i * 4 + 3] = 255;
   }
 
-  if (onProgress) onProgress('Complete', 100);
-
-  return { imageData: out, palette, paletteBands };
+  if (onProgress) onProgress(100);
+  return out;
 }

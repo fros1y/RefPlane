@@ -46,6 +46,8 @@ export function strengthToMethodParams(
         highlightCompression: lerp(0.0, 0.25, s),
       };
     }
+    case 'slic':
+      return { compactness: lerp(0.3, 0.7, s) };
     case 'none':
     default:
       return {};

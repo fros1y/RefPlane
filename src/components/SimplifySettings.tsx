@@ -14,6 +14,7 @@ const methodLabels: Record<SimplifyMethod, string> = {
   'mean-shift': 'Mean-Shift',
   'anisotropic': 'Anisotropic',
   'painterly': 'Painterly',
+  'slic': 'SLIC Planes',
 };
 
 export function SimplifySettings({ config, onChange }: Props) {
@@ -38,6 +39,9 @@ export function SimplifySettings({ config, onChange }: Props) {
       case 'painterly':
         update.painterly = params as SimplifyConfig['painterly'];
         break;
+      case 'slic':
+        update.slic = { compactness: params.compactness };
+        break;
     }
     onChange(update);
   };
@@ -60,6 +64,9 @@ export function SimplifySettings({ config, onChange }: Props) {
         break;
       case 'painterly':
         update.painterly = params as SimplifyConfig['painterly'];
+        break;
+      case 'slic':
+        update.slic = { compactness: params.compactness };
         break;
     }
     onChange(update);
@@ -220,6 +227,18 @@ export function SimplifySettings({ config, onChange }: Props) {
                 <span class="settings-value">{config.painterly.contrast.toFixed(2)}</span>
               </div>
             </>
+          )}
+
+          {showAdvanced && config.method === 'slic' && (
+            <div class="settings-row" title="Region shape: organic follows edges, regular produces even regions">
+              <label>Compactness</label>
+              <input
+                type="range" min="0" max="1" step="0.05" value={config.slic.compactness}
+                onInput={e => onChange({ slic: { compactness: Number((e.target as HTMLInputElement).value) } })}
+                style="flex:1"
+              />
+              <span class="settings-value">{config.slic.compactness.toFixed(2)}</span>
+            </div>
           )}
         </>
       )}
