@@ -48,11 +48,12 @@ export async function kMeans(
   k: number,
   lWeight = 1.0,
   gpuAssigner?: GpuAssigner,
+  initLWeight?: number,
 ): Promise<{ centroids: Centroid[]; assignments: Int32Array }> {
   if (numPixels === 0 || k === 0) return { centroids: [], assignments: new Int32Array(0) };
   k = Math.min(k, numPixels);
 
-  let centroids = initCentroids(pixels, k, numPixels, lWeight);
+  let centroids = initCentroids(pixels, k, numPixels, initLWeight ?? lWeight);
   const assignments = new Int32Array(numPixels).fill(0);
 
   for (let iter = 0; iter < 20; iter++) {

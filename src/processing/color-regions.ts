@@ -65,8 +65,10 @@ export async function processColorRegions(
     }
 
     // Downweight luminance in k-means since pixels are already split by
-    // brightness band — focus clustering on hue/chroma differentiation
-    const { centroids } = await kMeans(pixelLab, samplePixels.length, config.colorsPerBand, 0.1, gpuAssigner);
+    // brightness band — focus clustering on hue/chroma differentiation.
+    // Use initLWeight=0 so k-means++ seeds are chosen purely on chromatic
+    // spread, preventing dominant hues from starving minority colors.
+    const { centroids } = await kMeans(pixelLab, samplePixels.length, config.colorsPerBand, 0.1, gpuAssigner, 0);
     for (const c of centroids) {
       allCentroids.push({ band, centroid: c });
     }
@@ -124,7 +126,7 @@ export async function processColorRegions(
     let bestDist = Infinity, bestC = bandCentroids[0];
     for (const centroid of bandCentroids) {
       const dL = pL - centroid.L, da = pa - centroid.a, db = pb - centroid.b;
-      const dist = dL * dL + da * da + db * db;
+      const dist = 0.1 * dL * dL + da * da + db * db;
       if (dist < bestDist) { bestDist = dist; bestC = centroid; }
     }
 
