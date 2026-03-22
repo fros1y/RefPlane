@@ -100,7 +100,7 @@ const defaultSimplifyConfig: SimplifyConfig = {
     detailSigma: 1.5,
     saturation: 1.08, contrast: 1.08, gamma: 1.0, highlightCompression: 0.15,
   },
-  slic: { compactness: 0.5 },
+  slic: { detail: 0.5, compactness: 0.5 },
 };
 
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);

@@ -3,11 +3,11 @@ import { throwIfAborted, yieldToEventLoop } from './cancel';
 
 /* ── Parameter mapping helpers ────────────────────────────────── */
 
-/** Maps strength 0→aggressive merge (few planes), 1→conservative (many planes). */
-function strengthToMergeThreshold(strength: number): number {
+/** Maps detail 0→aggressive merge (few planes), 1→conservative (many planes). */
+function detailToMergeThreshold(detail: number): number {
   const hi = 0.25; // aggressive at strength=0
   const lo = 0.02; // conservative at strength=1
-  return hi * Math.pow(lo / hi, strength);
+  return hi * Math.pow(lo / hi, detail);
 }
 
 /** Maps compactness 0→organic (follows color), 1→regular (grid-like). */
@@ -251,7 +251,7 @@ function mergeRAG(
  */
 export async function slicFilter(
   imageData: ImageData,
-  strength: number,
+  detail: number,
   compactness: number,
   onProgress?: (percent: number) => void,
   abortSignal?: AbortSignal,
@@ -275,7 +275,7 @@ export async function slicFilter(
   const gridStep = Math.max(4, Math.sqrt(numPixels / targetCount));
 
   const spatialWeight = compactnessToSpatialWeight(compactness);
-  const mergeThreshold = strengthToMergeThreshold(strength);
+  const mergeThreshold = detailToMergeThreshold(detail);
 
   const centers = initSuperpixels(labData, width, height, gridStep);
   const labels = new Int32Array(numPixels).fill(-1);

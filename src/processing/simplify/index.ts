@@ -94,7 +94,7 @@ export async function runSimplify(
       }
       return imageData;
     case 'slic':
-      return slicFilter(imageData, config.strength, config.slic.compactness, onProgress, abortSignal);
+      return slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal);
     case 'none':
     default:
       return imageData;

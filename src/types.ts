@@ -64,7 +64,7 @@ export interface SimplifyConfig {
     detailSigma: number;
     saturation: number; contrast: number; gamma: number; highlightCompression: number;
   };
-  slic: { compactness: number };
+  slic: { detail: number; compactness: number };
 }
 
 export interface AppState {
