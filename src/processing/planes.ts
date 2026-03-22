@@ -12,20 +12,19 @@ export interface PlanesResult {
 /* ── Detail → merge-threshold mapping ─────────────────────────── */
 
 function detailToMergeThreshold(detail: number): number {
-  // detail 0 → aggressive merge (low threshold in OkLab distance)
-  // detail 1 → conservative merge (high threshold)
-  // Interpolate logarithmically for perceptual linearity.
-  const lo = 0.02;
-  const hi = 0.15;
-  return lo * Math.pow(hi / lo, detail);
+  // detail 0 ("Bold") → aggressive merge → few large planes
+  // detail 1 ("Fine") → conservative merge → many small planes
+  const hi = 0.25; // aggressive at detail=0
+  const lo = 0.02; // conservative at detail=1
+  return hi * Math.pow(lo / hi, detail);
 }
 
 /* ── Compactness → spatial weight mapping ─────────────────────── */
 
 function compactnessToSpatialWeight(compactness: number): number {
-  // compactness 0 → m=5 (loose, follows color)
+  // compactness 0 → m=1 (very organic, follows color boundaries)
   // compactness 1 → m=40 (very regular)
-  return 5 + compactness * 35;
+  return 1 + compactness * 39;
 }
 
 /* ── SLIC superpixels ─────────────────────────────────────────── */
@@ -78,6 +77,9 @@ async function slicIterate(
   const numPixels = width * height;
   const mOverS = spatialWeight / gridStep;
   const mOverS2 = mOverS * mOverS;
+  // OkLab values are 0-1 while spatial distances are 0-S pixels.
+  // Scale color to CIELAB-like range so both terms are comparable.
+  const COLOR_SCALE2 = 100 * 100;
 
   for (let iter = 0; iter < iterations; iter++) {
     throwIfAborted(signal);
@@ -99,7 +101,7 @@ async function slicIterate(
           const dL = labData[idx * 3] - c.L;
           const da = labData[idx * 3 + 1] - c.a;
           const db = labData[idx * 3 + 2] - c.b;
-          const colorDist2 = dL * dL + da * da + db * db;
+          const colorDist2 = (dL * dL + da * da + db * db) * COLOR_SCALE2;
 
           const dx = px - c.x;
           const dy = py - c.y;
@@ -257,7 +259,7 @@ function mergeRAG(
     const dL = ni.L - nj.L, da = ni.a - nj.a, db = ni.b - nj.b;
     const dist = Math.sqrt(dL * dL + da * da + db * db);
 
-    if (dist > mergeThreshold) break; // all remaining edges are farther
+    if (dist > mergeThreshold) { processed++; continue; }
 
     // Merge j into i (area-weighted average)
     const totalArea = ni.area + nj.area;
