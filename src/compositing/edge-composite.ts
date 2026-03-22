@@ -11,10 +11,46 @@ function makeCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
   return el;
 }
 
-function makeEdgeMaskCanvas(edgeData: ImageData, lineWeight: number): OffscreenCanvas | HTMLCanvasElement {
+/**
+ * Dilate edge pixels by the given line weight.
+ * lineWeight=1 means no dilation; higher values expand edge pixels
+ * within a circular radius of (lineWeight - 1).
+ */
+export function dilateEdges(edgeData: ImageData, lineWeight: number): ImageData {
+  const radius = Math.max(0, Math.round(lineWeight) - 1);
   const { width, height, data } = edgeData;
-  const baseCanvas = makeCanvas(width, height);
-  const baseCtx = baseCanvas.getContext('2d') as CanvasRenderingContext2D;
+  if (radius === 0) {
+    const copy = new ImageData(width, height);
+    copy.data.set(data);
+    return copy;
+  }
+
+  const out = new ImageData(width, height);
+  const outData = out.data;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let maxV = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (dx * dx + dy * dy > radius * radius) continue;
+          const ny = y + dy, nx = x + dx;
+          if (ny < 0 || ny >= height || nx < 0 || nx >= width) continue;
+          const v = data[(ny * width + nx) * 4];
+          if (v > maxV) maxV = v;
+        }
+      }
+      const i = (y * width + x) * 4;
+      outData[i] = outData[i + 1] = outData[i + 2] = maxV;
+      outData[i + 3] = 255;
+    }
+  }
+  return out;
+}
+
+function makeEdgeMaskCanvas(edgeData: ImageData): OffscreenCanvas | HTMLCanvasElement {
+  const { width, height, data } = edgeData;
+  const canvas = makeCanvas(width, height);
+  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
   const mask = new ImageData(width, height);
 
   for (let i = 0; i < data.length; i += 4) {
@@ -25,22 +61,8 @@ function makeEdgeMaskCanvas(edgeData: ImageData, lineWeight: number): OffscreenC
     mask.data[i + 3] = v;
   }
 
-  baseCtx.putImageData(mask, 0, 0);
-
-  const radius = Math.max(0, Math.round(lineWeight) - 1);
-  if (radius === 0) return baseCanvas;
-
-  const thickCanvas = makeCanvas(width, height);
-  const thickCtx = thickCanvas.getContext('2d') as CanvasRenderingContext2D;
-
-  for (let y = -radius; y <= radius; y++) {
-    for (let x = -radius; x <= radius; x++) {
-      if (x * x + y * y > radius * radius) continue;
-      thickCtx.drawImage(baseCanvas, x, y);
-    }
-  }
-
-  return thickCanvas;
+  ctx.putImageData(mask, 0, 0);
+  return canvas;
 }
 
 export function compositeEdges(
@@ -51,9 +73,12 @@ export function compositeEdges(
   if (!config.enabled) return;
 
   const { compositeMode, lineColor, lineCustomColor, lineOpacity, edgesOnlyPolarity, lineKnockoutColor, lineKnockoutCustomColor, lineWeight } = config;
-  const { width, height } = edgeData;
 
-  const maskCanvas = makeEdgeMaskCanvas(edgeData, lineWeight);
+  // Apply dilation upfront so ALL composite modes honour lineWeight.
+  const dilated = dilateEdges(edgeData, lineWeight);
+  const { width, height } = dilated;
+
+  const maskCanvas = makeEdgeMaskCanvas(dilated);
   const tmpCanvas = makeCanvas(width, height);
   const tmpCtx = tmpCanvas.getContext('2d') as CanvasRenderingContext2D;
   tmpCtx.drawImage(maskCanvas, 0, 0);
@@ -79,8 +104,8 @@ export function compositeEdges(
         destCtx.fillStyle = 'white';
         destCtx.fillRect(0, 0, width, height);
         const inv = new ImageData(width, height);
-        for (let i = 0; i < edgeData.data.length; i += 4) {
-          const v = edgeData.data[i];
+        for (let i = 0; i < dilated.data.length; i += 4) {
+          const v = dilated.data[i];
           inv.data[i] = 0;
           inv.data[i + 1] = 0;
           inv.data[i + 2] = 0;
