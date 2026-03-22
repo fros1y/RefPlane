@@ -10,6 +10,7 @@ const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: 'grayscale', label: 'Grayscale', hint: 'Reduce the image to tonal structure.' },
   { id: 'value', label: 'Value Study', hint: 'Shape the scene into clear light groups.' },
   { id: 'color', label: 'Color Regions', hint: 'Organize palette clusters and temperature.' },
+  { id: 'planes', label: 'Planes', hint: 'Decompose into spatially coherent color/value planes.' },
 ];
 
 export function ModeBar({ activeMode, onModeChange }: Props) {

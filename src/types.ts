@@ -1,4 +1,4 @@
-export type Mode = "original" | "grayscale" | "value" | "color";
+export type Mode = "original" | "grayscale" | "value" | "color" | "planes";
 export type EdgeMethod = "canny" | "sobel";
 export type EdgeCompositeMode = "lines-over" | "edges-only" | "multiply" | "knockout";
 export type LineStyle = "auto-contrast" | "black" | "white" | "custom";
@@ -46,6 +46,11 @@ export interface ColorConfig {
   warmCoolEmphasis: number;
   thresholds: number[];
   minRegionSize: "off" | "small" | "medium" | "large";
+}
+
+export interface PlanesConfig {
+  detail: number;       // 0–1. 0 = few bold planes, 1 = many fine planes
+  compactness: number;  // 0–1. 0 = follow edges closely, 1 = regular grid-like regions
 }
 
 export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly";
