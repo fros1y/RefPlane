@@ -1,5 +1,5 @@
-import { signal, computed } from '@preact/signals';
-import { useEffect, useRef, useCallback } from 'preact/hooks';
+import { signal } from '@preact/signals';
+import { useEffect, useRef } from 'preact/hooks';
 import { ModeBar } from './components/ModeBar';
 import { OverlayToggles } from './components/OverlayToggles';
 import { ImageCanvas } from './components/ImageCanvas';
@@ -10,9 +10,11 @@ import { ActionBar } from './components/ActionBar';
 import { CompareView } from './components/CompareView';
 import { CropOverlay } from './components/CropOverlay';
 import { SimplifySettings } from './components/SimplifySettings';
+import { ErrorToast, showError } from './components/ErrorToast';
 import { exportImage } from './export/export';
 import { initInstallPrompt, triggerInstall } from './pwa/install-prompt';
 import { getDefaultThresholds } from './processing/quantize';
+import { useProcessingPipeline } from './hooks/useProcessingPipeline';
 import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig } from './types';
 import './styles/global.css';
 
@@ -104,25 +106,15 @@ const defaultSimplifyConfig: SimplifyConfig = {
 };
 
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);
-const simplifiedImageData = signal<ImageData | null>(null);
-const processingProgress = signal<{ stage: string; percent: number } | null>(null);
 
 // originalImageData is never overwritten by crop — non-destructive crop derives sourceImageData from it.
 const originalImageData = signal<ImageData | null>(null);
 const sourceImageData = signal<ImageData | null>(null);
 const activeMode = signal<Mode>('original');
-const processedImage = signal<ImageData | null>(null);
-const edgeDataSignal = signal<ImageData | null>(null);
 const gridConfig = signal<GridConfig>(defaultGridConfig);
 const edgeConfig = signal<EdgeConfig>(defaultEdgeConfig);
 const valueConfig = signal<ValueConfig>(defaultValueConfig);
 const colorConfig = signal<ColorConfig>(defaultColorConfig);
-// Track number of outstanding worker requests; spinner shows while any are pending.
-const processingCount = signal(0);
-const isProcessing = computed(() => processingCount.value > 0);
-const paletteColors = signal<string[]>([]);
-// Maps each palette swatch index to its value-band index for correct band isolation.
-const swatchBands = signal<number[]>([]);
 const showCompare = signal(false);
 const showCropOverlay = signal(false);
 const isolatedBand = signal<number | null>(null);
@@ -133,248 +125,29 @@ const showInstallBanner = signal(false);
 export function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
-  const workerRef = useRef<Worker | null>(null);
-  const processingTimerRef = useRef<number | null>(null);
-  const edgeTimerRef = useRef<number | null>(null);
-  const simplifyTimerRef = useRef<number | null>(null);
-  const requestSeqRef = useRef(0);
-  const latestMainRequestIdRef = useRef(0);
-  const latestEdgeRequestIdRef = useRef(0);
-  const latestSimplifyRequestIdRef = useRef(0);
-  const requestTimingsRef = useRef(new Map<number, { sentAt: number; requestType: string }>());
+
+  const {
+    simplifiedImageData,
+    processedImage,
+    edgeData,
+    isProcessing,
+    processingProgress,
+    paletteColors,
+    swatchBands,
+    resetProcessingState,
+  } = useProcessingPipeline({
+    sourceImageData,
+    activeMode,
+    simplifyConfig,
+    valueConfig,
+    colorConfig,
+    edgeConfig,
+    onError: showError,
+  });
 
   useEffect(() => {
     initInstallPrompt(() => { showInstallBanner.value = true; });
   }, []);
-
-  useEffect(() => {
-    console.log('[Perf] RefPlane timing logs enabled');
-  }, []);
-
-  useEffect(() => {
-    const worker = new Worker(new URL('./processing/worker.ts', import.meta.url), { type: 'module' });
-    workerRef.current = worker;
-
-    worker.onmessage = (e) => {
-      const { type, result, palette, paletteBands, requestType, error, requestId, meta } = e.data;
-      if (type === 'progress') {
-        if (requestId === latestSimplifyRequestIdRef.current) {
-          processingProgress.value = { stage: e.data.stage, percent: e.data.percent };
-        }
-        return;
-      }
-      const isEdgeRequest = requestType === 'edges';
-      const latestRequestId = isEdgeRequest
-        ? latestEdgeRequestIdRef.current
-        : requestType === 'simplify'
-          ? latestSimplifyRequestIdRef.current
-          : latestMainRequestIdRef.current;
-      const requestTiming = requestTimingsRef.current.get(requestId);
-      const roundTripMs = requestTiming ? performance.now() - requestTiming.sentAt : undefined;
-      requestTimingsRef.current.delete(requestId);
-      if (type === 'error') {
-        const isAbort = error === 'AbortError';
-        logProcessingTiming(requestType, requestId, meta, roundTripMs, true, error);
-        if (!isAbort) {
-          console.error('Worker error:', error);
-        }
-        processingCount.value = Math.max(0, processingCount.value - 1);
-        return;
-      }
-      if (type === 'result') {
-        processingCount.value = Math.max(0, processingCount.value - 1);
-        const isStale = requestId !== latestRequestId;
-        logProcessingTiming(requestType, requestId, meta, roundTripMs, isStale);
-        if (requestId !== latestRequestId) {
-          return;
-        }
-        if (requestType === 'simplify') {
-          processingProgress.value = null;
-          simplifiedImageData.value = result;
-          // Trigger downstream analysis
-          triggerProcessing(0);
-          return;
-        }
-        if (requestType !== 'simplify') {
-          processingProgress.value = null;
-        }
-        if (requestType === 'edges') {
-          edgeDataSignal.value = result;
-        } else {
-          processedImage.value = result;
-          if (palette) {
-            paletteColors.value = palette;
-            swatchBands.value = paletteBands ?? [];
-          }
-          // Post edges using the freshly-computed result, not a stale processedImage value.
-          if (edgeConfig.value.enabled && sourceImageData.value) {
-            const edgeSrc = edgeConfig.value.useOriginal
-              ? sourceImageData.value
-              : (activeMode.value === 'original' ? sourceImageData.value : result);
-            postEdgeRequest(edgeSrc, 0);
-          }
-        }
-      }
-    };
-
-    return () => {
-      if (processingTimerRef.current !== null) window.clearTimeout(processingTimerRef.current);
-      if (edgeTimerRef.current !== null) window.clearTimeout(edgeTimerRef.current);
-      if (simplifyTimerRef.current !== null) window.clearTimeout(simplifyTimerRef.current);
-      requestTimingsRef.current.clear();
-      worker.terminate();
-    };
-  }, []);
-
-  const nextRequestId = useCallback(() => {
-    requestSeqRef.current += 1;
-    return requestSeqRef.current;
-  }, []);
-
-  const postMainRequest = useCallback(() => {
-    const worker = workerRef.current;
-    const src = simplifiedImageData.value;
-    if (!worker || !src) return;
-    const mode = activeMode.value;
-    if (mode === 'grayscale') {
-      const requestId = nextRequestId();
-      latestMainRequestIdRef.current = requestId;
-      processingCount.value++;
-      const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'grayscale' });
-      console.log(`[Perf] dispatch grayscale#${requestId} | size=${src.width}x${src.height}`);
-      worker.postMessage({ type: 'grayscale', imageData: imgCopy, requestId }, [imgCopy.data.buffer]);
-    } else if (mode === 'value') {
-      const requestId = nextRequestId();
-      latestMainRequestIdRef.current = requestId;
-      processingCount.value++;
-      const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'value-study' });
-      console.log(`[Perf] dispatch value-study#${requestId} | size=${src.width}x${src.height}`);
-      worker.postMessage({ type: 'value-study', imageData: imgCopy, config: valueConfig.value, requestId }, [imgCopy.data.buffer]);
-    } else if (mode === 'color') {
-      const requestId = nextRequestId();
-      latestMainRequestIdRef.current = requestId;
-      processingCount.value++;
-      const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'color-regions' });
-      console.log(`[Perf] dispatch color-regions#${requestId} | size=${src.width}x${src.height}`);
-      worker.postMessage({ type: 'color-regions', imageData: imgCopy, config: colorConfig.value, requestId }, [imgCopy.data.buffer]);
-    } else {
-      latestMainRequestIdRef.current = nextRequestId();
-      processedImage.value = null;
-      paletteColors.value = [];
-      swatchBands.value = [];
-    }
-  }, [nextRequestId]);
-
-  const postEdgeRequest = useCallback((src: ImageData, delay = 80) => {
-    const worker = workerRef.current;
-    if (!worker) return;
-    if (edgeTimerRef.current !== null) {
-      window.clearTimeout(edgeTimerRef.current);
-    }
-    edgeTimerRef.current = window.setTimeout(() => {
-      edgeTimerRef.current = null;
-      if (!edgeConfig.value.enabled) {
-        edgeDataSignal.value = null;
-        return;
-      }
-      const requestId = nextRequestId();
-      latestEdgeRequestIdRef.current = requestId;
-      processingCount.value++;
-      const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-      requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'edges' });
-      console.log(`[Perf] dispatch edges#${requestId} | size=${src.width}x${src.height}`);
-      worker.postMessage({ type: 'edges', imageData: imgCopy, config: edgeConfig.value, requestId }, [imgCopy.data.buffer]);
-    }, delay);
-  }, [nextRequestId]);
-
-  const postSimplifyRequest = useCallback((src: ImageData) => {
-    const worker = workerRef.current;
-    if (!worker) return;
-    const requestId = nextRequestId();
-    latestSimplifyRequestIdRef.current = requestId;
-    processingCount.value++;
-    const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-    requestTimingsRef.current.set(requestId, { sentAt: performance.now(), requestType: 'simplify' });
-    console.log(`[Perf] dispatch simplify#${requestId} | method=${simplifyConfig.value.method} | size=${src.width}x${src.height}`);
-    worker.postMessage({ type: 'simplify', imageData: imgCopy, config: simplifyConfig.value, requestId }, [imgCopy.data.buffer]);
-  }, [nextRequestId]);
-
-  const triggerSimplify = useCallback((delay = 120) => {
-    if (simplifyTimerRef.current !== null) {
-      window.clearTimeout(simplifyTimerRef.current);
-    }
-    simplifyTimerRef.current = window.setTimeout(() => {
-      simplifyTimerRef.current = null;
-      const src = sourceImageData.value;
-      if (!src) return;
-      if (simplifyConfig.value.method === 'none') {
-        simplifiedImageData.value = src;
-        triggerProcessing(0);
-        return;
-      }
-      postSimplifyRequest(src);
-    }, delay);
-  }, [postSimplifyRequest]);
-
-  const runProcessing = useCallback(() => {
-    const src = simplifiedImageData.value;
-    if (!src) return;
-    const mode = activeMode.value;
-
-    postMainRequest();
-
-    if (mode === 'original') {
-      if (edgeConfig.value.enabled) {
-        const edgeSrc = edgeConfig.value.useOriginal ? (sourceImageData.value ?? src) : src;
-        postEdgeRequest(edgeSrc, 0);
-      } else {
-        latestEdgeRequestIdRef.current = nextRequestId();
-        edgeDataSignal.value = null;
-      }
-    }
-  }, [nextRequestId, postEdgeRequest, postMainRequest]);
-
-  const triggerProcessing = useCallback((delay = 120) => {
-    if (processingTimerRef.current !== null) {
-      window.clearTimeout(processingTimerRef.current);
-    }
-    processingTimerRef.current = window.setTimeout(() => {
-      processingTimerRef.current = null;
-      runProcessing();
-    }, delay);
-  }, [runProcessing]);
-
-  // Stage 1: source or simplify config changes → re-simplify
-  useEffect(() => {
-    if (!sourceImageData.value) return;
-    triggerSimplify();
-  }, [sourceImageData.value, simplifyConfig.value]);
-
-  // Stage 2: analysis config changes → re-analyze from cached simplified image.
-  // Note: simplifiedImageData is intentionally NOT in the dep array — the worker
-  // onmessage handler calls triggerProcessing(0) directly when a new simplified
-  // result arrives, so adding it here would cause double-firing.
-  useEffect(() => {
-    if (!simplifiedImageData.value) return;
-    triggerProcessing(120);
-  }, [activeMode.value, valueConfig.value, colorConfig.value]);
-
-  useEffect(() => {
-    if (edgeConfig.value.enabled) {
-      const simplified = simplifiedImageData.value ?? sourceImageData.value;
-      if (!simplified || !workerRef.current) return;
-      const edgeSrc = edgeConfig.value.useOriginal
-        ? (sourceImageData.value ?? simplified)
-        : (activeMode.value === 'original' ? simplified : (processedImage.value ?? simplified));
-      postEdgeRequest(edgeSrc, 80);
-    } else {
-      latestEdgeRequestIdRef.current = nextRequestId();
-      edgeDataSignal.value = null;
-    }
-  }, [edgeConfig.value, nextRequestId, postEdgeRequest]);
 
   const handleFileChange = async (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -384,7 +157,12 @@ export function App() {
     try {
       source = await createImageBitmap(file);
     } catch {
-      source = await loadImageFromFile(file);
+      try {
+        source = await loadImageFromFile(file);
+      } catch {
+        showError('Could not decode image file');
+        return;
+      }
     }
 
     let targetW = source.width;
@@ -403,11 +181,7 @@ export function App() {
     const imgData = ctx.getImageData(0, 0, targetW, targetH);
     originalImageData.value = imgData;
     sourceImageData.value = imgData;
-    simplifiedImageData.value = null;
-    processedImage.value = null;
-    paletteColors.value = [];
-    swatchBands.value = [];
-    edgeDataSignal.value = null;
+    resetProcessingState();
     isolatedBand.value = null;
   };
 
@@ -415,7 +189,11 @@ export function App() {
     const canvas = displayCanvasRef.current;
     if (!canvas) return;
     const modeSlug = activeMode.value === 'original' ? 'original' : activeMode.value;
-    await exportImage(canvas, modeSlug);
+    try {
+      await exportImage(canvas, modeSlug);
+    } catch (err) {
+      showError('Export failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const handleCropConfirm = (crop: { x: number; y: number; width: number; height: number }) => {
@@ -430,11 +208,7 @@ export function App() {
     croppedCtx.drawImage(tmpCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
     const newImgData = croppedCtx.getImageData(0, 0, crop.width, crop.height);
     sourceImageData.value = newImgData;
-    simplifiedImageData.value = null;
-    processedImage.value = null;
-    paletteColors.value = [];
-    swatchBands.value = [];
-    edgeDataSignal.value = null;
+    resetProcessingState();
     isolatedBand.value = null;
     showCropOverlay.value = false;
   };
@@ -460,6 +234,7 @@ export function App() {
   }[activeMode.value];
   return (
     <div id="app-root" class="app-shell">
+      <ErrorToast />
       {showInstallBanner.value && (
         <div class="install-banner">
           <div class="install-banner-copy">
@@ -501,7 +276,7 @@ export function App() {
             activeMode={activeMode.value}
             gridConfig={gridConfig.value}
             edgeConfig={edgeConfig.value}
-            edgeData={edgeDataSignal.value}
+            edgeData={edgeData.value}
             isProcessing={isProcessing.value}
             onOpenImage={() => fileInputRef.current?.click()}
             externalRef={displayCanvasRef}
@@ -655,35 +430,4 @@ export function App() {
       </div>
     </div>
   );
-}
-
-function logProcessingTiming(
-  requestType: string,
-  requestId: number,
-  meta: {
-    backend?: string;
-    queueWaitMs?: number;
-    totalMs?: number;
-    width?: number;
-    height?: number;
-    stages?: Array<{ label: string; ms: number }>;
-  } | undefined,
-  roundTripMs?: number,
-  stale?: boolean,
-  error?: string,
-) {
-  const stageSummary = meta?.stages?.map(stage => `${stage.label}=${stage.ms.toFixed(1)}ms`).join(', ');
-  const parts = [
-    `[Perf] ${requestType}#${requestId}`,
-    stale ? 'stale' : 'current',
-  ];
-  if (meta?.backend) parts.push(`backend=${meta.backend}`);
-  if (meta?.queueWaitMs !== undefined) parts.push(`queue=${meta.queueWaitMs.toFixed(1)}ms`);
-  if (meta?.totalMs !== undefined) parts.push(`worker=${meta.totalMs.toFixed(1)}ms`);
-  if (roundTripMs !== undefined) parts.push(`roundTrip=${roundTripMs.toFixed(1)}ms`);
-  if (meta?.width && meta?.height) parts.push(`size=${meta.width}x${meta.height}`);
-  if (stageSummary) parts.push(`stages=[${stageSummary}]`);
-  if (error) parts.push(`error=${error}`);
-
-  console.log(parts.join(' | '));
 }

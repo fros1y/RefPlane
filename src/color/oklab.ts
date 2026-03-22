@@ -15,7 +15,7 @@ export function rgbToOklab(r: number, g: number, b: number): OKLab {
 
   const l = 0.4122214708 * rl + 0.5363325363 * gl + 0.0514459929 * bl;
   const m = 0.2119034982 * rl + 0.6806995451 * gl + 0.1073969566 * bl;
-  const s = 0.0883024619 * rl + 0.2220049412 * gl + 0.6896926220 * bl;
+  const s = 0.0883024619 * rl + 0.2817188376 * gl + 0.6299787005 * bl;
 
   const l_ = Math.cbrt(l);
   const m_ = Math.cbrt(m);
