@@ -4,6 +4,7 @@ import { kuwaharaFilter } from './kuwahara';
 import { meanShiftFilter } from './mean-shift';
 import { anisotropicDiffusion } from './anisotropic';
 import { slicFilter } from './slic';
+import { mergeShadows } from './shadow-merge';
 
 interface SimplifyGpuProcessor {
   bilateralRgb(imageData: ImageData, sigmaS: number, sigmaR: number): Promise<ImageData>;
@@ -20,6 +21,8 @@ export async function runSimplify(
   abortSignal?: AbortSignal,
   gpu?: SimplifyGpuProcessor | null,
 ): Promise<ImageData> {
+  const finalize = (result: ImageData) => (config.shadowMerge ? mergeShadows(result, config.strength) : result);
+
   switch (config.method) {
     case 'bilateral':
       if (gpu) {
@@ -27,12 +30,12 @@ export async function runSimplify(
           onProgress?.(5);
           const result = await gpu.bilateralRgb(imageData, config.bilateral.sigmaS, config.bilateral.sigmaR);
           onProgress?.(100);
-          return result;
+          return finalize(result);
         } catch (error) {
           void error;
         }
       }
-      return bilateralFilter(imageData, config.bilateral.sigmaS, config.bilateral.sigmaR, onProgress, abortSignal);
+      return finalize(await bilateralFilter(imageData, config.bilateral.sigmaS, config.bilateral.sigmaR, onProgress, abortSignal));
     case 'kuwahara':
       if (gpu) {
         try {
@@ -45,62 +48,62 @@ export async function runSimplify(
             config.kuwahara.sectors,
           );
           onProgress?.(100);
-          return result;
+          return finalize(result);
         } catch (error) {
           void error;
         }
       }
-      return kuwaharaFilter(imageData, config.kuwahara.kernelSize, onProgress, abortSignal, config.kuwahara.passes, config.kuwahara.sharpness, config.kuwahara.sectors);
+      return finalize(await kuwaharaFilter(imageData, config.kuwahara.kernelSize, onProgress, abortSignal, config.kuwahara.passes, config.kuwahara.sharpness, config.kuwahara.sectors));
     case 'mean-shift':
       if (gpu) {
         try {
           onProgress?.(5);
           const result = await gpu.meanShift(imageData, config.meanShift.spatialRadius, config.meanShift.colorRadius);
           onProgress?.(100);
-          return result;
+          return finalize(result);
         } catch (error) {
           void error;
         }
       }
-      return meanShiftFilter(
+      return finalize(await meanShiftFilter(
         imageData,
         config.meanShift.spatialRadius,
         config.meanShift.colorRadius,
         onProgress,
         abortSignal,
-      );
+      ));
     case 'anisotropic':
       if (gpu) {
         try {
           onProgress?.(5);
           const result = await gpu.anisotropic(imageData, config.anisotropic.iterations, config.anisotropic.kappa);
           onProgress?.(100);
-          return result;
+          return finalize(result);
         } catch (error) {
           void error;
         }
       }
-      return anisotropicDiffusion(
+      return finalize(await anisotropicDiffusion(
         imageData,
         config.anisotropic.iterations,
         config.anisotropic.kappa,
         onProgress,
         abortSignal,
-      );
+      ));
     case 'painterly':
       if (gpu) {
         try {
           onProgress?.(5);
           const result = await gpu.painterly(imageData, config.painterly);
           onProgress?.(100);
-          return result;
+          return finalize(result);
         } catch (error) {
           void error;
         }
       }
-      return imageData;
+      return finalize(imageData);
     case 'slic':
-      return slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal);
+      return finalize(await slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal));
     case 'none':
     default:
       return imageData;

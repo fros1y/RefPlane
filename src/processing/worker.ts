@@ -7,28 +7,14 @@ import { toGrayscale } from './grayscale';
 import { runSimplify } from './simplify/index';
 import { createProgressReporter } from './progress';
 import { getWebGpuProcessor } from './webgpu';
-import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig } from '../types';
-
-type WorkerMessage =
-  | { type: 'simplify'; imageData: ImageData; config: SimplifyConfig; requestId: number }
-  | { type: 'value-study'; imageData: ImageData; config: ValueConfig; requestId: number }
-  | { type: 'color-regions'; imageData: ImageData; config: ColorConfig; requestId: number }
-  | { type: 'edges'; imageData: ImageData; config: EdgeConfig; requestId: number }
-  | { type: 'grayscale'; imageData: ImageData; requestId: number };
-
-interface TimingStage {
-  label: string;
-  ms: number;
-}
-
-interface ProcessingMeta {
-  backend: 'cpu' | 'gpu' | 'mixed';
-  queueWaitMs: number;
-  totalMs: number;
-  width: number;
-  height: number;
-  stages: TimingStage[];
-}
+import {
+  createWorkerErrorMessage,
+  createWorkerSuccessMessage,
+  type ProcessingMeta,
+  type TimingStage,
+  type WorkerInboundMessage,
+  type WorkerRequest,
+} from './worker-protocol';
 
 async function measureStage<T>(stages: TimingStage[], label: string, fn: () => Promise<T> | T): Promise<T> {
   const startedAt = performance.now();
@@ -54,8 +40,8 @@ function finalizeMeta(
   };
 }
 
-async function handleMessage(data: WorkerMessage, queuedAt: number) {
-  const { type, requestId } = data;
+async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: number) {
+  const { type } = data;
   const startedAt = performance.now();
   const stages: TimingStage[] = [];
   const gpu = await getWebGpuProcessor();
@@ -70,7 +56,7 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
       );
       const simplifyBackend: ProcessingMeta['backend'] = gpu && data.config.method !== 'none' ? 'gpu' : 'cpu';
       const meta = finalizeMeta(stages, simplifyBackend, data.imageData, queuedAt, startedAt);
-      self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
+      self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
       if (currentSimplifyController === controller) {
         currentSimplifyController = null;
       }
@@ -79,21 +65,17 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
         ? await measureStage(stages, 'value-study-gpu', () => gpu.processValueStudy(data.imageData, data.config))
         : await measureStage(stages, 'value-study-cpu', () => processValueStudy(data.imageData, data.config));
       const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
-      self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
+      self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
     } else if (type === 'color-regions') {
       const stageLabel = gpu ? 'color-regions-mixed' : 'color-regions-cpu';
       const result = await measureStage(stages, stageLabel, () =>
         processColorRegions(data.imageData, data.config, gpu ? gpu.kMeansAssign.bind(gpu) : undefined));
       const meta = finalizeMeta(stages, gpu ? 'mixed' : 'cpu', data.imageData, queuedAt, startedAt);
-      self.postMessage({
-        type: 'result',
+      self.postMessage(createWorkerSuccessMessage(requestId, type, meta, {
         result: result.imageData,
         palette: result.palette,
         paletteBands: result.paletteBands,
-        requestType: type,
-        requestId,
-        meta,
-      }, [result.imageData.data.buffer]);
+      }), [result.imageData.data.buffer]);
     } else if (type === 'edges') {
       const gray = await measureStage(stages, 'grayscale', () => toGrayscale(data.imageData));
       const cfg = data.config;
@@ -108,18 +90,18 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
           : await measureStage(stages, 'sobel', () => sobelEdges(gray, cfg.sensitivity));
       }
       const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
-      self.postMessage({ type: 'result', result: edgeData, requestType: type, requestId, meta }, [edgeData.data.buffer]);
+      self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result: edgeData }), [edgeData.data.buffer]);
     } else if (type === 'grayscale') {
       const result = gpu
         ? await measureStage(stages, 'grayscale-gpu', () => gpu.toGrayscale(data.imageData))
         : await measureStage(stages, 'grayscale-cpu', () => toGrayscale(data.imageData));
       const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
-      self.postMessage({ type: 'result', result, requestType: type, requestId, meta }, [result.data.buffer]);
+      self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
     }
   } catch (err) {
     const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
     const isAbort = err instanceof Error && err.name === 'AbortError';
-    self.postMessage({ type: 'error', error: isAbort ? 'AbortError' : String(err), requestType: type, requestId, meta });
+    self.postMessage(createWorkerErrorMessage(requestId, type, isAbort ? 'AbortError' : String(err), meta));
   } finally {
     if (type === 'simplify') {
       currentSimplifyController = null;
@@ -130,13 +112,18 @@ async function handleMessage(data: WorkerMessage, queuedAt: number) {
 let queue = Promise.resolve();
 let currentSimplifyController: AbortController | null = null;
 
-self.onmessage = (e: MessageEvent<WorkerMessage>) => {
-  if (e.data.type === 'simplify' && currentSimplifyController) {
+self.onmessage = (e: MessageEvent<WorkerInboundMessage>) => {
+  if (e.data.kind !== 'request') {
+    return;
+  }
+
+  const { request, requestId } = e.data;
+  if (request.type === 'simplify' && currentSimplifyController) {
     currentSimplifyController.abort();
   }
   const queuedAt = performance.now();
-  queue = queue.then(() => handleMessage(e.data, queuedAt)).catch((err) => {
-    self.postMessage({ type: 'error', error: String(err) });
+  queue = queue.then(() => handleMessage(request, requestId, queuedAt)).catch((err) => {
+    self.postMessage(createWorkerErrorMessage(requestId, request.type, String(err)));
   });
 };
 

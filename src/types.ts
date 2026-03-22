@@ -54,6 +54,7 @@ export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | 
 export interface SimplifyConfig {
   method: SimplifyMethod;
   strength: number;
+  shadowMerge?: boolean;
   bilateral: { sigmaS: number; sigmaR: number };
   kuwahara: { kernelSize: number; passes: number; sharpness: number; sectors: 4 | 8 };
   meanShift: { spatialRadius: number; colorRadius: number };

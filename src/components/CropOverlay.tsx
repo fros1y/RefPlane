@@ -127,11 +127,16 @@ export function CropOverlay({ imageWidth, imageHeight, initialCrop, onCropChange
   };
 
   const handleCropConfirm = () => {
+    const clampedX = Math.max(0, Math.min(1, crop.x));
+    const clampedY = Math.max(0, Math.min(1, crop.y));
+    const clampedWidth = Math.max(0, Math.min(1 - clampedX, crop.width));
+    const clampedHeight = Math.max(0, Math.min(1 - clampedY, crop.height));
+
     const pixelCrop: CropState = {
-      x: Math.round(crop.x * imageWidth),
-      y: Math.round(crop.y * imageHeight),
-      width: Math.round(crop.width * imageWidth),
-      height: Math.round(crop.height * imageHeight),
+      x: Math.round(clampedX * imageWidth),
+      y: Math.round(clampedY * imageHeight),
+      width: Math.round(clampedWidth * imageWidth),
+      height: Math.round(clampedHeight * imageHeight),
     };
     onCropChange(pixelCrop);
     onConfirm();

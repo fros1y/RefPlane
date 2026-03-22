@@ -7,10 +7,23 @@ function makeConfig(method: SimplifyConfig['method'], strength = 0.5): SimplifyC
   return {
     method,
     strength,
+    shadowMerge: false,
     bilateral: { sigmaS: 10, sigmaR: 0.15 },
-    kuwahara: { kernelSize: 7 },
+    kuwahara: { kernelSize: 7, passes: 1, sharpness: 8, sectors: 8 },
     meanShift: { spatialRadius: 15, colorRadius: 25 },
     anisotropic: { iterations: 10, kappa: 20 },
+    painterly: {
+      radius: 8,
+      q: 8,
+      alpha: 1,
+      zeta: 1,
+      tensorSigma: 2,
+      sharpenAmount: 0.35,
+      edgeThresholdLow: 0.03,
+      edgeThresholdHigh: 0.12,
+      detailSigma: 1.5,
+    },
+    slic: { detail: 0.55, compactness: 0.15 },
   };
 }
 
@@ -64,5 +77,23 @@ describe('runSimplify', () => {
     await expect(runSimplify(image, makeConfig('bilateral'), undefined, controller.signal)).rejects.toMatchObject({
       name: 'AbortError',
     });
+  });
+
+  it('merges shadows more aggressively when shadow merge is enabled', async () => {
+    const image = createImageData(2, 1, [180, 180, 180, 255]);
+    image.data[0] = 20;
+    image.data[1] = 20;
+    image.data[2] = 20;
+
+    const withoutMerge = await runSimplify(image, makeConfig('bilateral', 0.75));
+    const withMerge = await runSimplify(image, { ...makeConfig('bilateral', 0.75), shadowMerge: true });
+
+    const darkWithout = withoutMerge.data[0];
+    const darkWith = withMerge.data[0];
+    const midWithout = withoutMerge.data[4];
+    const midWith = withMerge.data[4];
+
+    expect(Math.abs(darkWith - darkWithout)).toBeGreaterThan(0);
+    expect(Math.abs(midWith - midWithout)).toBeLessThanOrEqual(1);
   });
 });

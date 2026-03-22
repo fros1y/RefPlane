@@ -92,6 +92,7 @@ const defaultColorConfig: ColorConfig = {
 const defaultSimplifyConfig: SimplifyConfig = {
   method: 'none',
   strength: 0.5,
+  shadowMerge: false,
   bilateral: { sigmaS: 10, sigmaR: 0.15 },
   kuwahara: { kernelSize: 7, passes: 1, sharpness: 8, sectors: 8 },
   meanShift: { spatialRadius: 15, colorRadius: 25 },
