@@ -99,7 +99,6 @@ const defaultSimplifyConfig: SimplifyConfig = {
     tensorSigma: 2.0,
     sharpenAmount: 0.35, edgeThresholdLow: 0.03, edgeThresholdHigh: 0.12,
     detailSigma: 1.5,
-    saturation: 1.08, contrast: 1.08, gamma: 1.0, highlightCompression: 0.15,
   },
   slic: { detail: 0.55, compactness: 0.15 },
 };

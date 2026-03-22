@@ -1097,22 +1097,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 const painterlyPostColorShader = /* wgsl */`
 struct PostParams {
   pixelCount: u32,
-  _pad0: u32,
-  _pad1: u32,
-  _pad2: u32,
-  saturation: f32,
-  contrast: f32,
-  gamma: f32,
-  highlightCompression: f32,
 };
 
 @group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
 @group(0) @binding(1) var<storage, read_write> dst: array<u32>;
 @group(0) @binding(2) var<uniform> params: PostParams;
-
-fn luma(c: vec3<f32>) -> f32 {
-  return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
-}
 
 fn linear_to_srgb(c: f32) -> f32 {
   if (c <= 0.0031308) {
@@ -1126,18 +1115,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let idx = gid.x;
   if (idx >= params.pixelCount) { return; }
 
-  var rgb = src[idx].xyz;
+  let rgb = clamp(src[idx].xyz, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
   let alpha = src[idx].w;
-
-  let l = luma(rgb);
-  rgb = mix(vec3<f32>(l, l, l), rgb, params.saturation);
-  rgb = (rgb - vec3<f32>(0.5, 0.5, 0.5)) * params.contrast + vec3<f32>(0.5, 0.5, 0.5);
-
-  let maxRgb = max(rgb, vec3<f32>(0.0, 0.0, 0.0));
-  rgb = maxRgb / (vec3<f32>(1.0, 1.0, 1.0) + params.highlightCompression * maxRgb);
-
-  rgb = pow(max(rgb, vec3<f32>(0.0, 0.0, 0.0)), vec3<f32>(1.0 / params.gamma));
-  rgb = clamp(rgb, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
 
   let sR = u32(clamp(round(linear_to_srgb(rgb.x) * 255.0), 0.0, 255.0));
   let sG = u32(clamp(round(linear_to_srgb(rgb.y) * 255.0), 0.0, 255.0));
@@ -1315,14 +1294,10 @@ function createPainterlySharpenParams(width: number, height: number, sharpenAmou
   return new Uint8Array(buffer);
 }
 
-function createPainterlyPostParams(pixelCount: number, saturation: number, contrast: number, gamma: number, highlightCompression: number): Uint8Array {
-  const buffer = new ArrayBuffer(32);
+function createPainterlyPostParams(pixelCount: number): Uint8Array {
+  const buffer = new ArrayBuffer(16);
   const view = new DataView(buffer);
   view.setUint32(0, pixelCount, true);
-  view.setFloat32(16, saturation, true);
-  view.setFloat32(20, contrast, true);
-  view.setFloat32(24, gamma, true);
-  view.setFloat32(28, highlightCompression, true);
   return new Uint8Array(buffer);
 }
 
@@ -1691,7 +1666,6 @@ export class WebGpuProcessor {
     tensorSigma: number;
     sharpenAmount: number; edgeThresholdLow: number; edgeThresholdHigh: number;
     detailSigma: number;
-    saturation: number; contrast: number; gamma: number; highlightCompression: number;
   }): Promise<ImageData> {
     const { width, height } = imageData;
     const pixelCount = width * height;
@@ -1740,7 +1714,7 @@ export class WebGpuProcessor {
       GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
     );
     const postParams = createBufferWithData(
-      this.device, createPainterlyPostParams(pixelCount, config.saturation, config.contrast, config.gamma, config.highlightCompression),
+      this.device, createPainterlyPostParams(pixelCount),
       GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
     );
 

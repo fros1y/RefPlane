@@ -40,10 +40,6 @@ export function strengthToMethodParams(
         edgeThresholdLow: 0.03,
         edgeThresholdHigh: 0.12,
         detailSigma: lerp(1.0, 2.0, s),
-        saturation: lerp(1.0, 1.15, s),
-        contrast: lerp(1.0, 1.15, s),
-        gamma: 1.0,
-        highlightCompression: lerp(0.0, 0.25, s),
       };
     }
     case 'slic':

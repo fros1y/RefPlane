@@ -238,24 +238,6 @@ export function SimplifySettings({ config, onChange }: Props) {
                 />
                 <span class="settings-value">{config.painterly.sharpenAmount.toFixed(2)}</span>
               </div>
-              <div class="settings-row" title="Color saturation boost">
-                <label>Saturation</label>
-                <input
-                  type="range" min="0.5" max="1.5" step="0.02" value={config.painterly.saturation}
-                  onInput={e => onChange({ painterly: { ...config.painterly, saturation: Number((e.target as HTMLInputElement).value) } })}
-                  style="flex:1"
-                />
-                <span class="settings-value">{config.painterly.saturation.toFixed(2)}</span>
-              </div>
-              <div class="settings-row" title="Tonal contrast">
-                <label>Contrast</label>
-                <input
-                  type="range" min="0.5" max="1.5" step="0.02" value={config.painterly.contrast}
-                  onInput={e => onChange({ painterly: { ...config.painterly, contrast: Number((e.target as HTMLInputElement).value) } })}
-                  style="flex:1"
-                />
-                <span class="settings-value">{config.painterly.contrast.toFixed(2)}</span>
-              </div>
             </>
           )}
         </>

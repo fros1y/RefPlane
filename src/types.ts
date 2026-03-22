@@ -63,7 +63,6 @@ export interface SimplifyConfig {
     tensorSigma: number;
     sharpenAmount: number; edgeThresholdLow: number; edgeThresholdHigh: number;
     detailSigma: number;
-    saturation: number; contrast: number; gamma: number; highlightCompression: number;
   };
   slic: { detail: number; compactness: number };
 }
