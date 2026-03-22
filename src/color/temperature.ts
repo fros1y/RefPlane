@@ -14,8 +14,9 @@ export function getTemperature(lab: OKLab): Temperature {
   return "neutral";
 }
 
-export function applyTemperatureMap(imageData: ImageData, intensity: number): ImageData {
+export function applyTemperatureMap(imageData: ImageData, intensity: number, classificationSource?: ImageData): ImageData {
   const { data, width, height } = imageData;
+  const classData = classificationSource?.data ?? data;
   const out = new ImageData(width, height);
   const outData = out.data;
   const warmColor = [244, 146, 84];
@@ -24,7 +25,7 @@ export function applyTemperatureMap(imageData: ImageData, intensity: number): Im
 
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-    const lab = rgbToOklab(r, g, b);
+    const lab = rgbToOklab(classData[i], classData[i + 1], classData[i + 2]);
     const lch = oklabToOklch(lab);
     const temp = getTemperature(lab);
     const luma = Math.max(0, Math.min(1, lab.L));

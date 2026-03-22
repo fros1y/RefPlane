@@ -19,12 +19,12 @@ describe('strengthToMethodParams', () => {
 
   it('maps strength 0 to minimum kuwahara params', () => {
     const result = strengthToMethodParams('kuwahara', 0);
-    expect(result).toEqual({ kernelSize: 3 });
+    expect(result).toEqual({ kernelSize: 3, passes: 1, sharpness: 8, sectors: 8 });
   });
 
   it('maps strength 1 to maximum kuwahara params', () => {
     const result = strengthToMethodParams('kuwahara', 1);
-    expect(result).toEqual({ kernelSize: 15 });
+    expect(result).toEqual({ kernelSize: 15, passes: 1, sharpness: 8, sectors: 8 });
   });
 
   it('maps strength 0 to minimum mean-shift params', () => {

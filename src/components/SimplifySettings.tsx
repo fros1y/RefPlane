@@ -28,7 +28,7 @@ export function SimplifySettings({ config, onChange }: Props) {
         update.bilateral = { sigmaS: params.sigmaS, sigmaR: params.sigmaR };
         break;
       case 'kuwahara':
-        update.kuwahara = { kernelSize: params.kernelSize };
+        update.kuwahara = { kernelSize: params.kernelSize, passes: params.passes, sharpness: params.sharpness, sectors: params.sectors as 4 | 8 };
         break;
       case 'mean-shift':
         update.meanShift = { spatialRadius: params.spatialRadius, colorRadius: params.colorRadius };
@@ -54,7 +54,7 @@ export function SimplifySettings({ config, onChange }: Props) {
         update.bilateral = { sigmaS: params.sigmaS, sigmaR: params.sigmaR };
         break;
       case 'kuwahara':
-        update.kuwahara = { kernelSize: params.kernelSize };
+        update.kuwahara = { ...config.kuwahara, kernelSize: params.kernelSize };
         break;
       case 'mean-shift':
         update.meanShift = { spatialRadius: params.spatialRadius, colorRadius: params.colorRadius };
@@ -131,15 +131,45 @@ export function SimplifySettings({ config, onChange }: Props) {
           )}
 
           {showAdvanced && config.method === 'kuwahara' && (
-            <div class="settings-row" title="Size of the sampling quadrants">
-              <label>Kernel</label>
-              <input
-                type="range" min="3" max="15" step="2" value={config.kuwahara.kernelSize}
-                onInput={e => onChange({ kuwahara: { kernelSize: Number((e.target as HTMLInputElement).value) } })}
-                style="flex:1"
-              />
-              <span class="settings-value">{config.kuwahara.kernelSize}</span>
-            </div>
+            <>
+              <div class="settings-row" title="Size of the sampling regions">
+                <label>Kernel</label>
+                <input
+                  type="range" min="3" max="15" step="2" value={config.kuwahara.kernelSize}
+                  onInput={e => onChange({ kuwahara: { ...config.kuwahara, kernelSize: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.kuwahara.kernelSize}</span>
+              </div>
+              <div class="settings-row" title="Classic 4 rectangular quadrants or generalized 8 overlapping circular sectors (smoother, fewer artifacts)">
+                <label>Sectors</label>
+                <select
+                  value={config.kuwahara.sectors}
+                  onChange={e => onChange({ kuwahara: { ...config.kuwahara, sectors: Number((e.target as HTMLSelectElement).value) as 4 | 8 } })}
+                >
+                  <option value={4}>4 (Classic)</option>
+                  <option value={8}>8 (Generalized)</option>
+                </select>
+              </div>
+              <div class="settings-row" title="Number of filter passes — more passes produce a stronger painterly effect">
+                <label>Passes</label>
+                <input
+                  type="range" min="1" max="5" step="1" value={config.kuwahara.passes}
+                  onInput={e => onChange({ kuwahara: { ...config.kuwahara, passes: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.kuwahara.passes}</span>
+              </div>
+              <div class="settings-row" title="Sector blending — low values blend softly across regions, high values select the single smoothest sector">
+                <label>Sharpness</label>
+                <input
+                  type="range" min="1" max="20" step="1" value={config.kuwahara.sharpness}
+                  onInput={e => onChange({ kuwahara: { ...config.kuwahara, sharpness: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.kuwahara.sharpness}</span>
+              </div>
+            </>
           )}
 
           {showAdvanced && config.method === 'mean-shift' && (

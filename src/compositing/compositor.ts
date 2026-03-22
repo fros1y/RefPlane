@@ -6,6 +6,7 @@ import type { GridConfig, EdgeConfig } from '../types';
 export interface CompositeOptions {
   showTemperatureMap?: boolean;
   tempIntensity?: number;
+  originalSource?: ImageData;
   isolatedBand?: number | null;
   isolationThresholds?: number[];
 }
@@ -40,7 +41,7 @@ export function composite(
   let displayData = source;
 
   if (options?.showTemperatureMap) {
-    displayData = applyTemperatureMap(displayData, options.tempIntensity ?? 1.0);
+    displayData = applyTemperatureMap(displayData, options.tempIntensity ?? 1.0, options.originalSource);
   }
 
   if (options?.isolatedBand != null && options.isolationThresholds) {
@@ -61,7 +62,11 @@ export function composite(
       (gridScratch.getContext('2d') as CanvasRenderingContext2D).clearRect(0, 0, width, height);
     }
     renderGrid(gridScratch, width, height, gridConfig);
+    if (gridConfig.lineStyle === 'auto-contrast') {
+      ctx.globalCompositeOperation = 'difference';
+    }
     ctx.drawImage(gridScratch, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
   }
 }
 

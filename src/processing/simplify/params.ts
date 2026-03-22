@@ -24,7 +24,7 @@ export function strengthToMethodParams(
       return { sigmaS, sigmaR };
     }
     case 'kuwahara':
-      return { kernelSize: Math.round(lerp(3, 15, s)) };
+      return { kernelSize: Math.round(lerp(3, 15, s)), passes: 1, sharpness: 8, sectors: 8 };
     case 'mean-shift':
       return { spatialRadius: lerp(5, 30, s), colorRadius: lerp(10, 50, s) };
     case 'anisotropic':

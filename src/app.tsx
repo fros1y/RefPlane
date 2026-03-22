@@ -87,10 +87,10 @@ const defaultColorConfig: ColorConfig = {
 };
 
 const defaultSimplifyConfig: SimplifyConfig = {
-  method: 'slic',
+  method: 'none',
   strength: 0.5,
   bilateral: { sigmaS: 10, sigmaR: 0.15 },
-  kuwahara: { kernelSize: 7 },
+  kuwahara: { kernelSize: 7, passes: 1, sharpness: 8, sectors: 8 },
   meanShift: { spatialRadius: 15, colorRadius: 25 },
   anisotropic: { iterations: 10, kappa: 20 },
   painterly: {
@@ -437,6 +437,7 @@ export function App() {
   const compositeOptions = {
     showTemperatureMap: showTemperatureMap.value,
     tempIntensity: 1.0,
+    originalSource: (simplifiedImageData.value ?? sourceImageData.value) ?? undefined,
     isolatedBand: activeMode.value === 'color' ? isolatedBand.value : null,
     isolationThresholds: colorConfig.value.thresholds,
   };

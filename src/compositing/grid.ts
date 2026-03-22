@@ -37,12 +37,9 @@ export function renderGrid(
 
   const drawLine = (x1: number, y1: number, x2: number, y2: number) => {
     if (lineStyle === 'auto-contrast') {
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x1 + 0.5, y1 + 0.5); ctx.lineTo(x2 + 0.5, y2 + 0.5); ctx.stroke();
     } else {
       ctx.strokeStyle = lineStyle === 'custom' ? customColor : lineStyle;
       ctx.lineWidth = 1;

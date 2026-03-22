@@ -7,7 +7,7 @@ import { slicFilter } from './slic';
 
 interface SimplifyGpuProcessor {
   bilateralRgb(imageData: ImageData, sigmaS: number, sigmaR: number): Promise<ImageData>;
-  kuwahara(imageData: ImageData, kernelSize: number): Promise<ImageData>;
+  kuwahara(imageData: ImageData, kernelSize: number, passes: number, sharpness: number, sectors: number): Promise<ImageData>;
   meanShift(imageData: ImageData, spatialRadius: number, colorRadius: number): Promise<ImageData>;
   anisotropic(imageData: ImageData, iterations: number, kappa: number): Promise<ImageData>;
   painterly(imageData: ImageData, params: SimplifyConfig['painterly']): Promise<ImageData>;
@@ -37,14 +37,20 @@ export async function runSimplify(
       if (gpu) {
         try {
           onProgress?.(5);
-          const result = await gpu.kuwahara(imageData, config.kuwahara.kernelSize);
+          const result = await gpu.kuwahara(
+            imageData,
+            config.kuwahara.kernelSize,
+            config.kuwahara.passes,
+            config.kuwahara.sharpness,
+            config.kuwahara.sectors,
+          );
           onProgress?.(100);
           return result;
         } catch (error) {
           void error;
         }
       }
-      return kuwaharaFilter(imageData, config.kuwahara.kernelSize, onProgress, abortSignal);
+      return kuwaharaFilter(imageData, config.kuwahara.kernelSize, onProgress, abortSignal, config.kuwahara.passes, config.kuwahara.sharpness, config.kuwahara.sectors);
     case 'mean-shift':
       if (gpu) {
         try {

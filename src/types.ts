@@ -54,7 +54,7 @@ export interface SimplifyConfig {
   method: SimplifyMethod;
   strength: number;
   bilateral: { sigmaS: number; sigmaR: number };
-  kuwahara: { kernelSize: number };
+  kuwahara: { kernelSize: number; passes: number; sharpness: number; sectors: 4 | 8 };
   meanShift: { spatialRadius: number; colorRadius: number };
   anisotropic: { iterations: number; kappa: number };
   painterly: {
