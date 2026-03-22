@@ -29,6 +29,23 @@ export function strengthToMethodParams(
       return { spatialRadius: lerp(5, 30, s), colorRadius: lerp(10, 50, s) };
     case 'anisotropic':
       return { iterations: Math.round(lerp(1, 30, s)), kappa: lerp(30, 10, s) };
+    case 'painterly': {
+      return {
+        radius: lerp(4, 12, s),
+        q: lerp(4, 12, s),
+        alpha: lerp(0.5, 2.0, s),
+        zeta: lerp(1.5, 0.8, s),
+        tensorSigma: lerp(1.0, 3.0, s),
+        sharpenAmount: lerp(0.15, 0.5, s),
+        edgeThresholdLow: 0.03,
+        edgeThresholdHigh: 0.12,
+        detailSigma: lerp(1.0, 2.0, s),
+        saturation: lerp(1.0, 1.15, s),
+        contrast: lerp(1.0, 1.15, s),
+        gamma: 1.0,
+        highlightCompression: lerp(0.0, 0.25, s),
+      };
+    }
     case 'none':
     default:
       return {};

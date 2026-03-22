@@ -13,6 +13,7 @@ const methodLabels: Record<SimplifyMethod, string> = {
   'kuwahara': 'Kuwahara',
   'mean-shift': 'Mean-Shift',
   'anisotropic': 'Anisotropic',
+  'painterly': 'Painterly',
 };
 
 export function SimplifySettings({ config, onChange }: Props) {
@@ -34,6 +35,9 @@ export function SimplifySettings({ config, onChange }: Props) {
       case 'anisotropic':
         update.anisotropic = { iterations: params.iterations, kappa: params.kappa };
         break;
+      case 'painterly':
+        update.painterly = params as SimplifyConfig['painterly'];
+        break;
     }
     onChange(update);
   };
@@ -53,6 +57,9 @@ export function SimplifySettings({ config, onChange }: Props) {
         break;
       case 'anisotropic':
         update.anisotropic = { iterations: params.iterations, kappa: params.kappa };
+        break;
+      case 'painterly':
+        update.painterly = params as SimplifyConfig['painterly'];
         break;
     }
     onChange(update);
@@ -170,6 +177,47 @@ export function SimplifySettings({ config, onChange }: Props) {
                   style="flex:1"
                 />
                 <span class="settings-value">{config.anisotropic.kappa}</span>
+              </div>
+            </>
+          )}
+
+          {showAdvanced && config.method === 'painterly' && (
+            <>
+              <div class="settings-row" title="Filter kernel radius — larger = more abstraction">
+                <label>Radius</label>
+                <input
+                  type="range" min="3" max="15" step="1" value={config.painterly.radius}
+                  onInput={e => onChange({ painterly: { ...config.painterly, radius: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.painterly.radius}</span>
+              </div>
+              <div class="settings-row" title="Edge sharpening intensity">
+                <label>Sharpen</label>
+                <input
+                  type="range" min="0" max="1" step="0.05" value={config.painterly.sharpenAmount}
+                  onInput={e => onChange({ painterly: { ...config.painterly, sharpenAmount: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.painterly.sharpenAmount.toFixed(2)}</span>
+              </div>
+              <div class="settings-row" title="Color saturation boost">
+                <label>Saturation</label>
+                <input
+                  type="range" min="0.5" max="1.5" step="0.02" value={config.painterly.saturation}
+                  onInput={e => onChange({ painterly: { ...config.painterly, saturation: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.painterly.saturation.toFixed(2)}</span>
+              </div>
+              <div class="settings-row" title="Tonal contrast">
+                <label>Contrast</label>
+                <input
+                  type="range" min="0.5" max="1.5" step="0.02" value={config.painterly.contrast}
+                  onInput={e => onChange({ painterly: { ...config.painterly, contrast: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.painterly.contrast.toFixed(2)}</span>
               </div>
             </>
           )}

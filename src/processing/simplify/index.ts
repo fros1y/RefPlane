@@ -9,6 +9,7 @@ interface SimplifyGpuProcessor {
   kuwahara(imageData: ImageData, kernelSize: number): Promise<ImageData>;
   meanShift(imageData: ImageData, spatialRadius: number, colorRadius: number): Promise<ImageData>;
   anisotropic(imageData: ImageData, iterations: number, kappa: number): Promise<ImageData>;
+  painterly(imageData: ImageData, params: SimplifyConfig['painterly']): Promise<ImageData>;
 }
 
 export async function runSimplify(
@@ -79,6 +80,18 @@ export async function runSimplify(
         onProgress,
         abortSignal,
       );
+    case 'painterly':
+      if (gpu) {
+        try {
+          onProgress?.(5);
+          const result = await gpu.painterly(imageData, config.painterly);
+          onProgress?.(100);
+          return result;
+        } catch (error) {
+          void error;
+        }
+      }
+      return imageData;
     case 'none':
     default:
       return imageData;

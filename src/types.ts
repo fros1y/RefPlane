@@ -48,7 +48,7 @@ export interface ColorConfig {
   minRegionSize: "off" | "small" | "medium" | "large";
 }
 
-export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic";
+export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly";
 
 export interface SimplifyConfig {
   method: SimplifyMethod;
@@ -57,6 +57,13 @@ export interface SimplifyConfig {
   kuwahara: { kernelSize: number };
   meanShift: { spatialRadius: number; colorRadius: number };
   anisotropic: { iterations: number; kappa: number };
+  painterly: {
+    radius: number; q: number; alpha: number; zeta: number;
+    tensorSigma: number;
+    sharpenAmount: number; edgeThresholdLow: number; edgeThresholdHigh: number;
+    detailSigma: number;
+    saturation: number; contrast: number; gamma: number; highlightCompression: number;
+  };
 }
 
 export interface AppState {

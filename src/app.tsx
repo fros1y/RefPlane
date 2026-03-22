@@ -93,6 +93,13 @@ const defaultSimplifyConfig: SimplifyConfig = {
   kuwahara: { kernelSize: 7 },
   meanShift: { spatialRadius: 15, colorRadius: 25 },
   anisotropic: { iterations: 10, kappa: 20 },
+  painterly: {
+    radius: 8, q: 8, alpha: 1.0, zeta: 1.0,
+    tensorSigma: 2.0,
+    sharpenAmount: 0.35, edgeThresholdLow: 0.03, edgeThresholdHigh: 0.12,
+    detailSigma: 1.5,
+    saturation: 1.08, contrast: 1.08, gamma: 1.0, highlightCompression: 0.15,
+  },
 };
 
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);

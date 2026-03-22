@@ -670,6 +670,351 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+const srgbToLinearShader = /* wgsl */`
+struct LinearParams {
+  pixelCount: u32,
+};
+
+@group(0) @binding(0) var<storage, read> src: array<u32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<vec4<f32>>;
+@group(0) @binding(2) var<uniform> params: LinearParams;
+
+fn srgb_to_linear(c: f32) -> f32 {
+  if (c <= 0.04045) {
+    return c / 12.92;
+  }
+  return pow((c + 0.055) / 1.055, 2.4);
+}
+
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.pixelCount) { return; }
+  let pixel = src[idx];
+  let r = f32(pixel & 0xffu) / 255.0;
+  let g = f32((pixel >> 8u) & 0xffu) / 255.0;
+  let b = f32((pixel >> 16u) & 0xffu) / 255.0;
+  let a = f32((pixel >> 24u) & 0xffu) / 255.0;
+  dst[idx] = vec4<f32>(srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b), a);
+}
+`;
+
+const painterlyTensorShader = /* wgsl */`
+struct TensorParams {
+  width: u32,
+  height: u32,
+  pixelCount: u32,
+  _pad0: u32,
+  tensorSigma: f32,
+  _pad1: f32,
+  _pad2: f32,
+  _pad3: f32,
+};
+
+@group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst: array<vec4<f32>>;
+@group(0) @binding(2) var<uniform> params: TensorParams;
+
+fn fetch_luma(x: i32, y: i32, w: i32, h: i32) -> f32 {
+  let cx = clamp(x, 0, w - 1);
+  let cy = clamp(y, 0, h - 1);
+  let c = src[u32(cy * w + cx)].xyz;
+  return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.pixelCount) { return; }
+
+  let w = i32(params.width);
+  let h = i32(params.height);
+  let px = i32(idx % params.width);
+  let py = i32(idx / params.width);
+
+  let radius = max(1, i32(ceil(params.tensorSigma * 2.0)));
+  let sigma2 = max(params.tensorSigma * params.tensorSigma, 0.01);
+
+  var j11 = 0.0;
+  var j12 = 0.0;
+  var j22 = 0.0;
+  var gradSum = 0.0;
+  var wSum = 0.0;
+
+  for (var dy = -radius; dy <= radius; dy = dy + 1) {
+    for (var dx = -radius; dx <= radius; dx = dx + 1) {
+      let dist2 = f32(dx * dx + dy * dy);
+      let gw = exp(-dist2 / (2.0 * sigma2));
+      let nx = px + dx;
+      let ny = py + dy;
+      let gx = fetch_luma(nx + 1, ny, w, h) - fetch_luma(nx - 1, ny, w, h);
+      let gy = fetch_luma(nx, ny + 1, w, h) - fetch_luma(nx, ny - 1, w, h);
+      j11 = j11 + gw * gx * gx;
+      j12 = j12 + gw * gx * gy;
+      j22 = j22 + gw * gy * gy;
+      gradSum = gradSum + gw * sqrt(gx * gx + gy * gy);
+      wSum = wSum + gw;
+    }
+  }
+
+  j11 = j11 / wSum;
+  j12 = j12 / wSum;
+  j22 = j22 / wSum;
+  gradSum = gradSum / wSum;
+
+  let trace = j11 + j22;
+  let det = j11 * j22 - j12 * j12;
+  let disc = sqrt(max(0.0, trace * trace / 4.0 - det));
+  let lambda1 = trace / 2.0 + disc;
+  let lambda2 = trace / 2.0 - disc;
+
+  var dir: vec2<f32>;
+  if (abs(j12) > 1e-6) {
+    dir = normalize(vec2<f32>(lambda1 - j22, j12));
+  } else {
+    if (j11 > j22) {
+      dir = vec2<f32>(1.0, 0.0);
+    } else {
+      dir = vec2<f32>(0.0, 1.0);
+    }
+  }
+
+  let anisotropy = (lambda1 - lambda2) / (lambda1 + lambda2 + 1e-6);
+  dst[idx] = vec4<f32>(dir.x, dir.y, anisotropy, gradSum);
+}
+`;
+
+const painterlyAkfShader = /* wgsl */`
+struct AkfParams {
+  width: u32,
+  height: u32,
+  pixelCount: u32,
+  _pad0: u32,
+  radius: f32,
+  q: f32,
+  alpha: f32,
+  zeta: f32,
+};
+
+@group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> tensorTex: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read_write> dst: array<vec4<f32>>;
+@group(0) @binding(3) var<uniform> params: AkfParams;
+
+const PI: f32 = 3.14159265;
+const TAU: f32 = 6.28318530;
+
+fn luma(c: vec3<f32>) -> f32 {
+  return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+fn angular_dist(a: f32, b: f32) -> f32 {
+  var d = a - b;
+  if (d > PI) { d = d - TAU; }
+  if (d < -PI) { d = d + TAU; }
+  return abs(d);
+}
+
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.pixelCount) { return; }
+
+  let w = i32(params.width);
+  let h = i32(params.height);
+  let px = i32(idx % params.width);
+  let py = i32(idx / params.width);
+
+  let t = tensorTex[idx];
+  let dir = vec2<f32>(t.x, t.y);
+  let perp = vec2<f32>(-t.y, t.x);
+  let A = t.z;
+
+  let major = params.radius * (1.0 + params.alpha * A);
+  let minor = max(params.radius / (1.0 + params.alpha * A), 1.0);
+  let scanR = i32(ceil(major));
+
+  var sR: array<f32, 8>;
+  var sG: array<f32, 8>;
+  var sB: array<f32, 8>;
+  var sL: array<f32, 8>;
+  var sL2: array<f32, 8>;
+  var sW: array<f32, 8>;
+
+  for (var dy = -scanR; dy <= scanR; dy = dy + 1) {
+    let ny = py + dy;
+    if (ny < 0 || ny >= h) { continue; }
+    for (var dx = -scanR; dx <= scanR; dx = dx + 1) {
+      let nx = px + dx;
+      if (nx < 0 || nx >= w) { continue; }
+
+      let offset = vec2<f32>(f32(dx), f32(dy));
+      let u = dot(offset, dir) / major;
+      let v = dot(offset, perp) / minor;
+      let r2 = u * u + v * v;
+      if (r2 > 1.0) { continue; }
+
+      let si = u32(ny * w + nx);
+      let color = src[si].xyz;
+      let l = luma(color);
+
+      let radialBase = max(0.0, 1.0 - r2);
+      let radialW = radialBase * radialBase;
+      let theta = atan2(v, u);
+
+      for (var k = 0u; k < 8u; k = k + 1u) {
+        let center = -PI + (f32(k) + 0.5) * TAU / 8.0;
+        let phi = angular_dist(theta, center);
+        let angBase = max(0.0, 1.0 - phi / params.zeta);
+        let angW = angBase * angBase;
+        let weight = radialW * angW;
+        if (weight > 0.0) {
+          sR[k] = sR[k] + weight * color.x;
+          sG[k] = sG[k] + weight * color.y;
+          sB[k] = sB[k] + weight * color.z;
+          sL[k] = sL[k] + weight * l;
+          sL2[k] = sL2[k] + weight * l * l;
+          sW[k] = sW[k] + weight;
+        }
+      }
+    }
+  }
+
+  var totalR = 0.0;
+  var totalG = 0.0;
+  var totalB = 0.0;
+  var totalW = 0.0;
+  for (var k = 0u; k < 8u; k = k + 1u) {
+    if (sW[k] > 0.0) {
+      let mR = sR[k] / sW[k];
+      let mG = sG[k] / sW[k];
+      let mB = sB[k] / sW[k];
+      let mL = sL[k] / sW[k];
+      let variance = max(0.0, sL2[k] / sW[k] - mL * mL);
+      let wk = 1.0 / pow(1e-6 + variance, params.q * 0.5);
+      totalR = totalR + wk * mR;
+      totalG = totalG + wk * mG;
+      totalB = totalB + wk * mB;
+      totalW = totalW + wk;
+    }
+  }
+
+  if (totalW > 0.0) {
+    dst[idx] = vec4<f32>(totalR / totalW, totalG / totalW, totalB / totalW, src[idx].w);
+  } else {
+    dst[idx] = src[idx];
+  }
+}
+`;
+
+const painterlySharpenShader = /* wgsl */`
+struct SharpenParams {
+  width: u32,
+  height: u32,
+  pixelCount: u32,
+  _pad0: u32,
+  sharpenAmount: f32,
+  edgeThresholdLow: f32,
+  edgeThresholdHigh: f32,
+  detailSigma: f32,
+};
+
+@group(0) @binding(0) var<storage, read> akf: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> tensorTex: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read_write> dst: array<vec4<f32>>;
+@group(0) @binding(3) var<uniform> params: SharpenParams;
+
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.pixelCount) { return; }
+
+  let w = i32(params.width);
+  let h = i32(params.height);
+  let px = i32(idx % params.width);
+  let py = i32(idx / params.width);
+
+  let center = akf[idx].xyz;
+  let radius = max(1, i32(ceil(params.detailSigma * 2.0)));
+  let sigma2 = max(params.detailSigma * params.detailSigma, 0.01);
+
+  var blurred = vec3<f32>(0.0, 0.0, 0.0);
+  var wSum = 0.0;
+  for (var dy = -radius; dy <= radius; dy = dy + 1) {
+    let ny = clamp(py + dy, 0, h - 1);
+    for (var dx = -radius; dx <= radius; dx = dx + 1) {
+      let nx = clamp(px + dx, 0, w - 1);
+      let gw = exp(-f32(dx * dx + dy * dy) / (2.0 * sigma2));
+      blurred = blurred + gw * akf[u32(ny * w + nx)].xyz;
+      wSum = wSum + gw;
+    }
+  }
+  blurred = blurred / wSum;
+
+  let detail = center - blurred;
+  let t = tensorTex[idx];
+  let gradMag = t.w;
+  let aniso = t.z;
+  let edgeMask = smoothstep(params.edgeThresholdLow, params.edgeThresholdHigh, gradMag) * mix(0.5, 1.0, aniso);
+
+  let sharpened = max(vec3<f32>(0.0, 0.0, 0.0), center + params.sharpenAmount * edgeMask * detail);
+  dst[idx] = vec4<f32>(sharpened, akf[idx].w);
+}
+`;
+
+const painterlyPostColorShader = /* wgsl */`
+struct PostParams {
+  pixelCount: u32,
+  _pad0: u32,
+  _pad1: u32,
+  _pad2: u32,
+  saturation: f32,
+  contrast: f32,
+  gamma: f32,
+  highlightCompression: f32,
+};
+
+@group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(2) var<uniform> params: PostParams;
+
+fn luma(c: vec3<f32>) -> f32 {
+  return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+fn linear_to_srgb(c: f32) -> f32 {
+  if (c <= 0.0031308) {
+    return c * 12.92;
+  }
+  return 1.055 * pow(c, 1.0 / 2.4) - 0.055;
+}
+
+@compute @workgroup_size(${WORKGROUP_SIZE})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.pixelCount) { return; }
+
+  var rgb = src[idx].xyz;
+  let alpha = src[idx].w;
+
+  let l = luma(rgb);
+  rgb = mix(vec3<f32>(l, l, l), rgb, params.saturation);
+  rgb = (rgb - vec3<f32>(0.5, 0.5, 0.5)) * params.contrast + vec3<f32>(0.5, 0.5, 0.5);
+
+  let maxRgb = max(rgb, vec3<f32>(0.0, 0.0, 0.0));
+  rgb = maxRgb / (vec3<f32>(1.0, 1.0, 1.0) + params.highlightCompression * maxRgb);
+
+  rgb = pow(max(rgb, vec3<f32>(0.0, 0.0, 0.0)), vec3<f32>(1.0 / params.gamma));
+  rgb = clamp(rgb, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
+
+  let sR = u32(clamp(round(linear_to_srgb(rgb.x) * 255.0), 0.0, 255.0));
+  let sG = u32(clamp(round(linear_to_srgb(rgb.y) * 255.0), 0.0, 255.0));
+  let sB = u32(clamp(round(linear_to_srgb(rgb.z) * 255.0), 0.0, 255.0));
+  let a = u32(clamp(round(alpha * 255.0), 0.0, 255.0));
+  dst[idx] = sR | (sG << 8u) | (sB << 16u) | (a << 24u);
+}
+`;
+
 function imageDataToPackedRgba(imageData: ImageData): Uint32Array {
   const { data, width, height } = imageData;
   const packed = new Uint32Array(width * height);
@@ -796,6 +1141,53 @@ function createKMeansParams(numPixels: number, k: number, lWeight: number): Uint
   return new Uint8Array(buffer);
 }
 
+function createPainterlyTensorParams(width: number, height: number, tensorSigma: number): Uint8Array {
+  const buffer = new ArrayBuffer(32);
+  const view = new DataView(buffer);
+  view.setUint32(0, width, true);
+  view.setUint32(4, height, true);
+  view.setUint32(8, width * height, true);
+  view.setFloat32(16, tensorSigma, true);
+  return new Uint8Array(buffer);
+}
+
+function createPainterlyAkfParams(width: number, height: number, radius: number, q: number, alpha: number, zeta: number): Uint8Array {
+  const buffer = new ArrayBuffer(32);
+  const view = new DataView(buffer);
+  view.setUint32(0, width, true);
+  view.setUint32(4, height, true);
+  view.setUint32(8, width * height, true);
+  view.setFloat32(16, radius, true);
+  view.setFloat32(20, q, true);
+  view.setFloat32(24, alpha, true);
+  view.setFloat32(28, zeta, true);
+  return new Uint8Array(buffer);
+}
+
+function createPainterlySharpenParams(width: number, height: number, sharpenAmount: number, edgeThresholdLow: number, edgeThresholdHigh: number, detailSigma: number): Uint8Array {
+  const buffer = new ArrayBuffer(32);
+  const view = new DataView(buffer);
+  view.setUint32(0, width, true);
+  view.setUint32(4, height, true);
+  view.setUint32(8, width * height, true);
+  view.setFloat32(16, sharpenAmount, true);
+  view.setFloat32(20, edgeThresholdLow, true);
+  view.setFloat32(24, edgeThresholdHigh, true);
+  view.setFloat32(28, detailSigma, true);
+  return new Uint8Array(buffer);
+}
+
+function createPainterlyPostParams(pixelCount: number, saturation: number, contrast: number, gamma: number, highlightCompression: number): Uint8Array {
+  const buffer = new ArrayBuffer(32);
+  const view = new DataView(buffer);
+  view.setUint32(0, pixelCount, true);
+  view.setFloat32(16, saturation, true);
+  view.setFloat32(20, contrast, true);
+  view.setFloat32(24, gamma, true);
+  view.setFloat32(28, highlightCompression, true);
+  return new Uint8Array(buffer);
+}
+
 function alignTo(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
 }
@@ -829,6 +1221,11 @@ export class WebGpuProcessor {
   private readonly anisotropicPipeline: WebGpuComputePipeline;
   private readonly sobelPipeline: WebGpuComputePipeline;
   private readonly kMeansAssignPipeline: WebGpuComputePipeline;
+  private readonly srgbToLinearPipeline: WebGpuComputePipeline;
+  private readonly painterlyTensorPipeline: WebGpuComputePipeline;
+  private readonly painterlyAkfPipeline: WebGpuComputePipeline;
+  private readonly painterlySharpenPipeline: WebGpuComputePipeline;
+  private readonly painterlyPostColorPipeline: WebGpuComputePipeline;
 
   private constructor(private readonly device: WebGpuDevice) {
     this.grayscalePipeline = this.device.createComputePipeline({
@@ -898,6 +1295,41 @@ export class WebGpuProcessor {
       layout: 'auto',
       compute: {
         module: this.device.createShaderModule({ code: kMeansAssignShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.srgbToLinearPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: srgbToLinearShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.painterlyTensorPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: painterlyTensorShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.painterlyAkfPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: painterlyAkfShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.painterlySharpenPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: painterlySharpenShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.painterlyPostColorPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: painterlyPostColorShader }),
         entryPoint: 'main',
       },
     });
@@ -1105,6 +1537,81 @@ export class WebGpuProcessor {
     const result = new Uint32Array(await readBackBuffer(this.device, srcBuffer, packed.byteLength));
     destroyBuffers(srcBuffer, dstBuffer, paramsBuffer);
     return packedRgbaToImageData(result, imageData.width, imageData.height);
+  }
+
+  async painterly(imageData: ImageData, config: {
+    radius: number; q: number; alpha: number; zeta: number;
+    tensorSigma: number;
+    sharpenAmount: number; edgeThresholdLow: number; edgeThresholdHigh: number;
+    detailSigma: number;
+    saturation: number; contrast: number; gamma: number; highlightCompression: number;
+  }): Promise<ImageData> {
+    const { width, height } = imageData;
+    const pixelCount = width * height;
+    const packed = imageDataToPackedRgba(imageData);
+    const floatBufSize = pixelCount * 16;
+
+    const srcPackedBuf = createBufferWithData(
+      this.device, packed,
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+    const linearBuf = this.device.createBuffer({
+      size: floatBufSize,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+    const tensorBuf = this.device.createBuffer({
+      size: floatBufSize,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+    const akfBuf = this.device.createBuffer({
+      size: floatBufSize,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+    const sharpenBuf = this.device.createBuffer({
+      size: floatBufSize,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+    const dstPackedBuf = this.device.createBuffer({
+      size: packed.byteLength,
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+
+    const linearizeParams = createBufferWithData(
+      this.device, createPixelCountParams(pixelCount),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+    const tensorParams = createBufferWithData(
+      this.device, createPainterlyTensorParams(width, height, config.tensorSigma),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+    const akfParams = createBufferWithData(
+      this.device, createPainterlyAkfParams(width, height, config.radius, config.q, config.alpha, config.zeta),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+    const sharpenParams = createBufferWithData(
+      this.device, createPainterlySharpenParams(width, height, config.sharpenAmount, config.edgeThresholdLow, config.edgeThresholdHigh, config.detailSigma),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+    const postParams = createBufferWithData(
+      this.device, createPainterlyPostParams(pixelCount, config.saturation, config.contrast, config.gamma, config.highlightCompression),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+
+    // Pass 0: sRGB → Linear
+    this.runCompute(this.srgbToLinearPipeline, [srcPackedBuf, linearBuf, linearizeParams], pixelCount);
+    // Pass 1: Structure Tensor
+    this.runCompute(this.painterlyTensorPipeline, [linearBuf, tensorBuf, tensorParams], pixelCount);
+    // Pass 2: Anisotropic Kuwahara Filter
+    this.runCompute(this.painterlyAkfPipeline, [linearBuf, tensorBuf, akfBuf, akfParams], pixelCount);
+    // Pass 3: Edge-Aware Sharpen
+    this.runCompute(this.painterlySharpenPipeline, [akfBuf, tensorBuf, sharpenBuf, sharpenParams], pixelCount);
+    // Pass 4: Color Post-Processing + Linear → sRGB
+    this.runCompute(this.painterlyPostColorPipeline, [sharpenBuf, dstPackedBuf, postParams], pixelCount);
+
+    const result = new Uint32Array(await readBackBuffer(this.device, dstPackedBuf, packed.byteLength));
+    destroyBuffers(srcPackedBuf, linearBuf, tensorBuf, akfBuf, sharpenBuf, dstPackedBuf,
+      linearizeParams, tensorParams, akfParams, sharpenParams, postParams);
+    return packedRgbaToImageData(result, width, height);
   }
 
   async sobelEdges(imageData: ImageData, sensitivity: number): Promise<ImageData> {
