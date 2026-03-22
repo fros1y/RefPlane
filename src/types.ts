@@ -32,6 +32,7 @@ export interface EdgeConfig {
   lineWeight: number;
   lineKnockoutColor: "black" | "dark-gray" | "custom";
   lineKnockoutCustomColor: string;
+  useOriginal: boolean;
 }
 
 export interface ValueConfig {

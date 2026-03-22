@@ -69,6 +69,14 @@ export function EdgeSettings({ config, onChange }: Props) {
         />
         <span class="settings-value">{config.lineWeight}</span>
       </div>
+
+      <div class="settings-row" title="Detect edges from the original image instead of the simplified version">
+        <label>Source</label>
+        <select value={config.useOriginal ? 'original' : 'simplified'} onChange={e => onChange({ useOriginal: (e.target as HTMLSelectElement).value === 'original' })}>
+          <option value="simplified">Simplified</option>
+          <option value="original">Original</option>
+        </select>
+      </div>
     </div>
   );
 }

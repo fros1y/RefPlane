@@ -7,6 +7,7 @@ describe('OverlayToggles', () => {
     const onGridChange = vi.fn();
     const onEdgeChange = vi.fn();
     const onTemperatureMapChange = vi.fn();
+    const onTempUseOriginalChange = vi.fn();
 
     render(
       <OverlayToggles
@@ -33,11 +34,14 @@ describe('OverlayToggles', () => {
           lineWeight: 2,
           lineKnockoutColor: 'black',
           lineKnockoutCustomColor: '#000000',
+          useOriginal: false,
         }}
         showTemperatureMap={false}
+        tempUseOriginal={false}
         onGridChange={onGridChange}
         onEdgeChange={onEdgeChange}
         onTemperatureMapChange={onTemperatureMapChange}
+        onTempUseOriginalChange={onTempUseOriginalChange}
       />
     );
 

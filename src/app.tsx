@@ -70,6 +70,7 @@ const defaultEdgeConfig: EdgeConfig = {
   lineWeight: 2,
   lineKnockoutColor: 'black',
   lineKnockoutCustomColor: '#000000',
+  useOriginal: false,
 };
 
 const defaultValueConfig: ValueConfig = {
@@ -127,6 +128,7 @@ const showCompare = signal(false);
 const showCropOverlay = signal(false);
 const isolatedBand = signal<number | null>(null);
 const showTemperatureMap = signal(false);
+const tempUseOriginal = signal(false);
 const showInstallBanner = signal(false);
 
 export function App() {
@@ -207,9 +209,10 @@ export function App() {
           }
           // Post edges using the freshly-computed result, not a stale processedImage value.
           if (edgeConfig.value.enabled && sourceImageData.value) {
-            const src = sourceImageData.value;
-            const displaySrc = activeMode.value === 'original' ? src : result;
-            postEdgeRequest(displaySrc, 0);
+            const edgeSrc = edgeConfig.value.useOriginal
+              ? sourceImageData.value
+              : (activeMode.value === 'original' ? sourceImageData.value : result);
+            postEdgeRequest(edgeSrc, 0);
           }
         }
       }
@@ -326,7 +329,8 @@ export function App() {
 
     if (mode === 'original') {
       if (edgeConfig.value.enabled) {
-        postEdgeRequest(src, 0);
+        const edgeSrc = edgeConfig.value.useOriginal ? (sourceImageData.value ?? src) : src;
+        postEdgeRequest(edgeSrc, 0);
       } else {
         latestEdgeRequestIdRef.current = nextRequestId();
         edgeDataSignal.value = null;
@@ -361,10 +365,12 @@ export function App() {
 
   useEffect(() => {
     if (edgeConfig.value.enabled) {
-      const src = simplifiedImageData.value ?? sourceImageData.value;
-      if (!src || !workerRef.current) return;
-      const displaySrc = activeMode.value === 'original' ? src : (processedImage.value ?? src);
-      postEdgeRequest(displaySrc, 80);
+      const simplified = simplifiedImageData.value ?? sourceImageData.value;
+      if (!simplified || !workerRef.current) return;
+      const edgeSrc = edgeConfig.value.useOriginal
+        ? (sourceImageData.value ?? simplified)
+        : (activeMode.value === 'original' ? simplified : (processedImage.value ?? simplified));
+      postEdgeRequest(edgeSrc, 80);
     } else {
       latestEdgeRequestIdRef.current = nextRequestId();
       edgeDataSignal.value = null;
@@ -437,7 +443,7 @@ export function App() {
   const compositeOptions = {
     showTemperatureMap: showTemperatureMap.value,
     tempIntensity: 1.0,
-    originalSource: (simplifiedImageData.value ?? sourceImageData.value) ?? undefined,
+    originalSource: (tempUseOriginal.value ? sourceImageData.value : (simplifiedImageData.value ?? sourceImageData.value)) ?? undefined,
     isolatedBand: activeMode.value === 'color' ? isolatedBand.value : null,
     isolationThresholds: colorConfig.value.thresholds,
   };
@@ -612,9 +618,11 @@ export function App() {
                   gridConfig={gridConfig.value}
                   edgeConfig={edgeConfig.value}
                   showTemperatureMap={showTemperatureMap.value}
+                  tempUseOriginal={tempUseOriginal.value}
                   onGridChange={(cfg) => { gridConfig.value = { ...gridConfig.value, ...cfg }; }}
                   onEdgeChange={(cfg) => { edgeConfig.value = { ...edgeConfig.value, ...cfg }; }}
                   onTemperatureMapChange={(enabled) => { showTemperatureMap.value = enabled; }}
+                  onTempUseOriginalChange={(useOriginal) => { tempUseOriginal.value = useOriginal; }}
                 />
               </section>
 
