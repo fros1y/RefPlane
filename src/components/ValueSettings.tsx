@@ -20,8 +20,7 @@ export function ValueSettings({ config, onChange }: Props) {
     <div class="settings-group">
       <div class="settings-row settings-actions">
         <button
-          class="btn-ghost"
-          style={{ fontSize: '11px', padding: '4px 12px', borderRadius: '999px' }}
+          class="btn-ghost btn-pill"
           onClick={applyNotan}
           title="Set 2-tone Notan preset"
         >

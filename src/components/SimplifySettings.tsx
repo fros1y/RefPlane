@@ -97,24 +97,18 @@ export function SimplifySettings({ config, onChange }: Props) {
             />
           </div>
 
-          <div class="settings-row settings-row-split" title="Merge dark shadow areas into flatter value groups while keeping mids and lights more detailed">
-            <label>Band Merge</label>
-            <div class="settings-toggle-group">
-              <label class="settings-check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(config.shadowMerge)}
-                  onChange={e => onChange({ shadowMerge: (e.target as HTMLInputElement).checked })}
-                />
-                {' '}Shadow Merge
-              </label>
-            </div>
+          <div class="settings-row" title="Merge dark shadow areas into flatter value groups while keeping mids and lights more detailed">
+            <label>Shadow Merge</label>
+            <input
+              type="checkbox"
+              checked={Boolean(config.shadowMerge)}
+              onChange={e => onChange({ shadowMerge: (e.target as HTMLInputElement).checked })}
+            />
           </div>
 
           <div class="settings-row settings-actions">
             <button
-              class="btn-ghost"
-              style={{ fontSize: '11px', padding: '4px 12px', borderRadius: '999px' }}
+              class="btn-ghost btn-pill"
               onClick={() => setShowAdvanced(!showAdvanced)}
             >
               {showAdvanced ? '▼ Advanced' : '▶ Advanced'}

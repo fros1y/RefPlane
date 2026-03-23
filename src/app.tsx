@@ -307,11 +307,8 @@ export function App() {
 
         <aside class="control-panel">
           <div class="panel-header">
-            <span class="panel-eyebrow">RefPlane Studio</span>
-            <div class="panel-title-row">
-              <h1 class="panel-title">RefPlane</h1>
-              <span class="panel-title-tag">{activeModeLabel} Mode</span>
-            </div>
+            <span class="panel-brand">RefPlane</span>
+            <span class="panel-title-tag">{activeModeLabel}</span>
           </div>
 
           <div class="panel-body scrollable">
@@ -321,7 +318,6 @@ export function App() {
                   <div class="panel-card-title">
                     <strong>Simplify</strong>
                   </div>
-                  <span class="panel-chip">Pre</span>
                 </div>
                 <SimplifySettings
                   config={simplifyConfig.value}
@@ -334,7 +330,6 @@ export function App() {
                   <div class="panel-card-title">
                     <strong>Modes</strong>
                   </div>
-                  <span class="panel-chip">View</span>
                 </div>
                 <ModeBar
                   activeMode={activeMode.value}
@@ -348,7 +343,6 @@ export function App() {
                     <div class="panel-card-title">
                       <strong>Adjustments</strong>
                     </div>
-                    <span class="panel-chip">Edit</span>
                   </div>
                   {activeMode.value === 'value' && (
                     <ValueSettings
@@ -387,7 +381,6 @@ export function App() {
                   <div class="panel-card-title">
                     <strong>Overlays</strong>
                   </div>
-                  <span class="panel-chip">Tools</span>
                 </div>
                 <OverlayToggles
                   gridConfig={gridConfig.value}
@@ -401,31 +394,25 @@ export function App() {
                 />
               </section>
 
-              <section class="panel-card">
-                <div class="panel-card-header">
-                  <div class="panel-card-title">
-                    <strong>Actions</strong>
-                  </div>
-                  <span class="panel-chip">Output</span>
-                </div>
-                <ActionBar
-                  hasImage={sourceImageData.value !== null}
-                  showCrop={showCropOverlay.value}
-                  showCompare={showCompare.value}
-                  onOpenImage={() => fileInputRef.current?.click()}
-                  onCrop={() => {
-                    if (sourceImageData.value) {
-                      showCropOverlay.value = !showCropOverlay.value;
-                      showCompare.value = false;
-                    } else {
-                      fileInputRef.current?.click();
-                    }
-                  }}
-                  onCompare={() => { showCompare.value = !showCompare.value; showCropOverlay.value = false; }}
-                  onExport={handleExport}
-                />
-              </section>
             </div>
+          </div>
+          <div class="panel-footer">
+            <ActionBar
+              hasImage={sourceImageData.value !== null}
+              showCrop={showCropOverlay.value}
+              showCompare={showCompare.value}
+              onOpenImage={() => fileInputRef.current?.click()}
+              onCrop={() => {
+                if (sourceImageData.value) {
+                  showCropOverlay.value = !showCropOverlay.value;
+                  showCompare.value = false;
+                } else {
+                  fileInputRef.current?.click();
+                }
+              }}
+              onCompare={() => { showCompare.value = !showCompare.value; showCropOverlay.value = false; }}
+              onExport={handleExport}
+            />
           </div>
         </aside>
       </div>

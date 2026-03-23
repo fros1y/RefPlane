@@ -181,6 +181,13 @@ label {
   border-color: var(--border);
 }
 
+.btn-pill {
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  min-height: 28px;
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -274,41 +281,18 @@ label {
 }
 
 .panel-header {
-  padding: 10px 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 248, 239, 0.08);
 }
 
-.panel-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--cool);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.panel-eyebrow::before {
-  content: "";
-  width: 28px;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.6;
-}
-
-.panel-title-row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.panel-title {
+.panel-brand {
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-  font-size: clamp(26px, 3vw, 34px);
-  line-height: 1;
-  letter-spacing: -0.03em;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .panel-title-tag {
@@ -332,6 +316,12 @@ label {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.panel-footer {
+  flex-shrink: 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 248, 239, 0.08);
 }
 
 .panel-card {
@@ -1076,7 +1066,7 @@ label {
   }
 
   .panel-header {
-    padding: 8px 8px 14px;
+    padding: 6px 8px;
   }
 
   .mode-bar {
