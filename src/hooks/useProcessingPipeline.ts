@@ -3,7 +3,7 @@ import { useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import type { Mode, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, PlanesConfig, PlaneGuidance } from '../types';
 import { WorkerClient, WorkerRequestError } from '../processing/worker-client';
 import { DepthClient } from '../processing/depth-client';
-import { segmentPlanes } from '../processing/planes';
+import { segmentPlanes, resizeDepthMap } from '../processing/planes';
 import { buildPlaneGuidance } from '../processing/plane-guidance';
 import type { WorkerRequest, WorkerRequestType } from '../processing/worker-protocol';
 
@@ -389,7 +389,17 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     if (!src || !depthClientRef.current) return;
 
     // Only re-run depth if source changed
-    if (depthSourceRef.current === src) return;
+    if (depthSourceRef.current === src) {
+      // Depth already estimated for this source — but guidance may not have been built yet
+      if (requiresPlaneGuidance(simplifyConfig.value) && !planeGuidance.value && depthMap.value) {
+        const depth = depthMap.value;
+        const resized = resizeDepthMap(depth.data, depth.width, depth.height, src.width, src.height);
+        const segmentation = segmentPlanes(resized, src.width, src.height, planesConfig.value);
+        planeGuidance.value = buildPlaneGuidance(segmentation);
+        triggerSimplify(0);
+      }
+      return;
+    }
     depthSourceRef.current = src;
     depthMap.value = null;
     planeGuidance.value = null;
@@ -405,8 +415,12 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
 
         // Auto-extract plane guidance if needed
         if (requiresPlaneGuidance(simplifyConfig.value)) {
-          const segmentation = segmentPlanes(result.depthData, result.depthWidth, result.depthHeight, planesConfig.value);
-          planeGuidance.value = buildPlaneGuidance(segmentation);
+          const imgSrc = sourceImageData.value;
+          if (imgSrc) {
+            const resized = resizeDepthMap(result.depthData, result.depthWidth, result.depthHeight, imgSrc.width, imgSrc.height);
+            const segmentation = segmentPlanes(resized, imgSrc.width, imgSrc.height, planesConfig.value);
+            planeGuidance.value = buildPlaneGuidance(segmentation);
+          }
           triggerSimplify(0);
         }
 

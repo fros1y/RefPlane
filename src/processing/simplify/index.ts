@@ -43,8 +43,9 @@ export async function runSimplify(
         }
       }
       return finalize(await bilateralFilter(imageData, config.bilateral.sigmaS, config.bilateral.sigmaR, onProgress, abortSignal));
-    case 'kuwahara':
-      if (gpu) {
+    case 'kuwahara': {
+      const usePlaneLabels = config.planeGuidance.preserveBoundaries && planeGuidance?.labels;
+      if (gpu && !usePlaneLabels) {
         try {
           onProgress?.(5);
           const result = await gpu.kuwahara(
@@ -68,6 +69,7 @@ export async function runSimplify(
         sectors: config.kuwahara.sectors,
         planeLabels: config.planeGuidance.preserveBoundaries ? planeGuidance?.labels : undefined,
       }));
+    }
     case 'mean-shift':
       if (gpu) {
         try {
