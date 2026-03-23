@@ -24,6 +24,7 @@ function makeConfig(method: SimplifyConfig['method'], strength = 0.5): SimplifyC
       detailSigma: 1.5,
     },
     slic: { detail: 0.55, compactness: 0.15 },
+    planeGuidance: { preserveBoundaries: false },
   };
 }
 

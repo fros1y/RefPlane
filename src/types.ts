@@ -49,6 +49,8 @@ export interface ColorConfig {
   minRegionSize: "off" | "small" | "medium" | "large";
 }
 
+export type PlanesColorMode = 'shading' | 'flat-color';
+
 export type PlanesConfig = {
   planeCount: number;        // 3–30, default 8
   depthSmooth: number;       // 0–10, bilateral smoothing passes on depth map (0 = off)
@@ -56,6 +58,8 @@ export type PlanesConfig = {
   lightAzimuth: number;      // 0–360 degrees, default 225 (top-left)
   lightElevation: number;    // 10–90 degrees, default 45
   minRegionSize: "off" | "small" | "medium" | "large";
+  colorMode: PlanesColorMode;       // 'shading' (directional light) or 'flat-color' (representative color per plane)
+  colorStrategy: PlaneColorStrategy; // used when colorMode === 'flat-color'
 }
 
 export type PlaneColorStrategy = 'average' | 'median' | 'dominant';
@@ -67,7 +71,7 @@ export interface PlaneGuidance {
   planeCount: number;
 }
 
-export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic" | "plane-fill";
+export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic";
 
 export interface SimplifyConfig {
   method: SimplifyMethod;
@@ -84,7 +88,6 @@ export interface SimplifyConfig {
     detailSigma: number;
   };
   slic: { detail: number; compactness: number };
-  planeFill: { colorStrategy: PlaneColorStrategy };
   planeGuidance: { preserveBoundaries: boolean };
 }
 

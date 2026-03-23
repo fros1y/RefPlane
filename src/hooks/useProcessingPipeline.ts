@@ -77,7 +77,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
   }, []);
 
   const requiresPlaneGuidance = useCallback((config: SimplifyConfig) => {
-    return config.method === 'plane-fill' || config.planeGuidance.preserveBoundaries;
+    return config.planeGuidance.preserveBoundaries;
   }, []);
 
   const dispatchWorkerRequest = useCallback(<T extends WorkerRequest,>(

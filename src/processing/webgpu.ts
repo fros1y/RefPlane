@@ -814,7 +814,7 @@ export class WebGpuProcessor {
     return cleanupRegions(quantized, config.minRegionSize);
   }
 
-  async processPlanes(depth: Float32Array, width: number, height: number, config: PlanesConfig): Promise<ImageData> {
+  async processPlanes(depth: Float32Array, width: number, height: number, config: PlanesConfig, sourceImage?: ImageData): Promise<ImageData> {
     const numPixels = width * height;
     const k = config.planeCount;
 
@@ -972,7 +972,7 @@ export class WebGpuProcessor {
       if (changed === 0) break;
     }
 
-    // Step 3: Final shading pass
+    // Step 3: Final output — shading or flat-color
     // Upload final centroids
     const finalCentroidsBuffer = createBufferWithData(
       this.device,
@@ -982,6 +982,20 @@ export class WebGpuProcessor {
 
     // Re-run assignment with final centroids to ensure labels buffer is up to date
     this.runCompute(this.normalClusterPipeline, [normalsBuffer, finalCentroidsBuffer, labelsBuffer, clusterParamsBuffer], numPixels);
+
+    if (config.colorMode === 'flat-color' && sourceImage) {
+      // Read back labels and apply flat-color fill on CPU
+      const labelsU32 = new Uint32Array(await readBackBuffer(this.device, labelsBuffer, numPixels * 4));
+      const labelsU8 = new Uint8Array(numPixels);
+      for (let i = 0; i < numPixels; i++) labelsU8[i] = labelsU32[i];
+
+      destroyBuffers(depthBuffer, normalsBuffer, normalsParamsBuffer, labelsBuffer, clusterParamsBuffer, finalCentroidsBuffer);
+
+      const { flatColorFill } = await import('./planes');
+      const result = flatColorFill(sourceImage, labelsU8, width, height, config.colorStrategy);
+      if (config.minRegionSize === 'off') return result;
+      return cleanupRegions(result, config.minRegionSize);
+    }
 
     const outputBuffer = this.device.createBuffer({
       size: alignTo(numPixels * 4, 4),

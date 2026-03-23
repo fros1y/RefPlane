@@ -105,13 +105,13 @@ async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: n
       );
       if (gpu) {
         const result = await measureStage(stages, 'planes-gpu', () =>
-          gpu.processPlanes(resized, data.imageData.width, data.imageData.height, config)
+          gpu.processPlanes(resized, data.imageData.width, data.imageData.height, config, data.imageData)
         );
         const meta = finalizeMeta(stages, 'gpu', data.imageData, queuedAt, startedAt);
         self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
       } else {
         const result = await measureStage(stages, 'planes-cpu', () =>
-          processPlanes(resized, data.imageData.width, data.imageData.height, config)
+          processPlanes(resized, data.imageData.width, data.imageData.height, config, data.imageData)
         );
         const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
         self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);

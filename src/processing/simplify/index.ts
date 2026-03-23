@@ -4,7 +4,6 @@ import { kuwaharaFilter } from './kuwahara';
 import { meanShiftFilter } from './mean-shift';
 import { anisotropicDiffusion } from './anisotropic';
 import { slicFilter } from './slic';
-import { planeFillFilter } from './plane-fill';
 import { mergeShadows } from './shadow-merge';
 
 interface SimplifyGpuProcessor {
@@ -26,11 +25,6 @@ export async function runSimplify(
   const finalize = (result: ImageData) => (config.shadowMerge ? mergeShadows(result, config.strength) : result);
 
   switch (config.method) {
-    case 'plane-fill':
-      if (!planeGuidance) {
-        throw new Error('Plane guidance required for plane-fill simplification method');
-      }
-      return finalize(planeFillFilter(imageData, planeGuidance, config.planeFill.colorStrategy));
     case 'bilateral':
       if (gpu) {
         try {
