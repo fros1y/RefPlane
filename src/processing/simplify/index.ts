@@ -122,8 +122,10 @@ export async function runSimplify(
         }
       }
       return finalize(imageData);
-    case 'slic':
-      return finalize(await slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal));
+    case 'slic': {
+      const slicPlaneLabels = config.planeGuidance.preserveBoundaries ? planeGuidance?.labels : undefined;
+      return finalize(await slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal, slicPlaneLabels));
+    }
     case 'none':
     default:
       return imageData;

@@ -21,6 +21,7 @@ interface Superpixel {
   L: number; a: number; b: number;
   x: number; y: number;
   count: number;
+  planeLabel: number;
 }
 
 function initSuperpixels(
@@ -28,6 +29,7 @@ function initSuperpixels(
   width: number,
   height: number,
   gridStep: number,
+  planeLabels?: Uint8Array,
 ): Superpixel[] {
   const centers: Superpixel[] = [];
   const halfStep = gridStep / 2;
@@ -43,6 +45,7 @@ function initSuperpixels(
         x: ix,
         y: iy,
         count: 0,
+        planeLabel: planeLabels ? planeLabels[idx] : -1,
       });
     }
   }
@@ -61,6 +64,7 @@ async function slicIterate(
   iterations: number,
   onProgress: ((percent: number) => void) | undefined,
   signal: AbortSignal | undefined,
+  planeLabels?: Uint8Array,
 ): Promise<void> {
   const numPixels = width * height;
   const mOverS = spatialWeight / gridStep;
@@ -84,6 +88,8 @@ async function slicIterate(
       for (let py = yMin; py <= yMax; py++) {
         for (let px = xMin; px <= xMax; px++) {
           const idx = py * width + px;
+          // Skip pixels belonging to a different plane
+          if (planeLabels && planeLabels[idx] !== c.planeLabel) continue;
           const dL = labData[idx * 3] - c.L;
           const da = labData[idx * 3 + 1] - c.a;
           const db = labData[idx * 3 + 2] - c.b;
@@ -138,14 +144,16 @@ async function slicIterate(
     }
   }
 
-  // Assign orphan pixels to nearest center
+  // Assign orphan pixels to nearest center (respecting plane boundaries)
   for (let i = 0; i < numPixels; i++) {
     if (labels[i] >= 0) continue;
     const px = i % width;
     const py = Math.floor(i / width);
+    const pixelPlane = planeLabels ? planeLabels[i] : -1;
     let bestK = 0, bestD = Infinity;
     for (let k = 0; k < centers.length; k++) {
       const c = centers[k];
+      if (planeLabels && c.planeLabel !== pixelPlane) continue;
       const dx = px - c.x, dy = py - c.y;
       const D = dx * dx + dy * dy;
       if (D < bestD) { bestD = D; bestK = k; }
@@ -160,6 +168,7 @@ interface RAGNode {
   L: number; a: number; b: number;
   area: number;
   parent: number;
+  planeLabel: number;
 }
 
 function findRoot(nodes: RAGNode[], i: number): number {
@@ -188,6 +197,8 @@ function buildRAG(
     if (x + 1 < width) {
       const lj = labels[idx + 1];
       if (li !== lj) {
+        // Don't create edges across plane boundaries
+        if (nodes[li].planeLabel !== -1 && nodes[li].planeLabel !== nodes[lj].planeLabel) continue;
         const key = li < lj ? `${li}-${lj}` : `${lj}-${li}`;
         if (!edgeSet.has(key)) {
           const ni = nodes[li], nj = nodes[lj];
@@ -199,6 +210,8 @@ function buildRAG(
     if (idx + width < numPixels) {
       const lj = labels[idx + width];
       if (li !== lj) {
+        // Don't create edges across plane boundaries
+        if (nodes[li].planeLabel !== -1 && nodes[li].planeLabel !== nodes[lj].planeLabel) continue;
         const key = li < lj ? `${li}-${lj}` : `${lj}-${li}`;
         if (!edgeSet.has(key)) {
           const ni = nodes[li], nj = nodes[lj];
@@ -255,6 +268,7 @@ export async function slicFilter(
   compactness: number,
   onProgress?: (percent: number) => void,
   abortSignal?: AbortSignal,
+  planeLabels?: Uint8Array,
 ): Promise<ImageData> {
   const { data, width, height } = imageData;
   const numPixels = width * height;
@@ -277,7 +291,7 @@ export async function slicFilter(
   const spatialWeight = compactnessToSpatialWeight(compactness);
   const mergeThreshold = detailToMergeThreshold(detail);
 
-  const centers = initSuperpixels(labData, width, height, gridStep);
+  const centers = initSuperpixels(labData, width, height, gridStep, planeLabels);
   const labels = new Int32Array(numPixels).fill(-1);
   const distances = new Float32Array(numPixels);
 
@@ -286,6 +300,7 @@ export async function slicFilter(
     centers, labels, distances,
     gridStep, spatialWeight,
     8, onProgress, abortSignal,
+    planeLabels,
   );
 
   throwIfAborted(abortSignal);
@@ -295,6 +310,7 @@ export async function slicFilter(
     L: c.L, a: c.a, b: c.b,
     area: c.count,
     parent: 0,
+    planeLabel: c.planeLabel,
   }));
   for (let i = 0; i < ragNodes.length; i++) ragNodes[i].parent = i;
 
