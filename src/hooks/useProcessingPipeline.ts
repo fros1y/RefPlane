@@ -1,8 +1,10 @@
 import { signal, computed, type Signal, type ReadonlySignal } from '@preact/signals';
 import { useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
-import type { Mode, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, PlanesConfig } from '../types';
+import type { Mode, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, PlanesConfig, PlaneGuidance } from '../types';
 import { WorkerClient, WorkerRequestError } from '../processing/worker-client';
 import { DepthClient } from '../processing/depth-client';
+import { segmentPlanes } from '../processing/planes';
+import { buildPlaneGuidance } from '../processing/plane-guidance';
 import type { WorkerRequest, WorkerRequestType } from '../processing/worker-protocol';
 
 export interface ProcessingPipelineInputs {
@@ -50,8 +52,9 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
   const paletteColors = useMemo(() => signal<string[]>([]), []);
   const swatchBands = useMemo(() => signal<number[]>([]), []);
 
-  // ── Depth estimation state ────────────────────────────────────────────
+  // ── Depth estimation & Plane Guidance state ───────────────────────────
   const depthMap = useMemo(() => signal<{ data: Float32Array; width: number; height: number } | null>(null), []);
+  const planeGuidance = useMemo(() => signal<PlaneGuidance | null>(null), []);
   const depthSourceRef = useRef<ImageData | null>(null);
   const depthClientRef = useRef<DepthClient | null>(null);
   const latestDepthRequestIdRef = useRef(0);
@@ -71,6 +74,10 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
   const nextRequestId = useCallback(() => {
     requestSeqRef.current += 1;
     return requestSeqRef.current;
+  }, []);
+
+  const requiresPlaneGuidance = useCallback((config: SimplifyConfig) => {
+    return config.method === 'plane-fill' || config.planeGuidance.preserveBoundaries;
   }, []);
 
   const dispatchWorkerRequest = useCallback(<T extends WorkerRequest,>(
@@ -276,8 +283,16 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     const worker = workerClientRef.current;
     if (!worker) return;
     const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+    const guidance = planeGuidance.value;
+    const transfer: Transferable[] = [imgCopy.data.buffer];
+    let guidanceCopy: PlaneGuidance | undefined;
+    if (guidance) {
+      const labelsCopy = new Uint8Array(guidance.labels);
+      guidanceCopy = { ...guidance, labels: labelsCopy };
+      transfer.push(labelsCopy.buffer);
+    }
     dispatchWorkerRequest(
-      { type: 'simplify', imageData: imgCopy, config: simplifyConfig.value },
+      { type: 'simplify', imageData: imgCopy, config: simplifyConfig.value, planeGuidance: guidanceCopy },
       'simplify',
       'simplify',
       ({ payload }) => {
@@ -290,24 +305,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
         }
       },
     );
-  }, [dispatchWorkerRequest, simplifyConfig, processingProgress, simplifiedImageData]);
-
-  const triggerSimplify = useCallback((delay = 120) => {
-    if (simplifyTimerRef.current !== null) {
-      window.clearTimeout(simplifyTimerRef.current);
-    }
-    simplifyTimerRef.current = window.setTimeout(() => {
-      simplifyTimerRef.current = null;
-      const src = sourceImageData.value;
-      if (!src) return;
-      if (simplifyConfig.value.method === 'none') {
-        simplifiedImageData.value = src;
-        triggerProcessing(0);
-        return;
-      }
-      postSimplifyRequest(src);
-    }, delay);
-  }, [postSimplifyRequest, sourceImageData, simplifyConfig, simplifiedImageData]);
+  }, [dispatchWorkerRequest, simplifyConfig, processingProgress, simplifiedImageData, planeGuidance]);
 
   const runProcessing = useCallback(() => {
     const src = simplifiedImageData.value;
@@ -337,6 +335,27 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     }, delay);
   }, [runProcessing]);
 
+  const triggerSimplify = useCallback((delay = 120) => {
+    if (simplifyTimerRef.current !== null) {
+      window.clearTimeout(simplifyTimerRef.current);
+    }
+    simplifyTimerRef.current = window.setTimeout(() => {
+      simplifyTimerRef.current = null;
+      const src = sourceImageData.value;
+      if (!src) return;
+      if (simplifyConfig.value.method === 'none') {
+        simplifiedImageData.value = src;
+        triggerProcessing(0);
+        return;
+      }
+      if (requiresPlaneGuidance(simplifyConfig.value) && !planeGuidance.value) {
+        // Will be triggered when plane guidance completes
+        return;
+      }
+      postSimplifyRequest(src);
+    }, delay);
+  }, [postSimplifyRequest, sourceImageData, simplifyConfig, simplifiedImageData, planeGuidance, requiresPlaneGuidance, triggerProcessing]);
+
   // ── Worker lifecycle ──────────────────────────────────────────────────
   useEffect(() => {
     console.log('[Perf] RefPlane timing logs enabled');
@@ -362,9 +381,10 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     };
   }, []);
 
-  // ── Depth estimation trigger (only when planes mode is active) ─────────
+  // ── Depth estimation trigger (planes mode or plane-guided simplify) ────
   useEffect(() => {
-    if (activeMode.value !== 'planes') return;
+    const needsDepth = activeMode.value === 'planes' || requiresPlaneGuidance(simplifyConfig.value);
+    if (!needsDepth) return;
     const src = sourceImageData.value;
     if (!src || !depthClientRef.current) return;
 
@@ -372,6 +392,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     if (depthSourceRef.current === src) return;
     depthSourceRef.current = src;
     depthMap.value = null;
+    planeGuidance.value = null;
 
     const { requestId, promise } = depthClientRef.current.requestDepth(src);
     latestDepthRequestIdRef.current = requestId;
@@ -381,6 +402,14 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       .then((result) => {
         if (requestId !== latestDepthRequestIdRef.current) return; // stale
         depthMap.value = { data: result.depthData, width: result.depthWidth, height: result.depthHeight };
+
+        // Auto-extract plane guidance if needed
+        if (requiresPlaneGuidance(simplifyConfig.value)) {
+          const segmentation = segmentPlanes(result.depthData, result.depthWidth, result.depthHeight, planesConfig.value);
+          planeGuidance.value = buildPlaneGuidance(segmentation);
+          triggerSimplify(0);
+        }
+
         // If planes mode is still active, trigger processing
         if (activeMode.value === 'planes') {
           triggerProcessing(0);
@@ -393,7 +422,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       .finally(() => {
         processingCount.value = Math.max(0, processingCount.value - 1);
       });
-  }, [sourceImageData.value, activeMode.value]);
+  }, [sourceImageData.value, activeMode.value, simplifyConfig.value, requiresPlaneGuidance, planesConfig.value, triggerSimplify, triggerProcessing]);
 
   // ── Reactive processing triggers ──────────────────────────────────────
 

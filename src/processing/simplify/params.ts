@@ -44,6 +44,8 @@ export function strengthToMethodParams(
     }
     case 'slic':
       return { detail: 0.5, compactness: lerp(0.3, 0.7, s) };
+    case 'plane-fill':
+      return {};
     case 'none':
     default:
       return {};

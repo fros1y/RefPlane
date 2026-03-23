@@ -1,9 +1,10 @@
-import type { SimplifyConfig } from '../../types';
+import type { SimplifyConfig, PlaneGuidance } from '../../types';
 import { bilateralFilter } from './bilateral';
 import { kuwaharaFilter } from './kuwahara';
 import { meanShiftFilter } from './mean-shift';
 import { anisotropicDiffusion } from './anisotropic';
 import { slicFilter } from './slic';
+import { planeFillFilter } from './plane-fill';
 import { mergeShadows } from './shadow-merge';
 
 interface SimplifyGpuProcessor {
@@ -20,10 +21,16 @@ export async function runSimplify(
   onProgress?: (percent: number) => void,
   abortSignal?: AbortSignal,
   gpu?: SimplifyGpuProcessor | null,
+  planeGuidance?: PlaneGuidance,
 ): Promise<ImageData> {
   const finalize = (result: ImageData) => (config.shadowMerge ? mergeShadows(result, config.strength) : result);
 
   switch (config.method) {
+    case 'plane-fill':
+      if (!planeGuidance) {
+        throw new Error('Plane guidance required for plane-fill simplification method');
+      }
+      return finalize(planeFillFilter(imageData, planeGuidance, config.planeFill.colorStrategy));
     case 'bilateral':
       if (gpu) {
         try {
@@ -53,7 +60,14 @@ export async function runSimplify(
           void error;
         }
       }
-      return finalize(await kuwaharaFilter(imageData, config.kuwahara.kernelSize, onProgress, abortSignal, config.kuwahara.passes, config.kuwahara.sharpness, config.kuwahara.sectors));
+      return finalize(await kuwaharaFilter(imageData, config.kuwahara.kernelSize, {
+        onProgress,
+        abortSignal,
+        passes: config.kuwahara.passes,
+        sharpness: config.kuwahara.sharpness,
+        sectors: config.kuwahara.sectors,
+        planeLabels: config.planeGuidance.preserveBoundaries ? planeGuidance?.labels : undefined,
+      }));
     case 'mean-shift':
       if (gpu) {
         try {

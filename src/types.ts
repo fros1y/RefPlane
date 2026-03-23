@@ -49,7 +49,7 @@ export interface ColorConfig {
   minRegionSize: "off" | "small" | "medium" | "large";
 }
 
-export interface PlanesConfig {
+export type PlanesConfig = {
   planeCount: number;        // 3–30, default 8
   depthSmooth: number;       // 0–10, bilateral smoothing passes on depth map (0 = off)
   depthScale: number;        // 1–100, amplifies depth differences for normal computation
@@ -58,7 +58,16 @@ export interface PlanesConfig {
   minRegionSize: "off" | "small" | "medium" | "large";
 }
 
-export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic";
+export type PlaneColorStrategy = 'average' | 'median' | 'dominant';
+
+export interface PlaneGuidance {
+  width: number;
+  height: number;
+  labels: Uint8Array;
+  planeCount: number;
+}
+
+export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic" | "plane-fill";
 
 export interface SimplifyConfig {
   method: SimplifyMethod;
@@ -75,6 +84,8 @@ export interface SimplifyConfig {
     detailSigma: number;
   };
   slic: { detail: number; compactness: number };
+  planeFill: { colorStrategy: PlaneColorStrategy };
+  planeGuidance: { preserveBoundaries: boolean };
 }
 
 export interface AppState {

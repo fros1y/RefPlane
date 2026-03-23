@@ -233,14 +233,34 @@ export function resizeDepthMap(
 }
 
 /**
+ * Intermediate plane segmentation result.
+ */
+export interface PlaneSegmentation {
+  labels: Uint8Array;
+  centroids: Float32Array;
+  width: number;
+  height: number;
+}
+
+/**
+ * Segment planes from a depth map.
+ */
+export function segmentPlanes(
+  depth: Float32Array, width: number, height: number, config: PlanesConfig,
+): PlaneSegmentation {
+  const smoothed = bilateralDepthSmooth(depth, width, height, config.depthSmooth);
+  const normals = computeNormals(smoothed, width, height, config.depthScale);
+  const { labels, centroids } = clusterNormals(normals, width, height, config.planeCount);
+  return { labels, centroids, width, height };
+}
+
+/**
  * Full CPU planes pipeline: depth → normals → cluster → shade → cleanup.
  */
 export function processPlanes(
   depth: Float32Array, width: number, height: number, config: PlanesConfig,
 ): ImageData {
-  const smoothed = bilateralDepthSmooth(depth, width, height, config.depthSmooth);
-  const normals = computeNormals(smoothed, width, height, config.depthScale);
-  const { labels, centroids } = clusterNormals(normals, width, height, config.planeCount);
+  const { labels, centroids } = segmentPlanes(depth, width, height, config);
   const shaded = shadePlanes(labels, centroids, width, height, config.lightAzimuth, config.lightElevation);
   return cleanupRegions(shaded, config.minRegionSize);
 }

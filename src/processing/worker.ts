@@ -53,7 +53,7 @@ async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: n
       currentSimplifyController = controller;
       const reporter = createProgressReporter(requestId);
       const result = await measureStage(stages, 'simplify', () =>
-        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal, gpu)
+        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal, gpu, data.planeGuidance)
       );
       const simplifyBackend: ProcessingMeta['backend'] = gpu && data.config.method !== 'none' ? 'gpu' : 'cpu';
       const meta = finalizeMeta(stages, simplifyBackend, data.imageData, queuedAt, startedAt);

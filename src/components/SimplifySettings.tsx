@@ -14,7 +14,8 @@ const methodLabels: Record<SimplifyMethod, string> = {
   'mean-shift': 'Mean-Shift',
   'anisotropic': 'Anisotropic',
   'painterly': 'Painterly',
-  'slic': 'SLIC Planes',
+  'slic': 'SLIC Regions',
+  'plane-fill': 'Plane Fill',
 };
 
 export function SimplifySettings({ config, onChange }: Props) {
@@ -42,6 +43,9 @@ export function SimplifySettings({ config, onChange }: Props) {
       case 'slic':
         update.slic = { detail: params.detail, compactness: params.compactness };
         break;
+      case 'plane-fill':
+        update.planeFill = { colorStrategy: config.planeFill?.colorStrategy ?? 'average' };
+        break;
     }
     onChange(update);
   };
@@ -68,6 +72,9 @@ export function SimplifySettings({ config, onChange }: Props) {
       case 'slic':
         update.slic = { detail: params.detail, compactness: params.compactness };
         break;
+      case 'plane-fill':
+        // No strength-driven params
+        break;
     }
     onChange(update);
   };
@@ -86,7 +93,32 @@ export function SimplifySettings({ config, onChange }: Props) {
         </select>
       </div>
 
-      {config.method !== 'none' && config.method !== 'slic' && (
+      {config.method === 'plane-fill' && (
+        <div class="settings-row" title="Representative color strategy for each plane">
+          <label>Strategy</label>
+          <select
+            value={config.planeFill.colorStrategy}
+            onChange={e => onChange({ planeFill: { ...config.planeFill, colorStrategy: (e.target as HTMLSelectElement).value as any } })}
+          >
+            <option value="average">Average</option>
+            <option value="median">Median</option>
+            <option value="dominant">Dominant</option>
+          </select>
+        </div>
+      )}
+
+      {(config.method === 'kuwahara' || config.method === 'slic') && (
+        <div class="settings-row" title="Respect plane boundaries from depth analysis">
+          <label>Guide Planes</label>
+          <input
+            type="checkbox"
+            checked={config.planeGuidance.preserveBoundaries}
+            onChange={e => onChange({ planeGuidance: { ...config.planeGuidance, preserveBoundaries: (e.target as HTMLInputElement).checked } })}
+          />
+        </div>
+      )}
+
+      {config.method !== 'none' && config.method !== 'slic' && config.method !== 'plane-fill' && (
         <>
           <div class="settings-row" title="Overall simplification intensity">
             <label>Strength</label>
