@@ -9,6 +9,7 @@ import { mergeShadows } from './shadow-merge';
 interface SimplifyGpuProcessor {
   bilateralRgb(imageData: ImageData, sigmaS: number, sigmaR: number): Promise<ImageData>;
   kuwahara(imageData: ImageData, kernelSize: number, passes: number, sharpness: number, sectors: number): Promise<ImageData>;
+  kuwaharaGuided(imageData: ImageData, kernelSize: number, passes: number, sharpness: number, sectors: number, planeLabels: Uint8Array): Promise<ImageData>;
   meanShift(imageData: ImageData, spatialRadius: number, colorRadius: number): Promise<ImageData>;
   anisotropic(imageData: ImageData, iterations: number, kappa: number): Promise<ImageData>;
   painterly(imageData: ImageData, params: SimplifyConfig['painterly']): Promise<ImageData>;
@@ -39,16 +40,25 @@ export async function runSimplify(
       return finalize(await bilateralFilter(imageData, config.bilateral.sigmaS, config.bilateral.sigmaR, onProgress, abortSignal));
     case 'kuwahara': {
       const usePlaneLabels = config.planeGuidance.preserveBoundaries && planeGuidance?.labels;
-      if (gpu && !usePlaneLabels) {
+      if (gpu) {
         try {
           onProgress?.(5);
-          const result = await gpu.kuwahara(
-            imageData,
-            config.kuwahara.kernelSize,
-            config.kuwahara.passes,
-            config.kuwahara.sharpness,
-            config.kuwahara.sectors,
-          );
+          const result = usePlaneLabels
+            ? await gpu.kuwaharaGuided(
+                imageData,
+                config.kuwahara.kernelSize,
+                config.kuwahara.passes,
+                config.kuwahara.sharpness,
+                config.kuwahara.sectors,
+                planeGuidance!.labels,
+              )
+            : await gpu.kuwahara(
+                imageData,
+                config.kuwahara.kernelSize,
+                config.kuwahara.passes,
+                config.kuwahara.sharpness,
+                config.kuwahara.sectors,
+              );
           onProgress?.(100);
           return finalize(result);
         } catch (error) {

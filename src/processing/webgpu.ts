@@ -20,6 +20,7 @@ import depthToNormalsShader from './shaders/depth-to-normals.wgsl?raw';
 import bilateralDepthShader from './shaders/bilateral-depth.wgsl?raw';
 import normalClusterShader from './shaders/normal-cluster.wgsl?raw';
 import planeShadingShader from './shaders/plane-shading.wgsl?raw';
+import kuwaharaGuidedShader from './shaders/kuwahara-guided.wgsl?raw';
 
 const WORKGROUP_SIZE = 64;
 const GPUBufferUsageRef = (globalThis as any).GPUBufferUsage;
@@ -246,6 +247,7 @@ export class WebGpuProcessor {
   private readonly bilateralDepthPipeline: WebGpuComputePipeline;
   private readonly normalClusterPipeline: WebGpuComputePipeline;
   private readonly planeShadingPipeline: WebGpuComputePipeline;
+  private readonly kuwaharaGuidedPipeline: WebGpuComputePipeline;
 
   private constructor(private readonly device: WebGpuDevice) {
     this.grayscalePipeline = this.device.createComputePipeline({
@@ -378,6 +380,13 @@ export class WebGpuProcessor {
       layout: 'auto',
       compute: {
         module: this.device.createShaderModule({ code: planeShadingShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.kuwaharaGuidedPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: kuwaharaGuidedShader }),
         entryPoint: 'main',
       },
     });
@@ -539,6 +548,49 @@ export class WebGpuProcessor {
 
     const result = new Uint32Array(await readBackBuffer(this.device, srcBuffer, packed.byteLength));
     destroyBuffers(srcBuffer, dstBuffer, paramsBuffer);
+    return packedRgbaToImageData(result, imageData.width, imageData.height);
+  }
+
+  async kuwaharaGuided(
+    imageData: ImageData,
+    kernelSize: number,
+    passes: number,
+    sharpness: number,
+    sectors: number,
+    planeLabels: Uint8Array,
+  ): Promise<ImageData> {
+    const pixelCount = imageData.width * imageData.height;
+    const packed = imageDataToPackedRgba(imageData);
+    const bufUsage = GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC | GPUBufferUsageRef.COPY_DST;
+    let srcBuffer = createBufferWithData(this.device, packed, bufUsage);
+    let dstBuffer = this.device.createBuffer({
+      size: packed.byteLength,
+      usage: bufUsage,
+    });
+    const paramsBuffer = createBufferWithData(
+      this.device,
+      createKuwaharaParams(imageData.width, imageData.height, kernelSize, sharpness, sectors),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+
+    // Upload plane labels as u32 array for shader compatibility
+    const labelsU32 = new Uint32Array(pixelCount);
+    for (let i = 0; i < pixelCount; i++) labelsU32[i] = planeLabels[i];
+    const labelsBuffer = createBufferWithData(
+      this.device,
+      labelsU32,
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+
+    for (let i = 0; i < passes; i++) {
+      this.runCompute(this.kuwaharaGuidedPipeline, [srcBuffer, dstBuffer, paramsBuffer, labelsBuffer], pixelCount);
+      const temp = srcBuffer;
+      srcBuffer = dstBuffer;
+      dstBuffer = temp;
+    }
+
+    const result = new Uint32Array(await readBackBuffer(this.device, srcBuffer, packed.byteLength));
+    destroyBuffers(srcBuffer, dstBuffer, paramsBuffer, labelsBuffer);
     return packedRgbaToImageData(result, imageData.width, imageData.height);
   }
 
