@@ -1,4 +1,4 @@
-export type Mode = "original" | "grayscale" | "value" | "color";
+export type Mode = "original" | "grayscale" | "value" | "color" | "planes";
 export type EdgeMethod = "canny" | "sobel";
 export type EdgeCompositeMode = "lines-over" | "edges-only" | "multiply" | "knockout";
 export type LineStyle = "auto-contrast" | "black" | "white" | "custom";
@@ -46,6 +46,14 @@ export interface ColorConfig {
   colorsPerBand: number;
   warmCoolEmphasis: number;
   thresholds: number[];
+  minRegionSize: "off" | "small" | "medium" | "large";
+}
+
+export interface PlanesConfig {
+  planeCount: number;        // 3–30, default 8
+  depthScale: number;        // 1–100, amplifies depth differences for normal computation
+  lightAzimuth: number;      // 0–360 degrees, default 225 (top-left)
+  lightElevation: number;    // 10–90 degrees, default 45
   minRegionSize: "off" | "small" | "medium" | "large";
 }
 

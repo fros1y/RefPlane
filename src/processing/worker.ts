@@ -4,6 +4,7 @@ import { processValueStudy } from './value-study';
 import { processColorRegions } from './color-regions';
 import { cannyEdges, sobelEdges } from './edges';
 import { toGrayscale } from './grayscale';
+import { processPlanes, resizeDepthMap } from './planes';
 import { runSimplify } from './simplify/index';
 import { createProgressReporter } from './progress';
 import { getWebGpuProcessor } from './webgpu';
@@ -97,6 +98,24 @@ async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: n
         : await measureStage(stages, 'grayscale-cpu', () => toGrayscale(data.imageData));
       const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
+    } else if (type === 'planes') {
+      const { depthMap, depthWidth, depthHeight, config } = data;
+      const resized = await measureStage(stages, 'resize-depth', () =>
+        resizeDepthMap(depthMap, depthWidth, depthHeight, data.imageData.width, data.imageData.height)
+      );
+      if (gpu) {
+        const result = await measureStage(stages, 'planes-gpu', () =>
+          gpu.processPlanes(resized, data.imageData.width, data.imageData.height, config)
+        );
+        const meta = finalizeMeta(stages, 'gpu', data.imageData, queuedAt, startedAt);
+        self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
+      } else {
+        const result = await measureStage(stages, 'planes-cpu', () =>
+          processPlanes(resized, data.imageData.width, data.imageData.height, config)
+        );
+        const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
+        self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
+      }
     }
   } catch (err) {
     const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);

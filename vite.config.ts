@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: './',
+  optimizeDeps: {
+    exclude: ['@huggingface/transformers'],
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

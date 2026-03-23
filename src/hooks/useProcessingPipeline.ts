@@ -1,7 +1,8 @@
 import { signal, computed, type Signal, type ReadonlySignal } from '@preact/signals';
 import { useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
-import type { Mode, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig } from '../types';
+import type { Mode, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, PlanesConfig } from '../types';
 import { WorkerClient, WorkerRequestError } from '../processing/worker-client';
+import { DepthClient } from '../processing/depth-client';
 import type { WorkerRequest, WorkerRequestType } from '../processing/worker-protocol';
 
 export interface ProcessingPipelineInputs {
@@ -11,6 +12,7 @@ export interface ProcessingPipelineInputs {
   valueConfig: Signal<ValueConfig>;
   colorConfig: Signal<ColorConfig>;
   edgeConfig: Signal<EdgeConfig>;
+  planesConfig: Signal<PlanesConfig>;
   onError?: (message: string) => void;
 }
 
@@ -34,6 +36,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     valueConfig,
     colorConfig,
     edgeConfig,
+    planesConfig,
     onError,
   } = inputs;
 
@@ -46,6 +49,12 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
   const isProcessing = useMemo(() => computed(() => processingCount.value > 0), [processingCount]);
   const paletteColors = useMemo(() => signal<string[]>([]), []);
   const swatchBands = useMemo(() => signal<number[]>([]), []);
+
+  // ── Depth estimation state ────────────────────────────────────────────
+  const depthMap = useMemo(() => signal<{ data: Float32Array; width: number; height: number } | null>(null), []);
+  const depthSourceRef = useRef<ImageData | null>(null);
+  const depthClientRef = useRef<DepthClient | null>(null);
+  const latestDepthRequestIdRef = useRef(0);
 
   // ── Internal refs ─────────────────────────────────────────────────────
   const workerClientRef = useRef<WorkerClient | null>(null);
@@ -179,6 +188,42 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
           swatchBands.value = payload.paletteBands ?? [];
         },
       );
+    } else if (mode === 'planes') {
+      const depth = depthMap.value;
+      if (!depth) return; // depth not ready yet — will be triggered when depth completes
+      const imgCopy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      const depthCopy = new Float32Array(depth.data);
+      const requestId = nextRequestId();
+      latestMainRequestIdRef.current = requestId;
+      processingCount.value++;
+
+      const request = {
+        type: 'planes' as const,
+        imageData: imgCopy,
+        depthMap: depthCopy,
+        depthWidth: depth.width,
+        depthHeight: depth.height,
+        config: planesConfig.value,
+      };
+
+      const { promise } = workerClientRef.current!.request(request, {
+        requestId,
+        transfer: [imgCopy.data.buffer, depthCopy.buffer],
+      });
+
+      promise
+        .then((response) => {
+          if (response.requestId !== latestMainRequestIdRef.current) return;
+          processingProgress.value = null;
+          processedImage.value = response.payload.result;
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg !== 'AbortError') onError?.(msg);
+        })
+        .finally(() => {
+          processingCount.value = Math.max(0, processingCount.value - 1);
+        });
     } else {
       latestMainRequestIdRef.current = nextRequestId();
       processedImage.value = null;
@@ -191,11 +236,15 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     activeMode,
     valueConfig,
     colorConfig,
+    planesConfig,
+    depthMap,
     processedImage,
     paletteColors,
     swatchBands,
     dispatchWorkerRequest,
     processingProgress,
+    processingCount,
+    onError,
   ]);
 
   const postEdgeRequest = useCallback((src: ImageData, delay = 80) => {
@@ -297,6 +346,10 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     const worker = new Worker(new URL('../processing/worker.ts', import.meta.url), { type: 'module' });
     workerClientRef.current = new WorkerClient(worker);
 
+    depthClientRef.current = new DepthClient((stage, percent) => {
+      processingProgress.value = { stage, percent };
+    });
+
     return () => {
       if (processingTimerRef.current !== null) window.clearTimeout(processingTimerRef.current);
       if (edgeTimerRef.current !== null) window.clearTimeout(edgeTimerRef.current);
@@ -304,8 +357,43 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       requestTimingsRef.current.clear();
       workerClientRef.current?.terminate();
       workerClientRef.current = null;
+      depthClientRef.current?.terminate();
+      depthClientRef.current = null;
     };
   }, []);
+
+  // ── Depth estimation trigger (only when planes mode is active) ─────────
+  useEffect(() => {
+    if (activeMode.value !== 'planes') return;
+    const src = sourceImageData.value;
+    if (!src || !depthClientRef.current) return;
+
+    // Only re-run depth if source changed
+    if (depthSourceRef.current === src) return;
+    depthSourceRef.current = src;
+    depthMap.value = null;
+
+    const { requestId, promise } = depthClientRef.current.requestDepth(src);
+    latestDepthRequestIdRef.current = requestId;
+    processingCount.value++;
+
+    promise
+      .then((result) => {
+        if (requestId !== latestDepthRequestIdRef.current) return; // stale
+        depthMap.value = { data: result.depthData, width: result.depthWidth, height: result.depthHeight };
+        // If planes mode is still active, trigger processing
+        if (activeMode.value === 'planes') {
+          triggerProcessing(0);
+        }
+      })
+      .catch((err) => {
+        if (requestId !== latestDepthRequestIdRef.current) return;
+        onError?.('Depth estimation failed: ' + (err instanceof Error ? err.message : String(err)));
+      })
+      .finally(() => {
+        processingCount.value = Math.max(0, processingCount.value - 1);
+      });
+  }, [sourceImageData.value, activeMode.value]);
 
   // ── Reactive processing triggers ──────────────────────────────────────
 
@@ -319,7 +407,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
   useEffect(() => {
     if (!simplifiedImageData.value) return;
     triggerProcessing(120);
-  }, [simplifiedImageData.value, activeMode.value, valueConfig.value, colorConfig.value]);
+  }, [simplifiedImageData.value, activeMode.value, valueConfig.value, colorConfig.value, planesConfig.value, depthMap.value]);
 
   useEffect(() => {
     if (edgeConfig.value.enabled) {
@@ -342,7 +430,9 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     paletteColors.value = [];
     swatchBands.value = [];
     edgeData.value = null;
-  }, [simplifiedImageData, processedImage, paletteColors, swatchBands, edgeData]);
+    depthMap.value = null;
+    depthSourceRef.current = null;
+  }, [simplifiedImageData, processedImage, paletteColors, swatchBands, edgeData, depthMap]);
 
   return {
     simplifiedImageData,

@@ -1,4 +1,4 @@
-import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig } from '../types';
+import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig, PlanesConfig } from '../types';
 
 export interface TimingStage {
   label: string;
@@ -19,7 +19,8 @@ export type WorkerRequest =
   | { type: 'value-study'; imageData: ImageData; config: ValueConfig }
   | { type: 'color-regions'; imageData: ImageData; config: ColorConfig }
   | { type: 'edges'; imageData: ImageData; config: EdgeConfig }
-  | { type: 'grayscale'; imageData: ImageData };
+  | { type: 'grayscale'; imageData: ImageData }
+  | { type: 'planes'; imageData: ImageData; depthMap: Float32Array; depthWidth: number; depthHeight: number; config: PlanesConfig };
 
 export type WorkerRequestType = WorkerRequest['type'];
 

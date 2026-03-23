@@ -1,5 +1,5 @@
 import { cleanupRegions } from './regions';
-import type { ValueConfig } from '../types';
+import type { ValueConfig, PlanesConfig } from '../types';
 
 import grayscaleShader from './shaders/grayscale.wgsl?raw';
 import bilateralGrayShader from './shaders/bilateral-gray.wgsl?raw';
@@ -16,6 +16,9 @@ import painterlyTensorShader from './shaders/painterly-tensor.wgsl?raw';
 import painterlyAkfShader from './shaders/painterly-akf.wgsl?raw';
 import painterlySharpenShader from './shaders/painterly-sharpen.wgsl?raw';
 import painterlyPostColorShader from './shaders/painterly-post-color.wgsl?raw';
+import depthToNormalsShader from './shaders/depth-to-normals.wgsl?raw';
+import normalClusterShader from './shaders/normal-cluster.wgsl?raw';
+import planeShadingShader from './shaders/plane-shading.wgsl?raw';
 
 const WORKGROUP_SIZE = 64;
 const GPUBufferUsageRef = (globalThis as any).GPUBufferUsage;
@@ -238,6 +241,9 @@ export class WebGpuProcessor {
   private readonly painterlyAkfPipeline: WebGpuComputePipeline;
   private readonly painterlySharpenPipeline: WebGpuComputePipeline;
   private readonly painterlyPostColorPipeline: WebGpuComputePipeline;
+  private readonly depthToNormalsPipeline: WebGpuComputePipeline;
+  private readonly normalClusterPipeline: WebGpuComputePipeline;
+  private readonly planeShadingPipeline: WebGpuComputePipeline;
 
   private constructor(private readonly device: WebGpuDevice) {
     this.grayscalePipeline = this.device.createComputePipeline({
@@ -342,6 +348,27 @@ export class WebGpuProcessor {
       layout: 'auto',
       compute: {
         module: this.device.createShaderModule({ code: painterlyPostColorShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.depthToNormalsPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: depthToNormalsShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.normalClusterPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: normalClusterShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.planeShadingPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: planeShadingShader }),
         entryPoint: 'main',
       },
     });
@@ -776,6 +803,157 @@ export class WebGpuProcessor {
       return quantized;
     }
     return cleanupRegions(quantized, config.minRegionSize);
+  }
+
+  async processPlanes(depth: Float32Array, width: number, height: number, config: PlanesConfig): Promise<ImageData> {
+    const numPixels = width * height;
+    const k = config.planeCount;
+
+    // Step 1: Upload depth and compute normals on GPU
+    const depthBuffer = createBufferWithData(
+      this.device,
+      depth,
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+    const normalsBuffer = this.device.createBuffer({
+      size: alignTo(numPixels * 3 * 4, 4),
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC | GPUBufferUsageRef.COPY_DST,
+    });
+    const normalsParamsData = new ArrayBuffer(32);
+    const normalsParamsView = new DataView(normalsParamsData);
+    normalsParamsView.setUint32(0, width, true);
+    normalsParamsView.setUint32(4, height, true);
+    normalsParamsView.setUint32(8, numPixels, true);
+    // offset 12 = _pad (u32)
+    normalsParamsView.setFloat32(16, config.depthScale, true);
+    const normalsParamsBuffer = createBufferWithData(
+      this.device,
+      new Uint8Array(normalsParamsData),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+
+    this.runCompute(this.depthToNormalsPipeline, [depthBuffer, normalsBuffer, normalsParamsBuffer], numPixels);
+
+    // Read back normals for CPU centroid initialization
+    const normalsData = new Float32Array(await readBackBuffer(this.device, normalsBuffer, numPixels * 3 * 4));
+
+    // Initialize centroids from evenly-spaced samples
+    const centroids = new Float32Array(k * 3);
+    const step = Math.max(1, Math.floor(numPixels / k));
+    for (let i = 0; i < k; i++) {
+      const src = Math.min(i * step, numPixels - 1) * 3;
+      centroids[i * 3]     = normalsData[src];
+      centroids[i * 3 + 1] = normalsData[src + 1];
+      centroids[i * 3 + 2] = normalsData[src + 2];
+    }
+
+    // Step 2: K-means clustering (GPU assignment, CPU centroid update)
+    const labelsBuffer = this.device.createBuffer({
+      size: alignTo(numPixels * 4, 4),
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+    const clusterParamsData = new ArrayBuffer(16);
+    const clusterParamsView = new DataView(clusterParamsData);
+    clusterParamsView.setUint32(0, numPixels, true);
+    clusterParamsView.setUint32(4, k, true);
+    const clusterParamsBuffer = createBufferWithData(
+      this.device,
+      new Uint8Array(clusterParamsData),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+
+    const maxIterations = 20;
+    let centroidsBuffer: WebGpuBuffer;
+
+    for (let iter = 0; iter < maxIterations; iter++) {
+      // Upload centroids
+      centroidsBuffer = createBufferWithData(
+        this.device,
+        centroids,
+        GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+      );
+
+      this.runCompute(this.normalClusterPipeline, [normalsBuffer, centroidsBuffer, labelsBuffer, clusterParamsBuffer], numPixels);
+
+      // Read labels back
+      const labelsData = new Uint32Array(await readBackBuffer(this.device, labelsBuffer, numPixels * 4));
+      centroidsBuffer.destroy();
+
+      // CPU centroid update
+      const sums = new Float32Array(k * 3);
+      const counts = new Uint32Array(k);
+      let changed = 0;
+
+      for (let i = 0; i < numPixels; i++) {
+        const c = labelsData[i];
+        const b = i * 3;
+        sums[c * 3]     += normalsData[b];
+        sums[c * 3 + 1] += normalsData[b + 1];
+        sums[c * 3 + 2] += normalsData[b + 2];
+        counts[c]++;
+      }
+
+      for (let c = 0; c < k; c++) {
+        if (counts[c] === 0) continue;
+        const cb = c * 3;
+        const mx = sums[cb] / counts[c];
+        const my = sums[cb + 1] / counts[c];
+        const mz = sums[cb + 2] / counts[c];
+        const len = Math.sqrt(mx * mx + my * my + mz * mz);
+        const newX = len > 0 ? mx / len : 0;
+        const newY = len > 0 ? my / len : 0;
+        const newZ = len > 0 ? mz / len : 1;
+        if (newX !== centroids[cb] || newY !== centroids[cb + 1] || newZ !== centroids[cb + 2]) changed++;
+        centroids[cb]     = newX;
+        centroids[cb + 1] = newY;
+        centroids[cb + 2] = newZ;
+      }
+
+      if (changed === 0) break;
+    }
+
+    // Step 3: Final shading pass
+    // Upload final centroids
+    const finalCentroidsBuffer = createBufferWithData(
+      this.device,
+      centroids,
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+
+    // Re-run assignment with final centroids to ensure labels buffer is up to date
+    this.runCompute(this.normalClusterPipeline, [normalsBuffer, finalCentroidsBuffer, labelsBuffer, clusterParamsBuffer], numPixels);
+
+    const outputBuffer = this.device.createBuffer({
+      size: alignTo(numPixels * 4, 4),
+      usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC,
+    });
+
+    const azRad = (config.lightAzimuth * Math.PI) / 180;
+    const elRad = (config.lightElevation * Math.PI) / 180;
+    const shadingParamsData = new ArrayBuffer(32);
+    const shadingParamsView = new DataView(shadingParamsData);
+    shadingParamsView.setUint32(0, numPixels, true);
+    shadingParamsView.setUint32(4, k, true);
+    shadingParamsView.setFloat32(16, Math.cos(elRad) * Math.sin(azRad), true);
+    shadingParamsView.setFloat32(20, -Math.cos(elRad) * Math.cos(azRad), true);
+    shadingParamsView.setFloat32(24, Math.sin(elRad), true);
+    shadingParamsView.setFloat32(28, 0.15, true);
+    const shadingParamsBuffer = createBufferWithData(
+      this.device,
+      new Uint8Array(shadingParamsData),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+
+    this.runCompute(this.planeShadingPipeline, [labelsBuffer, finalCentroidsBuffer, outputBuffer, shadingParamsBuffer], numPixels);
+
+    const resultPacked = new Uint32Array(await readBackBuffer(this.device, outputBuffer, numPixels * 4));
+
+    // Cleanup GPU resources
+    destroyBuffers(depthBuffer, normalsBuffer, normalsParamsBuffer, labelsBuffer, clusterParamsBuffer, finalCentroidsBuffer, outputBuffer, shadingParamsBuffer);
+
+    const result = packedRgbaToImageData(resultPacked, width, height);
+    if (config.minRegionSize === 'off') return result;
+    return cleanupRegions(result, config.minRegionSize);
   }
 
   private runCompute(pipeline: WebGpuComputePipeline, bindings: WebGpuBuffer[], pixelCount: number): void {

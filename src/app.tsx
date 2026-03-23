@@ -5,6 +5,7 @@ import { OverlayToggles } from './components/OverlayToggles';
 import { ImageCanvas } from './components/ImageCanvas';
 import { ValueSettings } from './components/ValueSettings';
 import { ColorSettings } from './components/ColorSettings';
+import { PlanesSettings } from './components/PlanesSettings';
 import { PaletteStrip } from './components/PaletteStrip';
 import { ActionBar } from './components/ActionBar';
 import { CompareView } from './components/CompareView';
@@ -15,7 +16,7 @@ import { exportImage } from './export/export';
 import { initInstallPrompt, triggerInstall } from './pwa/install-prompt';
 import { getDefaultThresholds } from './processing/quantize';
 import { useProcessingPipeline } from './hooks/useProcessingPipeline';
-import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig } from './types';
+import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, PlanesConfig } from './types';
 import './styles/global.css';
 
 // 1600px keeps memory and processing time reasonable on mobile devices
@@ -106,6 +107,14 @@ const defaultSimplifyConfig: SimplifyConfig = {
   slic: { detail: 0.55, compactness: 0.15 },
 };
 
+const defaultPlanesConfig: PlanesConfig = {
+  planeCount: 8,
+  depthScale: 20,
+  lightAzimuth: 225,
+  lightElevation: 45,
+  minRegionSize: 'small',
+};
+
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);
 
 // originalImageData is never overwritten by crop — non-destructive crop derives sourceImageData from it.
@@ -120,6 +129,7 @@ const showCompare = signal(false);
 const showCropOverlay = signal(false);
 const isolatedBand = signal<number | null>(null);
 const showTemperatureMap = signal(false);
+const planesConfig = signal<PlanesConfig>(defaultPlanesConfig);
 const tempUseOriginal = signal(false);
 const showInstallBanner = signal(false);
 
@@ -143,6 +153,7 @@ export function App() {
     valueConfig,
     colorConfig,
     edgeConfig,
+    planesConfig,
     onError: showError,
   });
 
@@ -232,6 +243,7 @@ export function App() {
     grayscale: 'Tonal',
     value: 'Value',
     color: 'Color',
+    planes: 'Planes',
   }[activeMode.value];
   return (
     <div id="app-root" class="app-shell">
@@ -337,7 +349,7 @@ export function App() {
                 />
               </section>
 
-              {(activeMode.value === 'value' || activeMode.value === 'color') && (
+              {(activeMode.value === 'value' || activeMode.value === 'color' || activeMode.value === 'planes') && (
                 <section class="panel-card">
                   <div class="panel-card-header">
                     <div class="panel-card-title">
@@ -354,6 +366,12 @@ export function App() {
                     <ColorSettings
                       config={colorConfig.value}
                       onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
+                    />
+                  )}
+                  {activeMode.value === 'planes' && (
+                    <PlanesSettings
+                      config={planesConfig.value}
+                      onChange={(cfg) => { planesConfig.value = { ...planesConfig.value, ...cfg }; }}
                     />
                   )}
                 </section>
