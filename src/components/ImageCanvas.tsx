@@ -163,15 +163,45 @@ export function ImageCanvas({
       )}
       {isProcessing && (
         <div class="processing-overlay">
-          <div class="spinner" />
+          <ProgressWheel progress={processingProgress} />
         </div>
       )}
-      {processingProgress && (
-        <div class="progress-bar-container">
-          <div class="progress-bar" style={{ width: `${processingProgress.percent}%` }} />
-          <span class="progress-label">{processingProgress.stage}</span>
-        </div>
+    </div>
+  );
+}
+
+const WHEEL_SIZE = 80;
+const WHEEL_STROKE = 5;
+const WHEEL_RADIUS = (WHEEL_SIZE - WHEEL_STROKE) / 2;
+const WHEEL_CIRCUMFERENCE = 2 * Math.PI * WHEEL_RADIUS;
+
+function ProgressWheel({ progress }: { progress?: { stage: string; percent: number } | null }) {
+  const hasPercent = progress != null;
+  const percent = progress?.percent ?? 0;
+  const stage = progress?.stage ?? '';
+  const offset = WHEEL_CIRCUMFERENCE * (1 - percent / 100);
+
+  return (
+    <div class="progress-wheel">
+      <svg width={WHEEL_SIZE} height={WHEEL_SIZE} class={hasPercent ? undefined : 'progress-wheel-spin'}>
+        <circle
+          cx={WHEEL_SIZE / 2} cy={WHEEL_SIZE / 2} r={WHEEL_RADIUS}
+          fill="none" stroke="rgba(255,248,239,0.12)" stroke-width={WHEEL_STROKE}
+        />
+        <circle
+          cx={WHEEL_SIZE / 2} cy={WHEEL_SIZE / 2} r={WHEEL_RADIUS}
+          fill="none" stroke="var(--accent)" stroke-width={WHEEL_STROKE}
+          stroke-linecap="round"
+          stroke-dasharray={hasPercent ? WHEEL_CIRCUMFERENCE : `${WHEEL_CIRCUMFERENCE * 0.25} ${WHEEL_CIRCUMFERENCE * 0.75}`}
+          stroke-dashoffset={hasPercent ? offset : 0}
+          transform={`rotate(-90 ${WHEEL_SIZE / 2} ${WHEEL_SIZE / 2})`}
+          style={hasPercent ? 'transition: stroke-dashoffset 0.15s ease-out' : undefined}
+        />
+      </svg>
+      {hasPercent && (
+        <span class="progress-wheel-percent">{Math.round(percent)}%</span>
       )}
+      {stage && <span class="progress-wheel-label">{stage}</span>}
     </div>
   );
 }

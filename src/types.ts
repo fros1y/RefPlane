@@ -51,6 +51,7 @@ export interface ColorConfig {
 
 export interface PlanesConfig {
   planeCount: number;        // 3–30, default 8
+  depthSmooth: number;       // 0–10, bilateral smoothing passes on depth map (0 = off)
   depthScale: number;        // 1–100, amplifies depth differences for normal computation
   lightAzimuth: number;      // 0–360 degrees, default 225 (top-left)
   lightElevation: number;    // 10–90 degrees, default 45

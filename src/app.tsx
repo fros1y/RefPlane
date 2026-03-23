@@ -109,6 +109,7 @@ const defaultSimplifyConfig: SimplifyConfig = {
 
 const defaultPlanesConfig: PlanesConfig = {
   planeCount: 8,
+  depthSmooth: 3,
   depthScale: 20,
   lightAzimuth: 225,
   lightElevation: 45,

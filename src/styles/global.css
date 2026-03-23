@@ -764,13 +764,30 @@ label {
   text-transform: uppercase;
 }
 
-.spinner {
-  width: 42px;
-  height: 42px;
-  border: 3px solid rgba(255, 248, 239, 0.16);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+/* ── Progress wheel ─────────────────────────────────── */
+.progress-wheel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-wheel-spin {
+  animation: spin 0.9s linear infinite;
+}
+
+.progress-wheel-percent {
+  position: absolute;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 248, 239, 0.9);
+  pointer-events: none;
+}
+
+.progress-wheel-label {
+  font-size: 12px;
+  color: rgba(255, 248, 239, 0.65);
+  text-transform: capitalize;
 }
 
 @keyframes spin {
@@ -784,35 +801,11 @@ label {
   inset: 0;
   background: rgba(10, 11, 13, 0.46);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 50;
   backdrop-filter: blur(4px);
-}
-
-.progress-bar-container {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 20px;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  z-index: 10;
-}
-
-.progress-bar {
-  height: 100%;
-  background: var(--accent, #4a9eff);
-  transition: width 0.1s ease-out;
-}
-
-.progress-label {
-  position: absolute;
-  left: 8px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.8);
 }
 
 .action-bar {

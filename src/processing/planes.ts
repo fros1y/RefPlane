@@ -2,6 +2,67 @@ import type { PlanesConfig } from '../types';
 import { cleanupRegions } from './regions';
 
 /**
+ * Bilateral filter on a single-channel Float32 depth map.
+ * Edge-preserving smoothing: flattens noise while keeping depth discontinuities sharp.
+ */
+export function bilateralDepthSmooth(
+  depth: Float32Array, width: number, height: number, passes: number,
+): Float32Array {
+  if (passes <= 0) return depth;
+
+  const radius = 3;
+  const sigmaS = radius * 0.6667; // spatial sigma
+  const sigmaS2 = 2 * sigmaS * sigmaS;
+
+  // Estimate depth range for adaptive range sigma
+  let minD = Infinity, maxD = -Infinity;
+  for (let i = 0; i < depth.length; i++) {
+    if (depth[i] < minD) minD = depth[i];
+    if (depth[i] > maxD) maxD = depth[i];
+  }
+  const range = maxD - minD || 1;
+  const sigmaR = range * 0.1; // tolerate ~10% of depth range
+  const sigmaR2 = 2 * sigmaR * sigmaR;
+
+  let src = new Float32Array(depth);
+  let dst = new Float32Array(width * height);
+
+  for (let pass = 0; pass < passes; pass++) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const center = src[idx];
+        let sum = 0;
+        let wSum = 0;
+
+        for (let dy = -radius; dy <= radius; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= height) continue;
+          for (let dx = -radius; dx <= radius; dx++) {
+            const nx = x + dx;
+            if (nx < 0 || nx >= width) continue;
+            const sample = src[ny * width + nx];
+            const spatialDist = dx * dx + dy * dy;
+            const valueDiff = center - sample;
+            const w = Math.exp(-spatialDist / sigmaS2 - (valueDiff * valueDiff) / sigmaR2);
+            sum += w * sample;
+            wSum += w;
+          }
+        }
+        dst[idx] = sum / wSum;
+      }
+    }
+    // Ping-pong buffers
+    if (pass < passes - 1) {
+      const tmp = src;
+      src = dst;
+      dst = tmp;
+    }
+  }
+  return dst;
+}
+
+/**
  * Compute surface normals from a depth map using central differences.
  * Returns Float32Array of length width * height * 3 (nx, ny, nz per pixel).
  */
@@ -177,7 +238,8 @@ export function resizeDepthMap(
 export function processPlanes(
   depth: Float32Array, width: number, height: number, config: PlanesConfig,
 ): ImageData {
-  const normals = computeNormals(depth, width, height, config.depthScale);
+  const smoothed = bilateralDepthSmooth(depth, width, height, config.depthSmooth);
+  const normals = computeNormals(smoothed, width, height, config.depthScale);
   const { labels, centroids } = clusterNormals(normals, width, height, config.planeCount);
   const shaded = shadePlanes(labels, centroids, width, height, config.lightAzimuth, config.lightElevation);
   return cleanupRegions(shaded, config.minRegionSize);

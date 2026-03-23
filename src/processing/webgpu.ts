@@ -17,6 +17,7 @@ import painterlyAkfShader from './shaders/painterly-akf.wgsl?raw';
 import painterlySharpenShader from './shaders/painterly-sharpen.wgsl?raw';
 import painterlyPostColorShader from './shaders/painterly-post-color.wgsl?raw';
 import depthToNormalsShader from './shaders/depth-to-normals.wgsl?raw';
+import bilateralDepthShader from './shaders/bilateral-depth.wgsl?raw';
 import normalClusterShader from './shaders/normal-cluster.wgsl?raw';
 import planeShadingShader from './shaders/plane-shading.wgsl?raw';
 
@@ -242,6 +243,7 @@ export class WebGpuProcessor {
   private readonly painterlySharpenPipeline: WebGpuComputePipeline;
   private readonly painterlyPostColorPipeline: WebGpuComputePipeline;
   private readonly depthToNormalsPipeline: WebGpuComputePipeline;
+  private readonly bilateralDepthPipeline: WebGpuComputePipeline;
   private readonly normalClusterPipeline: WebGpuComputePipeline;
   private readonly planeShadingPipeline: WebGpuComputePipeline;
 
@@ -355,6 +357,13 @@ export class WebGpuProcessor {
       layout: 'auto',
       compute: {
         module: this.device.createShaderModule({ code: depthToNormalsShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.bilateralDepthPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: bilateralDepthShader }),
         entryPoint: 'main',
       },
     });
@@ -809,12 +818,63 @@ export class WebGpuProcessor {
     const numPixels = width * height;
     const k = config.planeCount;
 
-    // Step 1: Upload depth and compute normals on GPU
-    const depthBuffer = createBufferWithData(
+    // Step 0: Bilateral depth smoothing (ping-pong on GPU)
+    let depthBuffer = createBufferWithData(
       this.device,
       depth,
       GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
     );
+
+    if (config.depthSmooth > 0) {
+      // Compute adaptive range sigma from depth range
+      let minD = Infinity, maxD = -Infinity;
+      for (let i = 0; i < depth.length; i++) {
+        if (depth[i] < minD) minD = depth[i];
+        if (depth[i] > maxD) maxD = depth[i];
+      }
+      const range = maxD - minD || 1;
+      const radius = 3;
+      const sigmaS = radius * 0.6667;
+      const sigmaR = range * 0.1;
+      const sigmaS2 = 2 * sigmaS * sigmaS;
+      const sigmaR2 = 2 * sigmaR * sigmaR;
+
+      const smoothParamsData = new ArrayBuffer(48);
+      const smoothParamsView = new DataView(smoothParamsData);
+      smoothParamsView.setUint32(0, width, true);
+      smoothParamsView.setUint32(4, height, true);
+      smoothParamsView.setUint32(8, numPixels, true);
+      smoothParamsView.setUint32(12, radius, true);
+      smoothParamsView.setFloat32(16, sigmaS2, true);
+      smoothParamsView.setFloat32(20, sigmaR2, true);
+      const smoothParamsBuffer = createBufferWithData(
+        this.device,
+        new Uint8Array(smoothParamsData),
+        GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+      );
+
+      let dstBuffer = this.device.createBuffer({
+        size: alignTo(numPixels * 4, 4),
+        usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC | GPUBufferUsageRef.COPY_DST,
+      });
+
+      for (let pass = 0; pass < config.depthSmooth; pass++) {
+        this.runCompute(this.bilateralDepthPipeline, [depthBuffer, dstBuffer, smoothParamsBuffer], numPixels);
+        // Ping-pong: swap src/dst for next pass
+        if (pass < config.depthSmooth - 1) {
+          const tmp = depthBuffer;
+          depthBuffer = dstBuffer;
+          dstBuffer = tmp;
+        }
+      }
+
+      // After all passes, result is in dstBuffer; destroy the other
+      depthBuffer.destroy();
+      depthBuffer = dstBuffer;
+      smoothParamsBuffer.destroy();
+    }
+
+    // Step 1: Compute normals on GPU
     const normalsBuffer = this.device.createBuffer({
       size: alignTo(numPixels * 3 * 4, 4),
       usage: GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC | GPUBufferUsageRef.COPY_DST,

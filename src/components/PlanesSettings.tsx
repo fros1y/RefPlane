@@ -18,6 +18,16 @@ export function PlanesSettings({ config, onChange }: Props) {
         <span class="settings-value">{config.planeCount}</span>
       </div>
 
+      <div class="settings-row" title="Bilateral smoothing passes to denoise depth before plane extraction (0 = off)">
+        <label>Depth Smooth</label>
+        <input
+          type="range" min="0" max="10" step="1" value={config.depthSmooth}
+          onInput={e => onChange({ depthSmooth: Number((e.target as HTMLInputElement).value) })}
+          style="flex:1"
+        />
+        <span class="settings-value">{config.depthSmooth === 0 ? 'Off' : config.depthSmooth}</span>
+      </div>
+
       <div class="settings-row" title="Amplify depth differences to reveal more surface detail">
         <label>Depth Scale</label>
         <input
