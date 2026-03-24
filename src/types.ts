@@ -51,7 +51,10 @@ export interface ColorConfig {
 
 export type PlanesColorMode = 'shading' | 'flat-color';
 
+export type DepthModelSize = 'small' | 'base' | 'large' | 'depth-pro';
+
 export type PlanesConfig = {
+  depthModel: DepthModelSize;  // depth model variant: small/base/large (Depth Anything V2) or depth-pro (Apple DepthPro)
   planeCount: number;        // 3–30, default 8
   depthSmooth: number;       // 0–10, bilateral smoothing passes on depth map (0 = off)
   depthScale: number;        // 1–100, amplifies depth differences for normal computation
