@@ -4,6 +4,7 @@ import type { Mode, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, Planes
 import { WorkerClient, WorkerRequestError } from '../processing/worker-client';
 import { DepthClient } from '../processing/depth-client';
 import { SrClient } from '../processing/sr-client';
+import { UltrasharpClient } from '../processing/ultrasharp-client';
 import { segmentPlanes, resizeDepthMap } from '../processing/planes';
 import { buildPlaneGuidance } from '../processing/plane-guidance';
 import type { WorkerRequest, WorkerRequestType } from '../processing/worker-protocol';
@@ -62,6 +63,8 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
   const latestDepthRequestIdRef = useRef(0);
   const srClientRef = useRef<SrClient | null>(null);
   const latestSrRequestIdRef = useRef(0);
+  const ultrasharpClientRef = useRef<UltrasharpClient | null>(null);
+  const latestUltrasharpRequestIdRef = useRef(0);
 
   // ── Internal refs ─────────────────────────────────────────────────────
   const workerClientRef = useRef<WorkerClient | null>(null);
@@ -381,6 +384,35 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
           });
         return;
       }
+      if (simplifyConfig.value.method === 'ultrasharp') {
+        const ultrasharpClient = ultrasharpClientRef.current;
+        if (!ultrasharpClient) return;
+        const { downscale } = simplifyConfig.value.ultrasharp;
+        processingCount.value++;
+        const sentAt = performance.now();
+        const { requestId, promise } = ultrasharpClient.request(src, downscale);
+        latestUltrasharpRequestIdRef.current = requestId;
+        console.log(`[Perf] dispatch ultrasharp#${requestId} | size=${src.width}x${src.height}`);
+        promise
+          .then((result) => {
+            if (requestId !== latestUltrasharpRequestIdRef.current) return;
+            const roundTrip = performance.now() - sentAt;
+            console.log(`[Perf] ultrasharp#${requestId} current | roundTrip=${roundTrip.toFixed(1)}ms`);
+            processingProgress.value = null;
+            simplifiedImageData.value = result;
+            triggerProcessing(0);
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (requestId === latestUltrasharpRequestIdRef.current) {
+              onError?.(msg);
+            }
+          })
+          .finally(() => {
+            processingCount.value = Math.max(0, processingCount.value - 1);
+          });
+        return;
+      }
       if (requiresPlaneGuidance(simplifyConfig.value) && !planeGuidance.value) {
         // Will be triggered when plane guidance completes
         return;
@@ -408,6 +440,12 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       }
     });
 
+    ultrasharpClientRef.current = new UltrasharpClient((stage, percent, requestId) => {
+      if (requestId === latestUltrasharpRequestIdRef.current) {
+        processingProgress.value = { stage, percent };
+      }
+    });
+
     return () => {
       if (processingTimerRef.current !== null) window.clearTimeout(processingTimerRef.current);
       if (edgeTimerRef.current !== null) window.clearTimeout(edgeTimerRef.current);
@@ -419,6 +457,8 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       depthClientRef.current = null;
       srClientRef.current?.terminate();
       srClientRef.current = null;
+      ultrasharpClientRef.current?.terminate();
+      ultrasharpClientRef.current = null;
     };
   }, []);
 

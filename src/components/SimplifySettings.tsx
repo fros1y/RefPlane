@@ -16,6 +16,7 @@ const methodLabels: Record<SimplifyMethod, string> = {
   'painterly': 'Painterly',
   'slic': 'SLIC Regions',
   'super-resolution': 'Super-Res',
+  'ultrasharp': 'UltraSharp 4×',
 };
 
 export function SimplifySettings({ config, onChange }: Props) {
@@ -46,6 +47,9 @@ export function SimplifySettings({ config, onChange }: Props) {
       case 'super-resolution':
         update.superResolution = { scale: params.scale, sharpenAmount: params.sharpenAmount };
         break;
+      case 'ultrasharp':
+        update.ultrasharp = { downscale: params.downscale };
+        break;
     }
     onChange(update);
   };
@@ -74,6 +78,9 @@ export function SimplifySettings({ config, onChange }: Props) {
         break;
       case 'super-resolution':
         update.superResolution = { scale: params.scale, sharpenAmount: params.sharpenAmount };
+        break;
+      case 'ultrasharp':
+        update.ultrasharp = { downscale: params.downscale };
         break;
     }
     onChange(update);
@@ -286,6 +293,20 @@ export function SimplifySettings({ config, onChange }: Props) {
                   style="flex:1"
                 />
                 <span class="settings-value">{config.superResolution.sharpenAmount.toFixed(2)}</span>
+              </div>
+            </>
+          )}
+
+          {showAdvanced && config.method === 'ultrasharp' && (
+            <>
+              <div class="settings-row" title="Downscale factor before the 4× AI upscale — higher values produce a more abstracted result (2×–8×)">
+                <label>Downscale</label>
+                <input
+                  type="range" min="2" max="8" step="1" value={config.ultrasharp.downscale}
+                  onInput={e => onChange({ ultrasharp: { downscale: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.ultrasharp.downscale}×</span>
               </div>
             </>
           )}

@@ -129,6 +129,10 @@ export async function runSimplify(
       // SR is handled by SrClient / sr-worker before reaching this function;
       // return input unchanged so the main worker path is a clean no-op.
       return imageData;
+    case 'ultrasharp':
+      // UltraSharp is handled by UltrasharpClient / ultrasharp-worker before
+      // reaching this function; return input unchanged as a clean no-op.
+      return imageData;
     case 'none':
     default:
       return imageData;

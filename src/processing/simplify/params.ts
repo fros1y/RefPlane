@@ -51,6 +51,13 @@ export function strengthToMethodParams(
       const scale = Math.round(lerp(2, 8, s));
       return { scale, sharpenAmount: 0.3 };
     }
+    case 'ultrasharp': {
+      // Map strength to downscale factor fed into the 4x UltraSharp model.
+      // Low strength = mild 2x downsample before upscaling (subtle simplification);
+      // high strength = 8x downsample (strong abstraction).
+      const downscale = Math.round(lerp(2, 8, s));
+      return { downscale };
+    }
     case 'none':
     default:
       return {};

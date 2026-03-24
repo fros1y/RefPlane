@@ -106,6 +106,7 @@ const defaultSimplifyConfig: SimplifyConfig = {
   },
   slic: { detail: 0.55, compactness: 0.15 },
   superResolution: { scale: 4, sharpenAmount: 0.3 },
+  ultrasharp: { downscale: 4 },
   planeGuidance: { preserveBoundaries: false },
 };
 

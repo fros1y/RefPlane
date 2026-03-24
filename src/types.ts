@@ -71,7 +71,7 @@ export interface PlaneGuidance {
   planeCount: number;
 }
 
-export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic" | "super-resolution";
+export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic" | "super-resolution" | "ultrasharp";
 
 export interface SimplifyConfig {
   method: SimplifyMethod;
@@ -89,6 +89,7 @@ export interface SimplifyConfig {
   };
   slic: { detail: number; compactness: number };
   superResolution: { scale: number; sharpenAmount: number };
+  ultrasharp: { downscale: number };
   planeGuidance: { preserveBoundaries: boolean };
 }
 
