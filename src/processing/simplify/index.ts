@@ -5,7 +5,6 @@ import { meanShiftFilter } from './mean-shift';
 import { anisotropicDiffusion } from './anisotropic';
 import { slicFilter } from './slic';
 import { mergeShadows } from './shadow-merge';
-
 interface SimplifyGpuProcessor {
   bilateralRgb(imageData: ImageData, sigmaS: number, sigmaR: number): Promise<ImageData>;
   kuwahara(imageData: ImageData, kernelSize: number, passes: number, sharpness: number, sectors: number): Promise<ImageData>;
@@ -126,6 +125,10 @@ export async function runSimplify(
       const slicPlaneLabels = config.planeGuidance.preserveBoundaries ? planeGuidance?.labels : undefined;
       return finalize(await slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal, slicPlaneLabels));
     }
+    case 'super-resolution':
+      // SR is handled by SrClient / sr-worker before reaching this function;
+      // return input unchanged so the main worker path is a clean no-op.
+      return imageData;
     case 'none':
     default:
       return imageData;

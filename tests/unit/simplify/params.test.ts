@@ -51,4 +51,16 @@ describe('strengthToMethodParams', () => {
     const result = strengthToMethodParams('none', 0.5);
     expect(result).toEqual({});
   });
+
+  it('maps strength 0 to minimum super-resolution scale (2)', () => {
+    const result = strengthToMethodParams('super-resolution', 0);
+    expect(result.scale).toBe(2);
+    expect(result.sharpenAmount).toBe(0.3);
+  });
+
+  it('maps strength 1 to maximum super-resolution scale (8)', () => {
+    const result = strengthToMethodParams('super-resolution', 1);
+    expect(result.scale).toBe(8);
+    expect(result.sharpenAmount).toBe(0.3);
+  });
 });

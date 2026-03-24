@@ -24,6 +24,7 @@ function makeConfig(method: SimplifyConfig['method'], strength = 0.5): SimplifyC
       detailSigma: 1.5,
     },
     slic: { detail: 0.55, compactness: 0.15 },
+    superResolution: { scale: 2, sharpenAmount: 0.3 },
     planeGuidance: { preserveBoundaries: false },
   };
 }
@@ -61,6 +62,14 @@ describe('runSimplify', () => {
     const result = await runSimplify(image, makeConfig('anisotropic'));
     expect(result.width).toBe(8);
     expect(result.height).toBe(8);
+  });
+
+  it('passes image through unchanged when method is "super-resolution"', async () => {
+    const image = createImageData(8, 8, [128, 128, 128, 255]);
+    const result = await runSimplify(image, makeConfig('super-resolution'));
+    expect(result.width).toBe(8);
+    expect(result.height).toBe(8);
+    expect(result.data).toEqual(image.data);
   });
 
   it('passes progress callback through to algorithm', async () => {

@@ -15,6 +15,7 @@ const methodLabels: Record<SimplifyMethod, string> = {
   'anisotropic': 'Anisotropic',
   'painterly': 'Painterly',
   'slic': 'SLIC Regions',
+  'super-resolution': 'Super-Res',
 };
 
 export function SimplifySettings({ config, onChange }: Props) {
@@ -42,6 +43,9 @@ export function SimplifySettings({ config, onChange }: Props) {
       case 'slic':
         update.slic = { detail: params.detail, compactness: params.compactness };
         break;
+      case 'super-resolution':
+        update.superResolution = { scale: params.scale, sharpenAmount: params.sharpenAmount };
+        break;
     }
     onChange(update);
   };
@@ -67,6 +71,9 @@ export function SimplifySettings({ config, onChange }: Props) {
         break;
       case 'slic':
         update.slic = { detail: params.detail, compactness: params.compactness };
+        break;
+      case 'super-resolution':
+        update.superResolution = { scale: params.scale, sharpenAmount: params.sharpenAmount };
         break;
     }
     onChange(update);
@@ -256,6 +263,29 @@ export function SimplifySettings({ config, onChange }: Props) {
                   style="flex:1"
                 />
                 <span class="settings-value">{config.painterly.sharpenAmount.toFixed(2)}</span>
+              </div>
+            </>
+          )}
+
+          {showAdvanced && config.method === 'super-resolution' && (
+            <>
+              <div class="settings-row" title="Downscale factor — higher values produce a more abstracted result (2×–8×)">
+                <label>Scale</label>
+                <input
+                  type="range" min="2" max="8" step="1" value={config.superResolution.scale}
+                  onInput={e => onChange({ superResolution: { ...config.superResolution, scale: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.superResolution.scale}×</span>
+              </div>
+              <div class="settings-row" title="Edge sharpening applied after bicubic upscaling — 0 = fully soft reconstruction">
+                <label>Sharpen</label>
+                <input
+                  type="range" min="0" max="1" step="0.05" value={config.superResolution.sharpenAmount}
+                  onInput={e => onChange({ superResolution: { ...config.superResolution, sharpenAmount: Number((e.target as HTMLInputElement).value) } })}
+                  style="flex:1"
+                />
+                <span class="settings-value">{config.superResolution.sharpenAmount.toFixed(2)}</span>
               </div>
             </>
           )}
