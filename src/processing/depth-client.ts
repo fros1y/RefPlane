@@ -23,14 +23,14 @@ export class DepthClient {
     this.worker.addEventListener('message', this.handleMessage);
   }
 
-  requestDepth(imageData: ImageData, modelSize?: 'small' | 'base' | 'large' | 'depth-pro'): { requestId: number; promise: Promise<{ depthData: Float32Array; depthWidth: number; depthHeight: number }> } {
+  requestDepth(imageData: ImageData): { requestId: number; promise: Promise<{ depthData: Float32Array; depthWidth: number; depthHeight: number }> } {
     const requestId = ++this.nextId;
     const imgCopy = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
 
     const promise = new Promise<{ depthData: Float32Array; depthWidth: number; depthHeight: number }>((resolve, reject) => {
       this.pending.set(requestId, { resolve, reject });
 
-      const msg: DepthWorkerRequest = { kind: 'estimate', requestId, imageData: imgCopy, modelSize };
+      const msg: DepthWorkerRequest = { kind: 'estimate', requestId, imageData: imgCopy };
       this.worker.postMessage(msg, [imgCopy.data.buffer]);
     });
 

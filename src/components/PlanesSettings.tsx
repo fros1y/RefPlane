@@ -1,4 +1,4 @@
-import type { PlanesConfig, PlanesColorMode, PlaneColorStrategy, DepthModelSize } from '../types';
+import type { PlanesConfig, PlanesColorMode, PlaneColorStrategy } from '../types';
 
 interface Props {
   config: PlanesConfig;
@@ -32,19 +32,6 @@ export function PlanesSettings({ config, onChange }: Props) {
           </select>
         </div>
       )}
-
-      <div class="settings-row" title="Depth model quality: Small is fastest, Large is most accurate but slow">
-        <label>Depth Model</label>
-        <select
-          value={config.depthModel}
-          onChange={e => onChange({ depthModel: (e.target as HTMLSelectElement).value as DepthModelSize })}
-        >
-          <option value="small">Small (fast)</option>
-          <option value="base">Base</option>
-          <option value="large">Large (slow)</option>
-          <option value="depth-pro">DepthPro (slow)</option>
-        </select>
-      </div>
 
       <div class="settings-row" title="Number of distinct plane groups to detect">
         <label>Planes</label>

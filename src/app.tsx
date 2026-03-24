@@ -109,7 +109,6 @@ const defaultSimplifyConfig: SimplifyConfig = {
 };
 
 const defaultPlanesConfig: PlanesConfig = {
-  depthModel: 'base',
   planeCount: 8,
   depthSmooth: 3,
   depthScale: 20,

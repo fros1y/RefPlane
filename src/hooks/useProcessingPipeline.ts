@@ -56,7 +56,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
   const depthMap = useMemo(() => signal<{ data: Float32Array; width: number; height: number } | null>(null), []);
   const planeGuidance = useMemo(() => signal<PlaneGuidance | null>(null), []);
   const depthSourceRef = useRef<ImageData | null>(null);
-  const depthModelRef = useRef<string | null>(null);
+
   const depthClientRef = useRef<DepthClient | null>(null);
   const latestDepthRequestIdRef = useRef(0);
 
@@ -390,8 +390,7 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
     if (!src || !depthClientRef.current) return;
 
     // Only re-run depth if source and model haven't changed
-    const currentModel = planesConfig.value.depthModel ?? 'base';
-    if (depthSourceRef.current === src && depthModelRef.current === currentModel) {
+    if (depthSourceRef.current === src) {
       // Depth already estimated for this source — but guidance may not have been built yet
       if (requiresPlaneGuidance(simplifyConfig.value) && !planeGuidance.value && depthMap.value) {
         const depth = depthMap.value;
@@ -403,11 +402,10 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       return;
     }
     depthSourceRef.current = src;
-    depthModelRef.current = currentModel;
     depthMap.value = null;
     planeGuidance.value = null;
 
-    const { requestId, promise } = depthClientRef.current.requestDepth(src, currentModel as 'small' | 'base' | 'large' | 'depth-pro');
+    const { requestId, promise } = depthClientRef.current.requestDepth(src);
     latestDepthRequestIdRef.current = requestId;
     processingCount.value++;
 
