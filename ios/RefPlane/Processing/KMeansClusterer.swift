@@ -82,6 +82,12 @@ enum KMeansClusterer {
                 total += minDist
             }
 
+            // If all points are identical (total == 0), fall back to a random pick
+            guard total > 0 else {
+                centroids.append(points[Int.random(in: 0..<points.count)])
+                continue
+            }
+
             // Choose next centroid proportional to D²
             var threshold = Float.random(in: 0..<total)
             var chosen = points.count - 1

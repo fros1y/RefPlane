@@ -11,7 +11,7 @@ enum ImageSimplifier {
             guard let ciImage = CIImage(image: image) else { return image }
             let context = CIContext(options: [.useSoftwareRenderer: false])
 
-            // Step 1: Upscale 1.5× with bicubic interpolation
+            // Step 1: Upscale 1.5× with Lanczos interpolation
             let scale: CGFloat = 1.5
             let scaleFilter = CIFilter(name: "CILanczosScaleTransform")!
             scaleFilter.setValue(ciImage, forKey: kCIInputImageKey)
@@ -43,7 +43,7 @@ enum ImageSimplifier {
 
             guard let cgImage = context.createCGImage(
                 finalCI,
-                from: CGRect(origin: .zero, size: originalSize)
+                from: finalCI.extent
             ) else { return image }
 
             return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)

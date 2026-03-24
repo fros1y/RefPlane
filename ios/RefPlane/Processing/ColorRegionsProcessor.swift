@@ -34,7 +34,12 @@ enum ColorRegionsProcessor {
             bandAssign[i] = min(bnd, bands - 1)
         }
 
-        // 3. Within each band, run k-means on chromatic (a,b) values
+        // 3. Build per-band index lists in a single pass, then run k-means per band
+        var indicesByBand = Array(repeating: [Int](), count: bands)
+        for i in 0..<total {
+            indicesByBand[bandAssign[i]].append(i)
+        }
+
         var centroidsByBand: [[OklabColor]] = []
         var assignByBand: [[Int]] = Array(repeating: [], count: bands)
 
@@ -42,8 +47,7 @@ enum ColorRegionsProcessor {
         var globalLabel = [Int32](repeating: 0, count: total)
 
         for bnd in 0..<bands {
-            var indices = [Int]()
-            for i in 0..<total { if bandAssign[i] == bnd { indices.append(i) } }
+            let indices = indicesByBand[bnd]
 
             let bandLab = indices.map { lab[$0] }
             let k = min(cpb, bandLab.count)

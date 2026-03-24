@@ -46,6 +46,12 @@ struct GridOverlayView: View {
 
                 var path = Path()
 
+                // Clip all drawing to the fitted image rect so lines don't
+                // bleed into letterbox areas.
+                let imageRect = CGRect(x: originX, y: originY,
+                                       width: imgSize.width, height: imgSize.height)
+                ctx.clip(to: Path(imageRect))
+
                 // Vertical lines
                 for col in 0...cols {
                     let x = originX + CGFloat(col) * cellW

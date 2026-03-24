@@ -32,6 +32,8 @@ class AppState: ObservableObject {
 
     private var processingTask: Task<Void, Never>? = nil
     private let processor = ImageProcessor()
+    /// Incremented on every triggerProcessing() call; lets each task know if it is still current.
+    private var processingGeneration: Int = 0
 
     var displayBaseImage: UIImage? { simplifiedImage ?? sourceImage }
 
@@ -67,11 +69,20 @@ class AppState: ObservableObject {
 
     func triggerProcessing() {
         processingTask?.cancel()
-        guard let source = sourceImage else { return }
-        guard activeMode != .original else {
-            processedImage = nil
+        guard let source = sourceImage else {
+            isProcessing = false
+            processingProgress = 0
             return
         }
+        guard activeMode != .original else {
+            processedImage = nil
+            isProcessing = false
+            processingProgress = 0
+            return
+        }
+
+        processingGeneration += 1
+        let myGeneration = processingGeneration
 
         processingTask = Task {
             await MainActor.run { self.isProcessing = true; self.processingProgress = 0 }
@@ -85,20 +96,25 @@ class AppState: ObservableObject {
                         Task { @MainActor [weak self] in self?.processingProgress = p }
                     }
                 )
-                guard !Task.isCancelled else { return }
+                try Task.checkCancellation()
                 await MainActor.run {
                     self.processedImage  = result.image
                     self.paletteColors   = result.palette
                     self.paletteBands    = result.paletteBands
-                    self.isProcessing    = false
                     self.processingProgress = 1
                 }
             } catch is CancellationError {
-                // Silently ignore
+                // Mode switched or new image loaded — new task will update state
             } catch {
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        self.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            // Only clear the flag if we are still the most-recent processing task
+            await MainActor.run {
+                if self.processingGeneration == myGeneration {
                     self.isProcessing = false
                 }
             }
