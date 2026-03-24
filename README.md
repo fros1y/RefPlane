@@ -1,6 +1,13 @@
 # RefPlane
 
-## Local development
+A photographic reference image preparation tool for painting and drawing.
+
+## iOS Native App
+
+An iOS native version built in Swift with SwiftUI + CoreImage + CoreML is in the [`ios/`](ios/) directory.
+See [`ios/README.md`](ios/README.md) for build and usage instructions.
+
+## Web App – Local development
 
 ### Prerequisites
 
