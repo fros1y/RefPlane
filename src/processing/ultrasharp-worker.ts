@@ -47,6 +47,52 @@ function getUpscalePipeline(onProgress: (data: UltrasharpWorkerProgress) => void
 }
 
 /**
+ * Maximum input pixels fed to the 4× APISR GAN to avoid OOM.
+ *
+ * The model allocates ~6-8 KB of intermediate feature-map memory per
+ * input pixel during inference.  We estimate the safe pixel budget from
+ * the browser-reported device memory (navigator.deviceMemory) when
+ * available, otherwise fall back to conservative Safari-safe defaults.
+ *
+ * Budget heuristic:  usable ≈ deviceMemory × 0.60  (leave room for OS,
+ * browser chrome, page, model weights).  Divide by 8 KB/px to get the
+ * maximum input pixel count.
+ *
+ * Fallbacks (when deviceMemory is unavailable — Safari, Firefox):
+ *   Desktop:  375 000 px  (~612×612)  — fits macOS Safari's ~4 GB limit
+ *   iPadOS:   275 000 px  (~524×524)  — M-series 8-16 GB, ~5 GB jetsam
+ *   iPhone:   125 000 px  (~354×354)  — 4-6 GB, ~1.2-2 GB jetsam
+ */
+function estimateMaxModelInputPixels(): number {
+  const nav = self.navigator as any;
+
+  // navigator.deviceMemory returns total device RAM in GiB (Chrome/Edge).
+  const deviceGB: number | undefined = nav?.deviceMemory;
+  if (typeof deviceGB === 'number' && deviceGB > 0) {
+    const usableBytes = deviceGB * 1024 * 1024 * 1024 * 0.60;
+    const bytesPerPixel = 8 * 1024; // ~8 KB intermediate per input pixel
+    return Math.max(50_000, Math.floor(usableBytes / bytesPerPixel));
+  }
+
+  // Fallback: detect device tier via user-agent / platform hints.
+  // iPadOS Safari (especially M-series) requests a desktop UA by default
+  // ("Macintosh"), but we can identify it via touch support on a Mac UA.
+  const ua: string = nav?.userAgent ?? '';
+  const maxTouch: number = nav?.maxTouchPoints ?? 0;
+  const isIPadOS = /Macintosh/i.test(ua) && maxTouch > 1;
+  const isIPhone = /iPhone|iPod/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+
+  if (isIPhone) return 125_000;          // ~354×354  — 4-6 GB, ~1.2-2 GB jetsam
+  if (isAndroid) return 125_000;          // ~354×354  — conservative for wide range
+  if (isIPadOS) return 275_000;           // ~524×524  — M-series ~8-16 GB, ~5 GB jetsam
+  return 375_000;                         // ~612×612  — macOS Safari ~4 GB limit
+}
+
+const MAX_MODEL_INPUT_PIXELS = estimateMaxModelInputPixels();
+console.log(`[ultrasharp-worker] Model input pixel budget: ${MAX_MODEL_INPUT_PIXELS} px`);
+
+/**
  * Downsample imageData by scale using box-filter averaging.
  */
 function boxDownsample(imageData: ImageData, scale: number): ImageData {
@@ -136,7 +182,18 @@ self.onmessage = async (e: MessageEvent<UltrasharpWorkerRequest>) => {
     const origH = imageData.height;
 
     // Downsample first to control the level of simplification
-    const small = downscale > 1 ? boxDownsample(imageData, downscale) : imageData;
+    let small = downscale > 1 ? boxDownsample(imageData, downscale) : imageData;
+
+    // Clamp to the safe pixel budget so the ONNX model doesn't OOM.
+    const modelPixels = small.width * small.height;
+    if (modelPixels > MAX_MODEL_INPUT_PIXELS) {
+      const extraScale = Math.sqrt(modelPixels / MAX_MODEL_INPUT_PIXELS);
+      small = boxDownsample(small, extraScale);
+      console.log(
+        `[ultrasharp-worker] Extra downsample ×${extraScale.toFixed(2)} → ${small.width}×${small.height} ` +
+        `(budget ${MAX_MODEL_INPUT_PIXELS} px)`,
+      );
+    }
 
     // Run through the 4x UltraSharp model
     const rawInput = new RawImage(new Uint8ClampedArray(small.data), small.width, small.height, 4);
