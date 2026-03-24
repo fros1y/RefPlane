@@ -13,13 +13,29 @@
  */
 
 import * as tf from '@tensorflow/tfjs';
+import '@tensorflow/tfjs-backend-webgpu';
 
-// Use CPU backend so the filter works reliably inside a Web Worker where
-// WebGL / OffscreenCanvas may not be available.
+// Detect whether WebGPU is available in this Worker context.
+async function detectBackend(): Promise<'webgpu' | 'cpu'> {
+  try {
+    const gpu = (self as any).navigator?.gpu ?? (globalThis as any).navigator?.gpu;
+    if (gpu) {
+      const adapter = await gpu.requestAdapter();
+      if (adapter) return 'webgpu';
+    }
+  } catch { /* fall through */ }
+  return 'cpu';
+}
+
 let backendReady = false;
+let activeBackend: 'webgpu' | 'cpu' = 'cpu';
+
 async function ensureBackend() {
   if (backendReady) return;
-  await tf.setBackend('cpu');
+  const backend = await detectBackend();
+  activeBackend = backend;
+  console.log(`[sr-worker] Using TF.js backend: ${backend}`);
+  await tf.setBackend(backend);
   await tf.ready();
   backendReady = true;
 }
