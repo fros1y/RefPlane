@@ -1,6 +1,6 @@
 import type { SrWorkerRequest, SrWorkerOutbound } from './sr-worker';
 
-export type SrProgressCallback = (stage: string, percent: number) => void;
+export type SrProgressCallback = (stage: string, percent: number, requestId: number) => void;
 
 export class SrClient {
   private worker: Worker;
@@ -61,7 +61,7 @@ export class SrClient {
     const msg = e.data;
 
     if (msg.kind === 'progress') {
-      this.onProgress?.(msg.stage, msg.percent);
+      this.onProgress?.(msg.stage, msg.percent, msg.requestId);
       return;
     }
 

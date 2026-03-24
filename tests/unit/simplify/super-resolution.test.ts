@@ -14,9 +14,9 @@ describe('superResolutionFilter', () => {
     const image = createImageData(8, 8, [100, 150, 200, 255]);
     const result = await superResolutionFilter(image, 2, 0);
     for (let i = 0; i < result.data.length; i += 4) {
-      expect(result.data[i]).toBeCloseTo(100, -1);
-      expect(result.data[i + 1]).toBeCloseTo(150, -1);
-      expect(result.data[i + 2]).toBeCloseTo(200, -1);
+      expect(result.data[i]).toBe(100);
+      expect(result.data[i + 1]).toBe(150);
+      expect(result.data[i + 2]).toBe(200);
     }
   });
 
@@ -62,7 +62,7 @@ describe('superResolutionFilter', () => {
     const image = createImageData(8, 8, [100, 100, 100, 200]);
     const result = await superResolutionFilter(image, 2, 0);
     for (let i = 3; i < result.data.length; i += 4) {
-      expect(result.data[i]).toBeCloseTo(200, -1);
+      expect(result.data[i]).toBe(200);
     }
   });
 });

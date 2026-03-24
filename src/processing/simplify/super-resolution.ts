@@ -112,13 +112,13 @@ export async function superResolutionFilter(
 
   onProgress?.(20);
 
-  // 2. Bicubic upscale via TF.js
+  // 2. Bilinear upscale via TF.js
   const result = tf.tidy(() => {
     // [H, W, 4] tensor in [0, 255]
-    const t = tf.tensor3d(Array.from(small.data), [small.height, small.width, 4], 'float32');
+    const t = tf.tensor3d(new Float32Array(small.data), [small.height, small.width, 4], 'float32');
     const batch = t.expandDims(0) as tf.Tensor4D; // [1, H, W, 4]
 
-    // Bicubic resize back to original dimensions
+    // Bilinear resize back to original dimensions
     const upscaled = tf.image.resizeBilinear(batch, [origH, origW], true /* alignCorners */) as tf.Tensor4D;
 
     if (sharpenAmount <= 0) {

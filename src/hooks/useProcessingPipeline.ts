@@ -356,13 +356,11 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
         const srClient = srClientRef.current;
         if (!srClient) return;
         const { scale, sharpenAmount } = simplifyConfig.value.superResolution;
-        const requestId = nextRequestId();
-        latestSrRequestIdRef.current = requestId;
         processingCount.value++;
         const sentAt = performance.now();
-        const { requestId: workerRequestId, promise } = srClient.request(src, scale, sharpenAmount);
+        const { requestId, promise } = srClient.request(src, scale, sharpenAmount);
+        latestSrRequestIdRef.current = requestId;
         console.log(`[Perf] dispatch super-resolution#${requestId} | size=${src.width}x${src.height}`);
-        void workerRequestId;
         promise
           .then((result) => {
             if (requestId !== latestSrRequestIdRef.current) return;
@@ -404,8 +402,8 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       processingProgress.value = { stage, percent };
     });
 
-    srClientRef.current = new SrClient((stage, percent) => {
-      if (latestSrRequestIdRef.current > 0) {
+    srClientRef.current = new SrClient((stage, percent, requestId) => {
+      if (requestId === latestSrRequestIdRef.current) {
         processingProgress.value = { stage, percent };
       }
     });

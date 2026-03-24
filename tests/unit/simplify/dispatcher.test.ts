@@ -64,11 +64,12 @@ describe('runSimplify', () => {
     expect(result.height).toBe(8);
   });
 
-  it('applies super-resolution filter when method is "super-resolution"', async () => {
+  it('passes image through unchanged when method is "super-resolution"', async () => {
     const image = createImageData(8, 8, [128, 128, 128, 255]);
     const result = await runSimplify(image, makeConfig('super-resolution'));
     expect(result.width).toBe(8);
     expect(result.height).toBe(8);
+    expect(result.data).toEqual(image.data);
   });
 
   it('passes progress callback through to algorithm', async () => {

@@ -46,7 +46,7 @@ function makeThrottledProgress(requestId: number, minIntervalMs = 80) {
     timer = null;
   };
 
-  return (percent: number) => {
+  const report = (percent: number) => {
     const stage = 'Super-Res';
     const now = performance.now();
     if (now - lastSent >= minIntervalMs) {
@@ -61,21 +61,42 @@ function makeThrottledProgress(requestId: number, minIntervalMs = 80) {
       }
     }
   };
+
+  const cancel = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    pending = null;
+  };
+
+  return { report, cancel };
 }
 
 let currentController: AbortController | null = null;
+let currentRequestId: number | null = null;
+let currentCancelProgress: (() => void) | null = null;
 
 self.onmessage = async (e: MessageEvent<SrWorkerRequest>) => {
   const { requestId, imageData, scale, sharpenAmount } = e.data;
 
-  // Cancel any in-flight request
-  if (currentController) {
+  // Cancel any in-flight request and notify its client promise so it settles
+  if (currentController && currentRequestId !== null) {
+    currentCancelProgress?.();
     currentController.abort();
+    self.postMessage({
+      kind: 'error',
+      requestId: currentRequestId,
+      error: 'AbortError',
+    } satisfies SrWorkerError);
   }
+
   const controller = new AbortController();
   currentController = controller;
+  currentRequestId = requestId;
 
-  const onProgress = makeThrottledProgress(requestId);
+  const { report: onProgress, cancel: cancelProgress } = makeThrottledProgress(requestId);
+  currentCancelProgress = cancelProgress;
 
   try {
     const result = await superResolutionFilter(
@@ -86,12 +107,14 @@ self.onmessage = async (e: MessageEvent<SrWorkerRequest>) => {
       controller.signal,
     );
 
-    if (controller.signal.aborted) return;
+    cancelProgress();
+    if (controller.signal.aborted) return; // error already sent above
 
     const msg: SrWorkerResult = { kind: 'result', requestId, imageData: result };
     self.postMessage(msg, [result.data.buffer]);
   } catch (err) {
-    if (controller.signal.aborted) return;
+    cancelProgress();
+    if (controller.signal.aborted) return; // error already sent above
     const errorMsg: SrWorkerError = {
       kind: 'error',
       requestId,
@@ -101,6 +124,8 @@ self.onmessage = async (e: MessageEvent<SrWorkerRequest>) => {
   } finally {
     if (currentController === controller) {
       currentController = null;
+      currentRequestId = null;
+      currentCancelProgress = null;
     }
   }
 };

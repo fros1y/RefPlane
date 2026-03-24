@@ -125,6 +125,10 @@ export async function runSimplify(
       const slicPlaneLabels = config.planeGuidance.preserveBoundaries ? planeGuidance?.labels : undefined;
       return finalize(await slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal, slicPlaneLabels));
     }
+    case 'super-resolution':
+      // SR is handled by SrClient / sr-worker before reaching this function;
+      // return input unchanged so the main worker path is a clean no-op.
+      return imageData;
     case 'none':
     default:
       return imageData;
