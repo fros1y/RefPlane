@@ -65,7 +65,11 @@ export class WorkerClient {
         onProgress: options.onProgress,
       });
 
-      const envelope = createWorkerRequestMessage(requestId, request);
+      const envelope = {
+        kind: 'request' as const,
+        requestId,
+        request,
+      };
       if (options.transfer && options.transfer.length > 0) {
         this.worker.postMessage(envelope, options.transfer);
       } else {

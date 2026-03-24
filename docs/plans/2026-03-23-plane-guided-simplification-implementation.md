@@ -28,7 +28,7 @@
 
 - Gradient or textured fills inside planes
 - Plane-aware support for every simplification method
-- GPU acceleration for plane-aware `Kuwahara` in the first pass
+- GPU acceleration for plane-aware `Kuwahara` ~~in the first pass~~ (implemented via `kuwahara-guided.wgsl`)
 - Replacing the existing planes render mode
 
 ---
@@ -455,8 +455,8 @@ Sampling rule:
 
 Behavior:
 
-- when `preserveBoundaries` is true and method is `kuwahara`, pass labels into `kuwaharaFilter`
-- disable the GPU `Kuwahara` fast path for this case in v1
+- when `preserveBoundaries` is true and method is `kuwahara`, pass labels into `kuwaharaFilter` (CPU) or `kuwaharaGuided` (GPU)
+- the GPU path is now available via `kuwahara-guided.wgsl` and `WebGpuProcessor.kuwaharaGuided()`
 
 - [ ] **Step 4: Run tests**
 
@@ -573,8 +573,8 @@ Mitigation:
 
 Mitigation:
 
-- explicitly route plane-aware `Kuwahara` to CPU in v1
-- keep unmodified GPU paths for normal `Kuwahara`
+- GPU plane-aware `Kuwahara` is now implemented via `kuwahara-guided.wgsl` with the same label-barrier logic as CPU
+- CPU fallback still available if GPU dispatch fails (try/catch in dispatcher)
 
 ### Risk: large images make `dominant` color expensive
 

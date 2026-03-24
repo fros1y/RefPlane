@@ -1,14 +1,28 @@
 import { throwIfAborted, yieldToEventLoop } from './cancel';
 
+export interface KuwaharaOptions {
+  onProgress?: (percent: number) => void;
+  abortSignal?: AbortSignal;
+  passes?: number;
+  sharpness?: number;
+  sectors?: 4 | 8;
+  planeLabels?: Uint8Array;
+}
+
 export async function kuwaharaFilter(
   imageData: ImageData,
   kernelSize: number,
-  onProgress?: (percent: number) => void,
-  abortSignal?: AbortSignal,
-  passes: number = 1,
-  sharpness: number = 8,
-  sectors: 4 | 8 = 8,
+  options: KuwaharaOptions = {},
 ): Promise<ImageData> {
+  const {
+    onProgress,
+    abortSignal,
+    passes = 1,
+    sharpness = 8,
+    sectors = 8,
+    planeLabels,
+  } = options;
+
   let current = imageData;
   for (let pass = 0; pass < passes; pass++) {
     current = await kuwaharaPass(
@@ -17,6 +31,7 @@ export async function kuwaharaFilter(
         ? (pct) => onProgress(((pass + pct / 100) / passes) * 100)
         : undefined,
       abortSignal,
+      planeLabels,
     );
   }
   return current;
@@ -49,6 +64,7 @@ async function classicPass(
   sharpness: number,
   onProgress?: (percent: number) => void,
   abortSignal?: AbortSignal,
+  planeLabels?: Uint8Array,
 ): Promise<ImageData> {
   const { data, width, height } = imageData;
   const out = new ImageData(width, height);
@@ -64,7 +80,10 @@ async function classicPass(
     if (onProgress && y % progressInterval === 0) onProgress((y / height) * 100);
 
     for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
+      const idx = y * width + x;
+      const targetLabel = planeLabels ? planeLabels[idx] : -1;
+      const pixIdx = idx * 4;
+
       const quads = [
         { y0: y - radius, y1: y, x0: x - radius, x1: x },
         { y0: y - radius, y1: y, x0: x, x1: x + radius },
@@ -81,7 +100,11 @@ async function classicPass(
           if (qy < 0 || qy >= height) continue;
           for (let qx = q.x0; qx <= q.x1; qx++) {
             if (qx < 0 || qx >= width) continue;
-            const qi = (qy * width + qx) * 4;
+
+            const nIdx = qy * width + qx;
+            if (planeLabels && planeLabels[nIdx] !== targetLabel) continue;
+
+            const qi = nIdx * 4;
             const r = data[qi], g = data[qi + 1], b = data[qi + 2];
             sumR += r; sumG += g; sumB += b;
             sumR2 += r * r; sumG2 += g * g; sumB2 += b * b;
@@ -96,7 +119,7 @@ async function classicPass(
         });
       }
 
-      writeBlended(outData, idx, data, means, hardSelect, sharpness);
+      writeBlended(outData, pixIdx, data, means, hardSelect, sharpness);
     }
   }
   return out;
@@ -118,6 +141,7 @@ async function generalizedPass(
   numSectors: number,
   onProgress?: (percent: number) => void,
   abortSignal?: AbortSignal,
+  planeLabels?: Uint8Array,
 ): Promise<ImageData> {
   const { data, width, height } = imageData;
   const out = new ImageData(width, height);
@@ -172,7 +196,10 @@ async function generalizedPass(
     if (onProgress && y % progressInterval === 0) onProgress((y / height) * 100);
 
     for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
+      const idx = y * width + x;
+      const targetLabel = planeLabels ? planeLabels[idx] : -1;
+      const pixIdx = idx * 4;
+
       const means: { r: number; g: number; b: number; var: number }[] = [];
 
       for (let s = 0; s < numSectors; s++) {
@@ -187,10 +214,14 @@ async function generalizedPass(
           for (let dx = -radius; dx <= radius; dx++) {
             const nx = x + dx;
             if (nx < 0 || nx >= width) continue;
+
+            const nIdx = ny * width + nx;
+            if (planeLabels && planeLabels[nIdx] !== targetLabel) continue;
+
             const ki = (dy + radius) * kSize + (dx + radius);
             const w = mem[ki];
             if (w === 0) continue;
-            const ni = (ny * width + nx) * 4;
+            const ni = nIdx * 4;
             const r = data[ni], g = data[ni + 1], b = data[ni + 2];
             wSumR += w * r; wSumG += w * g; wSumB += w * b;
             wSumR2 += w * r * r; wSumG2 += w * g * g; wSumB2 += w * b * b;
@@ -206,7 +237,7 @@ async function generalizedPass(
         });
       }
 
-      writeBlended(outData, idx, data, means, hardSelect, sharpness);
+      writeBlended(outData, pixIdx, data, means, hardSelect, sharpness);
     }
   }
   return out;
@@ -254,9 +285,10 @@ async function kuwaharaPass(
   sectors: 4 | 8,
   onProgress?: (percent: number) => void,
   abortSignal?: AbortSignal,
+  planeLabels?: Uint8Array,
 ): Promise<ImageData> {
   if (sectors === 4) {
-    return classicPass(imageData, kernelSize, sharpness, onProgress, abortSignal);
+    return classicPass(imageData, kernelSize, sharpness, onProgress, abortSignal, planeLabels);
   }
-  return generalizedPass(imageData, kernelSize, sharpness, sectors, onProgress, abortSignal);
+  return generalizedPass(imageData, kernelSize, sharpness, sectors, onProgress, abortSignal, planeLabels);
 }

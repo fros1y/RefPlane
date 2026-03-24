@@ -105,6 +105,9 @@ const defaultSimplifyConfig: SimplifyConfig = {
     detailSigma: 1.5,
   },
   slic: { detail: 0.55, compactness: 0.15 },
+  superResolution: { scale: 4, sharpenAmount: 0.3 },
+  ultrasharp: { downscale: 4 },
+  planeGuidance: { preserveBoundaries: false },
 };
 
 const defaultPlanesConfig: PlanesConfig = {
@@ -114,6 +117,8 @@ const defaultPlanesConfig: PlanesConfig = {
   lightAzimuth: 225,
   lightElevation: 45,
   minRegionSize: 'small',
+  colorMode: 'shading',
+  colorStrategy: 'average',
 };
 
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);

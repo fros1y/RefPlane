@@ -20,6 +20,7 @@ import depthToNormalsShader from './shaders/depth-to-normals.wgsl?raw';
 import bilateralDepthShader from './shaders/bilateral-depth.wgsl?raw';
 import normalClusterShader from './shaders/normal-cluster.wgsl?raw';
 import planeShadingShader from './shaders/plane-shading.wgsl?raw';
+import kuwaharaGuidedShader from './shaders/kuwahara-guided.wgsl?raw';
 
 const WORKGROUP_SIZE = 64;
 const GPUBufferUsageRef = (globalThis as any).GPUBufferUsage;
@@ -246,6 +247,7 @@ export class WebGpuProcessor {
   private readonly bilateralDepthPipeline: WebGpuComputePipeline;
   private readonly normalClusterPipeline: WebGpuComputePipeline;
   private readonly planeShadingPipeline: WebGpuComputePipeline;
+  private readonly kuwaharaGuidedPipeline: WebGpuComputePipeline;
 
   private constructor(private readonly device: WebGpuDevice) {
     this.grayscalePipeline = this.device.createComputePipeline({
@@ -378,6 +380,13 @@ export class WebGpuProcessor {
       layout: 'auto',
       compute: {
         module: this.device.createShaderModule({ code: planeShadingShader }),
+        entryPoint: 'main',
+      },
+    });
+    this.kuwaharaGuidedPipeline = this.device.createComputePipeline({
+      layout: 'auto',
+      compute: {
+        module: this.device.createShaderModule({ code: kuwaharaGuidedShader }),
         entryPoint: 'main',
       },
     });
@@ -539,6 +548,49 @@ export class WebGpuProcessor {
 
     const result = new Uint32Array(await readBackBuffer(this.device, srcBuffer, packed.byteLength));
     destroyBuffers(srcBuffer, dstBuffer, paramsBuffer);
+    return packedRgbaToImageData(result, imageData.width, imageData.height);
+  }
+
+  async kuwaharaGuided(
+    imageData: ImageData,
+    kernelSize: number,
+    passes: number,
+    sharpness: number,
+    sectors: number,
+    planeLabels: Uint8Array,
+  ): Promise<ImageData> {
+    const pixelCount = imageData.width * imageData.height;
+    const packed = imageDataToPackedRgba(imageData);
+    const bufUsage = GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_SRC | GPUBufferUsageRef.COPY_DST;
+    let srcBuffer = createBufferWithData(this.device, packed, bufUsage);
+    let dstBuffer = this.device.createBuffer({
+      size: packed.byteLength,
+      usage: bufUsage,
+    });
+    const paramsBuffer = createBufferWithData(
+      this.device,
+      createKuwaharaParams(imageData.width, imageData.height, kernelSize, sharpness, sectors),
+      GPUBufferUsageRef.UNIFORM | GPUBufferUsageRef.COPY_DST,
+    );
+
+    // Upload plane labels as u32 array for shader compatibility
+    const labelsU32 = new Uint32Array(pixelCount);
+    for (let i = 0; i < pixelCount; i++) labelsU32[i] = planeLabels[i];
+    const labelsBuffer = createBufferWithData(
+      this.device,
+      labelsU32,
+      GPUBufferUsageRef.STORAGE | GPUBufferUsageRef.COPY_DST,
+    );
+
+    for (let i = 0; i < passes; i++) {
+      this.runCompute(this.kuwaharaGuidedPipeline, [srcBuffer, dstBuffer, paramsBuffer, labelsBuffer], pixelCount);
+      const temp = srcBuffer;
+      srcBuffer = dstBuffer;
+      dstBuffer = temp;
+    }
+
+    const result = new Uint32Array(await readBackBuffer(this.device, srcBuffer, packed.byteLength));
+    destroyBuffers(srcBuffer, dstBuffer, paramsBuffer, labelsBuffer);
     return packedRgbaToImageData(result, imageData.width, imageData.height);
   }
 
@@ -814,7 +866,7 @@ export class WebGpuProcessor {
     return cleanupRegions(quantized, config.minRegionSize);
   }
 
-  async processPlanes(depth: Float32Array, width: number, height: number, config: PlanesConfig): Promise<ImageData> {
+  async processPlanes(depth: Float32Array, width: number, height: number, config: PlanesConfig, sourceImage?: ImageData): Promise<ImageData> {
     const numPixels = width * height;
     const k = config.planeCount;
 
@@ -972,7 +1024,7 @@ export class WebGpuProcessor {
       if (changed === 0) break;
     }
 
-    // Step 3: Final shading pass
+    // Step 3: Final output — shading or flat-color
     // Upload final centroids
     const finalCentroidsBuffer = createBufferWithData(
       this.device,
@@ -982,6 +1034,20 @@ export class WebGpuProcessor {
 
     // Re-run assignment with final centroids to ensure labels buffer is up to date
     this.runCompute(this.normalClusterPipeline, [normalsBuffer, finalCentroidsBuffer, labelsBuffer, clusterParamsBuffer], numPixels);
+
+    if (config.colorMode === 'flat-color' && sourceImage) {
+      // Read back labels and apply flat-color fill on CPU
+      const labelsU32 = new Uint32Array(await readBackBuffer(this.device, labelsBuffer, numPixels * 4));
+      const labelsU8 = new Uint8Array(numPixels);
+      for (let i = 0; i < numPixels; i++) labelsU8[i] = labelsU32[i];
+
+      destroyBuffers(depthBuffer, normalsBuffer, normalsParamsBuffer, labelsBuffer, clusterParamsBuffer, finalCentroidsBuffer);
+
+      const { flatColorFill } = await import('./planes');
+      const result = flatColorFill(sourceImage, labelsU8, width, height, config.colorStrategy);
+      if (config.minRegionSize === 'off') return result;
+      return cleanupRegions(result, config.minRegionSize);
+    }
 
     const outputBuffer = this.device.createBuffer({
       size: alignTo(numPixels * 4, 4),

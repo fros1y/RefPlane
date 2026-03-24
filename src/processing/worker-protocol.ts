@@ -1,4 +1,4 @@
-import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig, PlanesConfig } from '../types';
+import type { ValueConfig, ColorConfig, EdgeConfig, SimplifyConfig, PlanesConfig, PlaneGuidance } from '../types';
 
 export interface TimingStage {
   label: string;
@@ -15,7 +15,7 @@ export interface ProcessingMeta {
 }
 
 export type WorkerRequest =
-  | { type: 'simplify'; imageData: ImageData; config: SimplifyConfig }
+  | { type: 'simplify'; imageData: ImageData; config: SimplifyConfig; planeGuidance?: PlaneGuidance }
   | { type: 'value-study'; imageData: ImageData; config: ValueConfig }
   | { type: 'color-regions'; imageData: ImageData; config: ColorConfig }
   | { type: 'edges'; imageData: ImageData; config: EdgeConfig }

@@ -53,7 +53,7 @@ async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: n
       currentSimplifyController = controller;
       const reporter = createProgressReporter(requestId);
       const result = await measureStage(stages, 'simplify', () =>
-        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal, gpu)
+        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal, gpu, data.planeGuidance)
       );
       const simplifyBackend: ProcessingMeta['backend'] = gpu && data.config.method !== 'none' ? 'gpu' : 'cpu';
       const meta = finalizeMeta(stages, simplifyBackend, data.imageData, queuedAt, startedAt);
@@ -105,13 +105,13 @@ async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: n
       );
       if (gpu) {
         const result = await measureStage(stages, 'planes-gpu', () =>
-          gpu.processPlanes(resized, data.imageData.width, data.imageData.height, config)
+          gpu.processPlanes(resized, data.imageData.width, data.imageData.height, config, data.imageData)
         );
         const meta = finalizeMeta(stages, 'gpu', data.imageData, queuedAt, startedAt);
         self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
       } else {
         const result = await measureStage(stages, 'planes-cpu', () =>
-          processPlanes(resized, data.imageData.width, data.imageData.height, config)
+          processPlanes(resized, data.imageData.width, data.imageData.height, config, data.imageData)
         );
         const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
         self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);

@@ -49,16 +49,29 @@ export interface ColorConfig {
   minRegionSize: "off" | "small" | "medium" | "large";
 }
 
-export interface PlanesConfig {
+export type PlanesColorMode = 'shading' | 'flat-color';
+
+export type PlanesConfig = {
   planeCount: number;        // 3–30, default 8
   depthSmooth: number;       // 0–10, bilateral smoothing passes on depth map (0 = off)
   depthScale: number;        // 1–100, amplifies depth differences for normal computation
   lightAzimuth: number;      // 0–360 degrees, default 225 (top-left)
   lightElevation: number;    // 10–90 degrees, default 45
   minRegionSize: "off" | "small" | "medium" | "large";
+  colorMode: PlanesColorMode;       // 'shading' (directional light) or 'flat-color' (representative color per plane)
+  colorStrategy: PlaneColorStrategy; // used when colorMode === 'flat-color'
 }
 
-export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic";
+export type PlaneColorStrategy = 'average' | 'median' | 'dominant';
+
+export interface PlaneGuidance {
+  width: number;
+  height: number;
+  labels: Uint8Array;
+  planeCount: number;
+}
+
+export type SimplifyMethod = "none" | "bilateral" | "kuwahara" | "mean-shift" | "anisotropic" | "painterly" | "slic" | "super-resolution" | "ultrasharp";
 
 export interface SimplifyConfig {
   method: SimplifyMethod;
@@ -75,6 +88,9 @@ export interface SimplifyConfig {
     detailSigma: number;
   };
   slic: { detail: number; compactness: number };
+  superResolution: { scale: number; sharpenAmount: number };
+  ultrasharp: { downscale: number };
+  planeGuidance: { preserveBoundaries: boolean };
 }
 
 export interface AppState {

@@ -9,18 +9,34 @@ type DepthPipeline = Awaited<ReturnType<typeof pipeline<'depth-estimation'>>>;
 let pipelineInstance: DepthPipeline | null = null;
 let pipelineLoading: Promise<DepthPipeline> | null = null;
 
+async function detectDevice(): Promise<'webgpu' | 'wasm'> {
+  try {
+    const gpu = (navigator as any).gpu;
+    if (gpu) {
+      const adapter = await gpu.requestAdapter();
+      if (adapter) return 'webgpu';
+    }
+  } catch { /* fall through */ }
+  return 'wasm';
+}
+
+const MODEL_ID = 'onnx-community/depth-anything-v2-small';
+
 function getDepthPipeline(onProgress: (data: DepthWorkerProgress) => void): Promise<DepthPipeline> {
   if (pipelineInstance) return Promise.resolve(pipelineInstance);
   if (pipelineLoading) return pipelineLoading;
 
-  pipelineLoading = pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
-    device: 'wasm',
-    dtype: 'q8',
-    progress_callback: (event: any) => {
-      if (event.status === 'progress' && typeof event.progress === 'number') {
-        onProgress({ kind: 'progress', stage: 'Downloading depth model', percent: Math.round(event.progress) });
-      }
-    },
+  pipelineLoading = detectDevice().then((device) => {
+    console.log(`[depth-worker] Using device: ${device}, model: ${MODEL_ID}`);
+    return pipeline('depth-estimation', MODEL_ID, {
+      device,
+      dtype: 'q8',
+      progress_callback: (event: any) => {
+        if (event.status === 'progress' && typeof event.progress === 'number') {
+          onProgress({ kind: 'progress', stage: 'Downloading depth model', percent: Math.round(event.progress) });
+        }
+      },
+    });
   }).then((p) => {
     pipelineInstance = p;
     pipelineLoading = null;
@@ -73,7 +89,6 @@ self.onmessage = async (e: MessageEvent<DepthWorkerRequest>) => {
     const rawImage = new RawImage(imageData.data, imageData.width, imageData.height, 4);
     const rawOutput = await estimator(rawImage);
     const output = Array.isArray(rawOutput) ? rawOutput[0] : rawOutput;
-
     const depthTensor = output.predicted_depth;
     const depthData = depthTensor.data as Float32Array;
     const [depthHeight, depthWidth] = depthTensor.dims as [number, number];

@@ -1,14 +1,14 @@
-import type { SimplifyConfig } from '../../types';
+import type { SimplifyConfig, PlaneGuidance } from '../../types';
 import { bilateralFilter } from './bilateral';
 import { kuwaharaFilter } from './kuwahara';
 import { meanShiftFilter } from './mean-shift';
 import { anisotropicDiffusion } from './anisotropic';
 import { slicFilter } from './slic';
 import { mergeShadows } from './shadow-merge';
-
 interface SimplifyGpuProcessor {
   bilateralRgb(imageData: ImageData, sigmaS: number, sigmaR: number): Promise<ImageData>;
   kuwahara(imageData: ImageData, kernelSize: number, passes: number, sharpness: number, sectors: number): Promise<ImageData>;
+  kuwaharaGuided(imageData: ImageData, kernelSize: number, passes: number, sharpness: number, sectors: number, planeLabels: Uint8Array): Promise<ImageData>;
   meanShift(imageData: ImageData, spatialRadius: number, colorRadius: number): Promise<ImageData>;
   anisotropic(imageData: ImageData, iterations: number, kappa: number): Promise<ImageData>;
   painterly(imageData: ImageData, params: SimplifyConfig['painterly']): Promise<ImageData>;
@@ -20,6 +20,7 @@ export async function runSimplify(
   onProgress?: (percent: number) => void,
   abortSignal?: AbortSignal,
   gpu?: SimplifyGpuProcessor | null,
+  planeGuidance?: PlaneGuidance,
 ): Promise<ImageData> {
   const finalize = (result: ImageData) => (config.shadowMerge ? mergeShadows(result, config.strength) : result);
 
@@ -36,24 +37,42 @@ export async function runSimplify(
         }
       }
       return finalize(await bilateralFilter(imageData, config.bilateral.sigmaS, config.bilateral.sigmaR, onProgress, abortSignal));
-    case 'kuwahara':
+    case 'kuwahara': {
+      const usePlaneLabels = config.planeGuidance.preserveBoundaries && planeGuidance?.labels;
       if (gpu) {
         try {
           onProgress?.(5);
-          const result = await gpu.kuwahara(
-            imageData,
-            config.kuwahara.kernelSize,
-            config.kuwahara.passes,
-            config.kuwahara.sharpness,
-            config.kuwahara.sectors,
-          );
+          const result = usePlaneLabels
+            ? await gpu.kuwaharaGuided(
+                imageData,
+                config.kuwahara.kernelSize,
+                config.kuwahara.passes,
+                config.kuwahara.sharpness,
+                config.kuwahara.sectors,
+                planeGuidance!.labels,
+              )
+            : await gpu.kuwahara(
+                imageData,
+                config.kuwahara.kernelSize,
+                config.kuwahara.passes,
+                config.kuwahara.sharpness,
+                config.kuwahara.sectors,
+              );
           onProgress?.(100);
           return finalize(result);
         } catch (error) {
           void error;
         }
       }
-      return finalize(await kuwaharaFilter(imageData, config.kuwahara.kernelSize, onProgress, abortSignal, config.kuwahara.passes, config.kuwahara.sharpness, config.kuwahara.sectors));
+      return finalize(await kuwaharaFilter(imageData, config.kuwahara.kernelSize, {
+        onProgress,
+        abortSignal,
+        passes: config.kuwahara.passes,
+        sharpness: config.kuwahara.sharpness,
+        sectors: config.kuwahara.sectors,
+        planeLabels: config.planeGuidance.preserveBoundaries ? planeGuidance?.labels : undefined,
+      }));
+    }
     case 'mean-shift':
       if (gpu) {
         try {
@@ -102,8 +121,18 @@ export async function runSimplify(
         }
       }
       return finalize(imageData);
-    case 'slic':
-      return finalize(await slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal));
+    case 'slic': {
+      const slicPlaneLabels = config.planeGuidance.preserveBoundaries ? planeGuidance?.labels : undefined;
+      return finalize(await slicFilter(imageData, config.slic.detail, config.slic.compactness, onProgress, abortSignal, slicPlaneLabels));
+    }
+    case 'super-resolution':
+      // SR is handled by SrClient / sr-worker before reaching this function;
+      // return input unchanged so the main worker path is a clean no-op.
+      return imageData;
+    case 'ultrasharp':
+      // UltraSharp is handled by UltrasharpClient / ultrasharp-worker before
+      // reaching this function; return input unchanged as a clean no-op.
+      return imageData;
     case 'none':
     default:
       return imageData;
