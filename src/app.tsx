@@ -5,7 +5,6 @@ import { OverlayToggles } from './components/OverlayToggles';
 import { ImageCanvas } from './components/ImageCanvas';
 import { ValueSettings } from './components/ValueSettings';
 import { ColorSettings } from './components/ColorSettings';
-import { PlanesSettings } from './components/PlanesSettings';
 import { PaletteStrip } from './components/PaletteStrip';
 import { ActionBar } from './components/ActionBar';
 import { CompareView } from './components/CompareView';
@@ -16,7 +15,7 @@ import { exportImage } from './export/export';
 import { initInstallPrompt, triggerInstall } from './pwa/install-prompt';
 import { getDefaultThresholds } from './processing/quantize';
 import { useProcessingPipeline } from './hooks/useProcessingPipeline';
-import type { Mode, GridConfig, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, PlanesConfig } from './types';
+import type { Mode, GridConfig, ValueConfig, ColorConfig, SimplifyConfig } from './types';
 import './styles/global.css';
 
 // 1600px keeps memory and processing time reasonable on mobile devices
@@ -60,22 +59,6 @@ const defaultGridConfig: GridConfig = {
   opacity: 0.7,
 };
 
-const defaultEdgeConfig: EdgeConfig = {
-  enabled: false,
-  method: 'canny',
-  detail: 0.5,
-  sensitivity: 0.5,
-  compositeMode: 'lines-over',
-  lineColor: 'black',
-  lineCustomColor: '#000000',
-  lineOpacity: 0.8,
-  edgesOnlyPolarity: 'dark-on-light',
-  lineWeight: 2,
-  lineKnockoutColor: 'black',
-  lineKnockoutCustomColor: '#000000',
-  useOriginal: false,
-};
-
 const defaultValueConfig: ValueConfig = {
   levels: 3,
   thresholds: getDefaultThresholds(3),
@@ -91,34 +74,8 @@ const defaultColorConfig: ColorConfig = {
 };
 
 const defaultSimplifyConfig: SimplifyConfig = {
-  method: 'none',
-  strength: 0.5,
-  shadowMerge: false,
-  bilateral: { sigmaS: 10, sigmaR: 0.15 },
-  kuwahara: { kernelSize: 7, passes: 1, sharpness: 8, sectors: 8 },
-  meanShift: { spatialRadius: 15, colorRadius: 25 },
-  anisotropic: { iterations: 10, kappa: 20 },
-  painterly: {
-    radius: 8, q: 8, alpha: 1.0, zeta: 1.0,
-    tensorSigma: 2.0,
-    sharpenAmount: 0.35, edgeThresholdLow: 0.03, edgeThresholdHigh: 0.12,
-    detailSigma: 1.5,
-  },
-  slic: { detail: 0.55, compactness: 0.15 },
-  superResolution: { scale: 4, sharpenAmount: 0.3 },
+  method: 'ultrasharp',
   ultrasharp: { downscale: 4 },
-  planeGuidance: { preserveBoundaries: false },
-};
-
-const defaultPlanesConfig: PlanesConfig = {
-  planeCount: 8,
-  depthSmooth: 3,
-  depthScale: 20,
-  lightAzimuth: 225,
-  lightElevation: 45,
-  minRegionSize: 'small',
-  colorMode: 'shading',
-  colorStrategy: 'average',
 };
 
 const simplifyConfig = signal<SimplifyConfig>(defaultSimplifyConfig);
@@ -128,15 +85,11 @@ const originalImageData = signal<ImageData | null>(null);
 const sourceImageData = signal<ImageData | null>(null);
 const activeMode = signal<Mode>('original');
 const gridConfig = signal<GridConfig>(defaultGridConfig);
-const edgeConfig = signal<EdgeConfig>(defaultEdgeConfig);
 const valueConfig = signal<ValueConfig>(defaultValueConfig);
 const colorConfig = signal<ColorConfig>(defaultColorConfig);
 const showCompare = signal(false);
 const showCropOverlay = signal(false);
 const isolatedBand = signal<number | null>(null);
-const showTemperatureMap = signal(false);
-const planesConfig = signal<PlanesConfig>(defaultPlanesConfig);
-const tempUseOriginal = signal(false);
 const showInstallBanner = signal(false);
 
 export function App() {
@@ -146,7 +99,6 @@ export function App() {
   const {
     simplifiedImageData,
     processedImage,
-    edgeData,
     isProcessing,
     processingProgress,
     paletteColors,
@@ -158,8 +110,6 @@ export function App() {
     simplifyConfig,
     valueConfig,
     colorConfig,
-    edgeConfig,
-    planesConfig,
     onError: showError,
   });
 
@@ -232,9 +182,6 @@ export function App() {
   };
 
   const compositeOptions = {
-    showTemperatureMap: showTemperatureMap.value,
-    tempIntensity: 1.0,
-    originalSource: (tempUseOriginal.value ? sourceImageData.value : (simplifiedImageData.value ?? sourceImageData.value)) ?? undefined,
     isolatedBand: activeMode.value === 'color' ? isolatedBand.value : null,
     isolationThresholds: colorConfig.value.thresholds,
   };
@@ -249,7 +196,6 @@ export function App() {
     grayscale: 'Tonal',
     value: 'Value',
     color: 'Color',
-    planes: 'Planes',
   }[activeMode.value];
   return (
     <div id="app-root" class="app-shell">
@@ -294,8 +240,6 @@ export function App() {
             processedImageData={processedImage.value}
             activeMode={activeMode.value}
             gridConfig={gridConfig.value}
-            edgeConfig={edgeConfig.value}
-            edgeData={edgeData.value}
             isProcessing={isProcessing.value}
             onOpenImage={() => fileInputRef.current?.click()}
             externalRef={displayCanvasRef}
@@ -355,7 +299,7 @@ export function App() {
                 />
               </section>
 
-              {(activeMode.value === 'value' || activeMode.value === 'color' || activeMode.value === 'planes') && (
+              {(activeMode.value === 'value' || activeMode.value === 'color') && (
                 <section class="panel-card">
                   <div class="panel-card-header">
                     <div class="panel-card-title">
@@ -372,12 +316,6 @@ export function App() {
                     <ColorSettings
                       config={colorConfig.value}
                       onChange={(cfg) => { colorConfig.value = { ...colorConfig.value, ...cfg }; }}
-                    />
-                  )}
-                  {activeMode.value === 'planes' && (
-                    <PlanesSettings
-                      config={planesConfig.value}
-                      onChange={(cfg) => { planesConfig.value = { ...planesConfig.value, ...cfg }; }}
                     />
                   )}
                 </section>
@@ -408,13 +346,7 @@ export function App() {
                 </div>
                 <OverlayToggles
                   gridConfig={gridConfig.value}
-                  edgeConfig={edgeConfig.value}
-                  showTemperatureMap={showTemperatureMap.value}
-                  tempUseOriginal={tempUseOriginal.value}
                   onGridChange={(cfg) => { gridConfig.value = { ...gridConfig.value, ...cfg }; }}
-                  onEdgeChange={(cfg) => { edgeConfig.value = { ...edgeConfig.value, ...cfg }; }}
-                  onTemperatureMapChange={(enabled) => { showTemperatureMap.value = enabled; }}
-                  onTempUseOriginalChange={(useOriginal) => { tempUseOriginal.value = useOriginal; }}
                 />
               </section>
 

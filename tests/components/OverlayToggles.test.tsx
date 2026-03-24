@@ -3,11 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { OverlayToggles } from '../../src/components/OverlayToggles';
 
 describe('OverlayToggles', () => {
-  it('toggles edge and temperature overlays and opens edge settings', () => {
+  it('toggles the grid overlay and opens grid settings', () => {
     const onGridChange = vi.fn();
-    const onEdgeChange = vi.fn();
-    const onTemperatureMapChange = vi.fn();
-    const onTempUseOriginalChange = vi.fn();
 
     render(
       <OverlayToggles
@@ -21,36 +18,14 @@ describe('OverlayToggles', () => {
           customColor: '#ffffff',
           opacity: 0.7,
         }}
-        edgeConfig={{
-          enabled: false,
-          method: 'canny',
-          detail: 0.5,
-          sensitivity: 0.5,
-          compositeMode: 'lines-over',
-          lineColor: 'black',
-          lineCustomColor: '#000000',
-          lineOpacity: 0.8,
-          edgesOnlyPolarity: 'dark-on-light',
-          lineWeight: 2,
-          lineKnockoutColor: 'black',
-          lineKnockoutCustomColor: '#000000',
-          useOriginal: false,
-        }}
-        showTemperatureMap={false}
-        tempUseOriginal={false}
         onGridChange={onGridChange}
-        onEdgeChange={onEdgeChange}
-        onTemperatureMapChange={onTemperatureMapChange}
-        onTempUseOriginalChange={onTempUseOriginalChange}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /^Edges$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^Temp$/i }));
-    fireEvent.click(screen.getByTitle('Edge settings'));
+    fireEvent.click(screen.getByRole('button', { name: /^Grid$/i }));
+    fireEvent.click(screen.getByTitle('Grid settings'));
 
-    expect(onEdgeChange).toHaveBeenCalledWith({ enabled: true });
-    expect(onTemperatureMapChange).toHaveBeenCalledWith(true);
-    expect(screen.getByText('Line Weight')).toBeInTheDocument();
+    expect(onGridChange).toHaveBeenCalledWith({ enabled: true });
+    expect(screen.getByText('Divisions')).toBeInTheDocument();
   });
 });

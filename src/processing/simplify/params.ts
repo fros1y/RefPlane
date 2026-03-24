@@ -10,47 +10,6 @@ export function strengthToMethodParams(
 ): Record<string, number> {
   const s = Math.max(0, Math.min(1, strength));
   switch (method) {
-    case 'bilateral': {
-      let sigmaS: number, sigmaR: number;
-      if (s <= 0.5) {
-        const t = s / 0.5;
-        sigmaS = lerp(2, 10, t);
-        sigmaR = lerp(0.05, 0.15, t);
-      } else {
-        const t = (s - 0.5) / 0.5;
-        sigmaS = lerp(10, 25, t);
-        sigmaR = lerp(0.15, 0.35, t);
-      }
-      return { sigmaS, sigmaR };
-    }
-    case 'kuwahara':
-      return { kernelSize: Math.round(lerp(3, 15, s)), passes: 1, sharpness: 8, sectors: 8 };
-    case 'mean-shift':
-      return { spatialRadius: lerp(5, 30, s), colorRadius: lerp(10, 50, s) };
-    case 'anisotropic':
-      return { iterations: Math.round(lerp(1, 30, s)), kappa: lerp(30, 10, s) };
-    case 'painterly': {
-      return {
-        radius: lerp(4, 12, s),
-        q: lerp(4, 12, s),
-        alpha: lerp(0.5, 2.0, s),
-        zeta: lerp(1.5, 0.8, s),
-        tensorSigma: lerp(1.0, 3.0, s),
-        sharpenAmount: lerp(0.15, 0.5, s),
-        edgeThresholdLow: 0.03,
-        edgeThresholdHigh: 0.12,
-        detailSigma: lerp(1.0, 2.0, s),
-      };
-    }
-    case 'slic':
-      return { detail: 0.5, compactness: lerp(0.3, 0.7, s) };
-    case 'super-resolution': {
-      // Map strength to downscale factor: low strength = gentle 2x downscale,
-      // high strength = aggressive 8x downscale for a strongly abstracted result.
-      // sharpenAmount stays constant — the SR bicubic pass handles reconstruction.
-      const scale = Math.round(lerp(2, 8, s));
-      return { scale, sharpenAmount: 0.3 };
-    }
     case 'ultrasharp': {
       // Map strength to downscale factor fed into the 4x UltraSharp model.
       // Low strength = mild 2x downsample before upscaling (subtle simplification);
@@ -58,7 +17,6 @@ export function strengthToMethodParams(
       const downscale = Math.round(lerp(2, 8, s));
       return { downscale };
     }
-    case 'none':
     default:
       return {};
   }

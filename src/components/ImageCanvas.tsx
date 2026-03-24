@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'preact/hooks';
 import type { RefObject } from 'preact';
-import type { GridConfig, EdgeConfig, Mode } from '../types';
+import type { GridConfig, Mode } from '../types';
 import { composite } from '../compositing/compositor';
 import type { CompositeOptions } from '../compositing/compositor';
 
@@ -9,8 +9,6 @@ interface Props {
   processedImageData: ImageData | null;
   activeMode: Mode;
   gridConfig: GridConfig;
-  edgeConfig: EdgeConfig;
-  edgeData: ImageData | null;
   isProcessing: boolean;
   onOpenImage?: () => void;
   externalRef?: RefObject<HTMLCanvasElement>;
@@ -23,8 +21,6 @@ export function ImageCanvas({
   processedImageData,
   activeMode,
   gridConfig,
-  edgeConfig,
-  edgeData,
   isProcessing,
   onOpenImage,
   externalRef,
@@ -52,8 +48,8 @@ export function ImageCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !displaySource) return;
-    composite(canvas, displaySource, gridConfig, edgeConfig, edgeData, compositeOptions);
-  }, [displaySource, gridConfig, edgeConfig, edgeData, compositeOptions]);
+    composite(canvas, displaySource, gridConfig, compositeOptions);
+  }, [displaySource, gridConfig, compositeOptions]);
 
   const applyTransform = useCallback(() => {
     const wrapper = wrapperRef.current;
