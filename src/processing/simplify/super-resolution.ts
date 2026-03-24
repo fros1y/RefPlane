@@ -68,7 +68,7 @@ function boxDownsample(imageData: ImageData, scale: number): ImageData {
 
 /**
  * Run super-resolution simplification:
- *   downsample → bicubic SR (TF.js) → unsharp-mask (TF.js)
+ *   downsample → bilinear SR (TF.js) → unsharp-mask (TF.js)
  *
  * @param imageData     Source image.
  * @param scale         Downscale factor (e.g. 2, 4, 8).  Higher = more abstract.
