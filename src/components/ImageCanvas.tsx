@@ -133,13 +133,13 @@ export function ImageCanvas({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    maxWidth: '100%',
-    maxHeight: '100%',
+    width: '100%',
+    height: '100%',
   };
 
   const canvasStyle: preact.JSX.CSSProperties = {
-    maxWidth: '100%',
-    maxHeight: '100%',
+    width: '100%',
+    height: '100%',
     objectFit: 'contain',
     imageRendering: 'pixelated',
     touchAction: 'none',
