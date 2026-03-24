@@ -1,12 +1,7 @@
 import { renderGrid } from './grid';
-import { compositeEdges } from './edge-composite';
-import { applyTemperatureMap } from '../color/temperature';
-import type { GridConfig, EdgeConfig } from '../types';
+import type { GridConfig } from '../types';
 
 export interface CompositeOptions {
-  showTemperatureMap?: boolean;
-  tempIntensity?: number;
-  originalSource?: ImageData;
   isolatedBand?: number | null;
   isolationThresholds?: number[];
 }
@@ -29,8 +24,6 @@ export function composite(
   displayCanvas: HTMLCanvasElement,
   source: ImageData,
   gridConfig: GridConfig,
-  edgeConfig: EdgeConfig,
-  edgeData: ImageData | null,
   options?: CompositeOptions
 ): void {
   const { width, height } = source;
@@ -40,19 +33,11 @@ export function composite(
 
   let displayData = source;
 
-  if (options?.showTemperatureMap) {
-    displayData = applyTemperatureMap(displayData, options.tempIntensity ?? 1.0, options.originalSource);
-  }
-
   if (options?.isolatedBand != null && options.isolationThresholds) {
     displayData = applyBandIsolation(displayData, options.isolatedBand, options.isolationThresholds);
   }
 
   ctx.putImageData(displayData, 0, 0);
-
-  if (edgeConfig.enabled && edgeData) {
-    compositeEdges(ctx, edgeData, edgeConfig);
-  }
 
   if (gridConfig.enabled) {
     if (!gridScratch || gridScratch.width !== width || gridScratch.height !== height) {

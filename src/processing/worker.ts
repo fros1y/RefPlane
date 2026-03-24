@@ -2,9 +2,7 @@
 
 import { processValueStudy } from './value-study';
 import { processColorRegions } from './color-regions';
-import { cannyEdges, sobelEdges } from './edges';
 import { toGrayscale } from './grayscale';
-import { processPlanes, resizeDepthMap } from './planes';
 import { runSimplify } from './simplify/index';
 import { createProgressReporter } from './progress';
 import { getWebGpuProcessor } from './webgpu';
@@ -53,10 +51,9 @@ async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: n
       currentSimplifyController = controller;
       const reporter = createProgressReporter(requestId);
       const result = await measureStage(stages, 'simplify', () =>
-        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal, gpu, data.planeGuidance)
+        runSimplify(data.imageData, data.config, (percent) => reporter('Simplifying', percent), controller.signal, gpu)
       );
-      const simplifyBackend: ProcessingMeta['backend'] = gpu && data.config.method !== 'none' ? 'gpu' : 'cpu';
-      const meta = finalizeMeta(stages, simplifyBackend, data.imageData, queuedAt, startedAt);
+      const meta = finalizeMeta(stages, 'gpu', data.imageData, queuedAt, startedAt);
       self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
       if (currentSimplifyController === controller) {
         currentSimplifyController = null;
@@ -77,45 +74,12 @@ async function handleMessage(data: WorkerRequest, requestId: number, queuedAt: n
         palette: result.palette,
         paletteBands: result.paletteBands,
       }), [result.imageData.data.buffer]);
-    } else if (type === 'edges') {
-      const gray = await measureStage(stages, 'grayscale', () => toGrayscale(data.imageData));
-      const cfg = data.config;
-      let edgeData: ImageData;
-      if (cfg.method === 'canny') {
-        edgeData = gpu
-          ? await measureStage(stages, 'canny-gpu', () => gpu.cannyEdges(gray, cfg.detail))
-          : await measureStage(stages, 'canny', () => cannyEdges(gray, cfg.detail));
-      } else {
-        edgeData = gpu
-          ? await measureStage(stages, 'sobel-gpu', () => gpu.sobelEdges(gray, cfg.sensitivity))
-          : await measureStage(stages, 'sobel', () => sobelEdges(gray, cfg.sensitivity));
-      }
-      const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
-      self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result: edgeData }), [edgeData.data.buffer]);
     } else if (type === 'grayscale') {
       const result = gpu
         ? await measureStage(stages, 'grayscale-gpu', () => gpu.toGrayscale(data.imageData))
         : await measureStage(stages, 'grayscale-cpu', () => toGrayscale(data.imageData));
       const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
       self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
-    } else if (type === 'planes') {
-      const { depthMap, depthWidth, depthHeight, config } = data;
-      const resized = await measureStage(stages, 'resize-depth', () =>
-        resizeDepthMap(depthMap, depthWidth, depthHeight, data.imageData.width, data.imageData.height)
-      );
-      if (gpu) {
-        const result = await measureStage(stages, 'planes-gpu', () =>
-          gpu.processPlanes(resized, data.imageData.width, data.imageData.height, config, data.imageData)
-        );
-        const meta = finalizeMeta(stages, 'gpu', data.imageData, queuedAt, startedAt);
-        self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
-      } else {
-        const result = await measureStage(stages, 'planes-cpu', () =>
-          processPlanes(resized, data.imageData.width, data.imageData.height, config, data.imageData)
-        );
-        const meta = finalizeMeta(stages, 'cpu', data.imageData, queuedAt, startedAt);
-        self.postMessage(createWorkerSuccessMessage(requestId, type, meta, { result }), [result.data.buffer]);
-      }
     }
   } catch (err) {
     const meta = finalizeMeta(stages, gpu ? 'gpu' : 'cpu', data.imageData, queuedAt, startedAt);
