@@ -4,7 +4,7 @@ import { pipeline, RawImage, env } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
 
-const MODEL_ID = 'Xenova/4x-UltraSharp';
+const MODEL_ID = 'Xenova/4x_APISR_GRL_GAN_generator-onnx';
 
 type UpscalePipeline = Awaited<ReturnType<typeof pipeline<'image-to-image'>>>;
 
@@ -33,7 +33,7 @@ function getUpscalePipeline(onProgress: (data: UltrasharpWorkerProgress) => void
       dtype: 'fp32',
       progress_callback: (event: any) => {
         if (event.status === 'progress' && typeof event.progress === 'number') {
-          onProgress({ kind: 'progress', stage: 'Downloading UltraSharp model', percent: Math.round(event.progress) });
+          onProgress({ kind: 'progress', stage: 'Downloading upscaler model', percent: Math.round(event.progress) });
         }
       },
     });
