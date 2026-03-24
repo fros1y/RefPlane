@@ -26,6 +26,31 @@ An iOS native version of RefPlane built in Swift using SwiftUI and Apple framewo
 2. Select a simulator or connected device (iPhone or iPad).
 3. Press **⌘R** to build and run.
 
+## Building in VSCode (macOS)
+
+The workspace ships with `.vscode/tasks.json` build tasks. Open the repo root in VSCode, then use **Terminal → Run Task…** or the keyboard shortcut:
+
+| Task | Description |
+|------|-------------|
+| **iOS: Build Debug (Simulator)** | Compile the app for the iOS Simulator (Debug) |
+| **iOS: Build Release (no signing)** | Release build with code-signing disabled (CI-friendly) |
+| **iOS: Clean** | Remove derived data for a clean rebuild |
+| **iOS: Run on Simulator (iPhone 16)** | Boot an iPhone 16 simulator, install, and launch the app |
+| **iOS: Open in Xcode** | Open `RefPlane.xcodeproj` in Xcode for full IDE workflow |
+
+Build errors are surfaced in the VSCode **Problems** panel via the Swift compiler problem matcher (`file:line:col: error/warning: message`).
+
+### Recommended extensions
+
+For the richest VSCode experience (build, run, debug with a single click), install:
+
+- **[SweetPad](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad)** (`sweetpad.sweetpad`) — xcodebuild integration + simulator launch with LLDB attach  
+- **[Swift](https://marketplace.visualstudio.com/items?itemName=sswg.swift-lang)** (`sswg.swift-lang`) — syntax highlighting, code completion, diagnostics  
+
+VSCode will prompt you to install both via the workspace recommendation in `.vscode/extensions.json`.
+
+With SweetPad active you can also use the **iOS: Run on Simulator** launch configuration in `.vscode/launch.json` to build, boot the simulator, and attach the debugger in one step.
+
 No third-party dependencies are required – the project uses only Apple system frameworks (SwiftUI, PhotosUI, CoreImage, CoreML).
 
 ## Project Structure

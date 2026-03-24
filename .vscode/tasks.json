@@ -1,6 +1,9 @@
 {
   "version": "2.0.0",
   "tasks": [
+    // ──────────────────────────────────────────────────────────────
+    // Web (Vite / npm)
+    // ──────────────────────────────────────────────────────────────
     {
       "label": "Install dependencies",
       "type": "shell",
@@ -34,6 +37,92 @@
       "type": "shell",
       "command": "npm run build",
       "group": "build",
+      "problemMatcher": []
+    },
+    // ──────────────────────────────────────────────────────────────
+    // iOS (xcodebuild)  — requires Xcode 15+ on macOS
+    // ──────────────────────────────────────────────────────────────
+    {
+      "label": "iOS: Build Debug (Simulator)",
+      "type": "shell",
+      "command": "xcodebuild -project ios/RefPlane.xcodeproj -scheme RefPlane -configuration Debug -destination 'generic/platform=iOS Simulator' build",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": {
+        "owner": "xcode",
+        "fileLocation": ["absolute"],
+        "pattern": {
+          "regexp": "^(.+\\.swift):(\\d+):(\\d+):\\s+(error|warning|note):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "label": "iOS: Build Release (no signing)",
+      "type": "shell",
+      "command": "xcodebuild -project ios/RefPlane.xcodeproj -scheme RefPlane -configuration Release -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": {
+        "owner": "xcode",
+        "fileLocation": ["absolute"],
+        "pattern": {
+          "regexp": "^(.+\\.swift):(\\d+):(\\d+):\\s+(error|warning|note):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "label": "iOS: Clean",
+      "type": "shell",
+      "command": "xcodebuild -project ios/RefPlane.xcodeproj -scheme RefPlane clean",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "iOS: Run on Simulator (iPhone 16)",
+      "type": "shell",
+      "command": "bash ios/scripts/run-simulator.sh 'iPhone 16'",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "iOS: Open in Xcode",
+      "type": "shell",
+      "command": "open ios/RefPlane.xcodeproj",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
       "problemMatcher": []
     }
   ]
