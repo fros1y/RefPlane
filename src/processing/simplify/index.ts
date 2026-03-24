@@ -5,7 +5,6 @@ import { meanShiftFilter } from './mean-shift';
 import { anisotropicDiffusion } from './anisotropic';
 import { slicFilter } from './slic';
 import { mergeShadows } from './shadow-merge';
-
 interface SimplifyGpuProcessor {
   bilateralRgb(imageData: ImageData, sigmaS: number, sigmaR: number): Promise<ImageData>;
   kuwahara(imageData: ImageData, kernelSize: number, passes: number, sharpness: number, sectors: number): Promise<ImageData>;

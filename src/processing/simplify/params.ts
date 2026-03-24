@@ -44,6 +44,13 @@ export function strengthToMethodParams(
     }
     case 'slic':
       return { detail: 0.5, compactness: lerp(0.3, 0.7, s) };
+    case 'super-resolution': {
+      // Map strength to downscale factor: low strength = gentle 2x downscale,
+      // high strength = aggressive 8x downscale for a strongly abstracted result.
+      // sharpenAmount stays constant — the SR bicubic pass handles reconstruction.
+      const scale = Math.round(lerp(2, 8, s));
+      return { scale, sharpenAmount: 0.3 };
+    }
     case 'none':
     default:
       return {};

@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import type { Mode, EdgeConfig, ValueConfig, ColorConfig, SimplifyConfig, PlanesConfig, PlaneGuidance } from '../types';
 import { WorkerClient, WorkerRequestError } from '../processing/worker-client';
 import { DepthClient } from '../processing/depth-client';
+import { SrClient } from '../processing/sr-client';
 import { segmentPlanes, resizeDepthMap } from '../processing/planes';
 import { buildPlaneGuidance } from '../processing/plane-guidance';
 import type { WorkerRequest, WorkerRequestType } from '../processing/worker-protocol';
@@ -59,6 +60,8 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
 
   const depthClientRef = useRef<DepthClient | null>(null);
   const latestDepthRequestIdRef = useRef(0);
+  const srClientRef = useRef<SrClient | null>(null);
+  const latestSrRequestIdRef = useRef(0);
 
   // ── Internal refs ─────────────────────────────────────────────────────
   const workerClientRef = useRef<WorkerClient | null>(null);
@@ -349,13 +352,44 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
         triggerProcessing(0);
         return;
       }
+      if (simplifyConfig.value.method === 'super-resolution') {
+        const srClient = srClientRef.current;
+        if (!srClient) return;
+        const { scale, sharpenAmount } = simplifyConfig.value.superResolution;
+        const requestId = nextRequestId();
+        latestSrRequestIdRef.current = requestId;
+        processingCount.value++;
+        const sentAt = performance.now();
+        const { requestId: workerRequestId, promise } = srClient.request(src, scale, sharpenAmount);
+        console.log(`[Perf] dispatch super-resolution#${requestId} | size=${src.width}x${src.height}`);
+        void workerRequestId;
+        promise
+          .then((result) => {
+            if (requestId !== latestSrRequestIdRef.current) return;
+            const roundTrip = performance.now() - sentAt;
+            console.log(`[Perf] super-resolution#${requestId} current | roundTrip=${roundTrip.toFixed(1)}ms`);
+            processingProgress.value = null;
+            simplifiedImageData.value = result;
+            triggerProcessing(0);
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg !== 'AbortError' && requestId === latestSrRequestIdRef.current) {
+              onError?.(msg);
+            }
+          })
+          .finally(() => {
+            processingCount.value = Math.max(0, processingCount.value - 1);
+          });
+        return;
+      }
       if (requiresPlaneGuidance(simplifyConfig.value) && !planeGuidance.value) {
         // Will be triggered when plane guidance completes
         return;
       }
       postSimplifyRequest(src);
     }, delay);
-  }, [postSimplifyRequest, sourceImageData, simplifyConfig, simplifiedImageData, planeGuidance, requiresPlaneGuidance, triggerProcessing]);
+  }, [postSimplifyRequest, sourceImageData, simplifyConfig, simplifiedImageData, planeGuidance, requiresPlaneGuidance, triggerProcessing, nextRequestId, processingCount, processingProgress, onError]);
 
   // ── Worker lifecycle ──────────────────────────────────────────────────
   useEffect(() => {
@@ -370,6 +404,12 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       processingProgress.value = { stage, percent };
     });
 
+    srClientRef.current = new SrClient((stage, percent) => {
+      if (latestSrRequestIdRef.current > 0) {
+        processingProgress.value = { stage, percent };
+      }
+    });
+
     return () => {
       if (processingTimerRef.current !== null) window.clearTimeout(processingTimerRef.current);
       if (edgeTimerRef.current !== null) window.clearTimeout(edgeTimerRef.current);
@@ -379,6 +419,8 @@ export function useProcessingPipeline(inputs: ProcessingPipelineInputs): Process
       workerClientRef.current = null;
       depthClientRef.current?.terminate();
       depthClientRef.current = null;
+      srClientRef.current?.terminate();
+      srClientRef.current = null;
     };
   }, []);
 

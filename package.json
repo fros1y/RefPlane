@@ -18,6 +18,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "@preact/signals": "^2.8.2",
+    "@tensorflow/tfjs": "^4.22.0",
     "preact": "^10.29.0"
   },
   "devDependencies": {
