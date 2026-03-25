@@ -11,18 +11,20 @@ enum ValueStudyProcessor {
     }
 
     static func process(image: UIImage, config: ValueConfig) -> Result? {
+        let t0 = CFAbsoluteTimeGetCurrent()
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
         let levels = max(2, min(8, config.levels))
         let thresholds = config.thresholds  // values in 0-1, sorted ascending
         let total = width * height
-        let start = CFAbsoluteTimeGetCurrent()
+        let t1 = CFAbsoluteTimeGetCurrent()
+        print("[ValueStudy] toPixelData: \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
 
         // GPU path
         if let gpu = MetalContext.shared {
             let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height,
                               levels: levels, thresholds: thresholds, config: config)
-            let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            print("[ValueStudy] ✅ GPU path — \(total) px, \(levels) levels in \(String(format: "%.1f", ms)) ms")
+            let t2 = CFAbsoluteTimeGetCurrent()
+            print("[ValueStudy] ✅ GPU path — \(total) px, \(levels) levels in \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
             return result
         }
 
@@ -30,7 +32,7 @@ enum ValueStudyProcessor {
         print("[ValueStudy] ⚠️ CPU fallback (MetalContext.shared = nil)")
         let result = processCPU(pixels: pixels, width: width, height: height,
                           levels: levels, thresholds: thresholds, config: config)
-        let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
         print("[ValueStudy] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
         return result
     }
@@ -44,9 +46,9 @@ enum ValueStudyProcessor {
         let total = width * height
         let thresholdFloats = thresholds.map { Float($0) }
 
-        // Quantize on GPU → get label map
+        // Quantize on GPU → get label map and source buffer
         var stepStart = CFAbsoluteTimeGetCurrent()
-        guard let (_, labelMap) = gpu.quantize(
+        guard let (srcBuffer, labelMap) = gpu.quantize(
             pixels: pixels, width: width, height: height,
             thresholds: thresholdFloats, totalLevels: levels
         ) else {
@@ -77,15 +79,17 @@ enum ValueStudyProcessor {
             levelColors.append(UIColor(white: CGFloat(t) / 255.0, alpha: 1))
         }
 
-        // Re-render labels → gray output on GPU
+        // Re-render labels → gray output on GPU (reuse srcBuffer from quantize)
         stepStart = CFAbsoluteTimeGetCurrent()
-        guard let out = gpu.valueRemap(pixels: pixels, labels: labels,
+        guard let out = gpu.valueRemap(srcBuffer: srcBuffer, labels: labels,
                                        count: total, totalLevels: levels) else {
             return nil
         }
         print("[ValueStudy]   value_remap: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
+        stepStart = CFAbsoluteTimeGetCurrent()
         guard let img = UIImage.fromPixelData(out, width: width, height: height) else { return nil }
+        print("[ValueStudy]   fromPixelData: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         return Result(image: img, levelColors: levelColors)
     }
 

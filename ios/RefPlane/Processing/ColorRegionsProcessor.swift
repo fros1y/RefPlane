@@ -13,22 +13,24 @@ enum ColorRegionsProcessor {
     }
 
     static func process(image: UIImage, config: ColorConfig) -> Result? {
+        let t0 = CFAbsoluteTimeGetCurrent()
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
         let total = width * height
-        let start = CFAbsoluteTimeGetCurrent()
+        let t1 = CFAbsoluteTimeGetCurrent()
+        print("[ColorRegions] toPixelData: \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
 
         // GPU path
         if let gpu = MetalContext.shared {
             let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height, config: config)
-            let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            print("[ColorRegions] ✅ GPU path — \(total) px, \(config.bands) bands × \(config.colorsPerBand) cpb in \(String(format: "%.1f", ms)) ms")
+            let t2 = CFAbsoluteTimeGetCurrent()
+            print("[ColorRegions] ✅ GPU path — \(total) px, \(config.bands) bands × \(config.colorsPerBand) cpb in \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
             return result
         }
 
         // CPU fallback
         print("[ColorRegions] ⚠️ CPU fallback (MetalContext.shared = nil)")
         let result = processCPU(pixels: pixels, width: width, height: height, config: config)
-        let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
         print("[ColorRegions] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
         return result
     }
@@ -44,16 +46,16 @@ enum ColorRegionsProcessor {
 
         // 1. RGB → Oklab on GPU
         var stepStart = CFAbsoluteTimeGetCurrent()
-        guard let (labArray, srcBuffer) = gpu.rgbToOklab(pixels: pixels, width: width, height: height) else {
+        guard let (labArray, srcBuffer, labBuffer) = gpu.rgbToOklab(pixels: pixels, width: width, height: height) else {
             print("[ColorRegions] ⚠️ GPU rgb_to_oklab failed, falling back to CPU")
             return processCPU(pixels: pixels, width: width, height: height, config: config)
         }
         print("[ColorRegions]   rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        // 2. Assign bands on GPU
+        // 2. Assign bands on GPU (reuse labBuffer)
         stepStart = CFAbsoluteTimeGetCurrent()
         let thresholdFloats = config.thresholds.map { Float($0) }
-        guard let bandAssignRaw = gpu.assignBands(lab: labArray, count: total,
+        guard let bandAssignRaw = gpu.assignBands(labBuffer: labBuffer, count: total,
                                                    thresholds: thresholdFloats,
                                                    totalBands: bands) else {
             print("[ColorRegions] ⚠️ GPU band_assign failed, falling back to CPU")
@@ -141,13 +143,16 @@ enum ColorRegionsProcessor {
 
         print("[ColorRegions]   remap_by_label: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
+        stepStart = CFAbsoluteTimeGetCurrent()
         guard let img = UIImage.fromPixelData(out, width: width, height: height) else { return nil }
+        print("[ColorRegions]   fromPixelData: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         return Result(image: img, palette: palette, paletteBands: paletteBands)
     }
 
     // MARK: - GPU-accelerated k-means
 
     /// K-means with CPU centroid update + GPU assignment step.
+    /// Uploads flat points once to a Metal buffer, reuses across iterations.
     private static func kmeansGPU(
         gpu: MetalContext, points: [OklabColor], k: Int, lWeight: Float
     ) -> KMeansResult {
@@ -155,42 +160,50 @@ enum ColorRegionsProcessor {
             return KMeansResult(centroids: [], assignments: [])
         }
         let k = min(k, points.count)
+        let n = points.count
 
-        // Flatten to interleaved floats for GPU
-        var flatPoints = [Float](repeating: 0, count: points.count * 3)
-        for i in 0..<points.count {
-            flatPoints[i * 3]     = points[i].L
-            flatPoints[i * 3 + 1] = points[i].a
-            flatPoints[i * 3 + 2] = points[i].b
+        // Flatten to interleaved floats and upload once
+        var flatPoints = [Float](repeating: 0, count: n * 3)
+        flatPoints.withUnsafeMutableBufferPointer { buf in
+            for i in 0..<n {
+                buf[i * 3]     = points[i].L
+                buf[i * 3 + 1] = points[i].a
+                buf[i * 3 + 2] = points[i].b
+            }
+        }
+        guard let pixLabBuffer = gpu.makeBuffer(flatPoints) else {
+            return KMeansClusterer.cluster(points: points, k: k, lWeight: lWeight)
         }
 
         // K-means++ init on CPU (only k iterations, fast)
         var centroids = KMeansClusterer.kMeansPlusPlusInit(points: points, k: k, lWeight: lWeight)
-        var assignments = [Int](repeating: 0, count: points.count)
+        var assignments = [Int](repeating: 0, count: n)
         var iterations = 0
 
         for iter in 0..<20 {
             iterations = iter + 1
-            // Assignment step on GPU
+            // Assignment step on GPU (reuse pixLabBuffer)
             let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
-            if let gpuAssign = gpu.kmeansAssign(pixelLab: flatPoints, count: points.count,
+            if let gpuAssign = gpu.kmeansAssign(pixelLabBuffer: pixLabBuffer, count: n,
                                                  centroidLab: flatCentroids, k: k, lWeight: lWeight) {
                 var changed = false
-                for i in 0..<points.count {
-                    let newA = Int(gpuAssign[i])
-                    if assignments[i] != newA { changed = true; assignments[i] = newA }
+                // Use withUnsafeBufferPointer to avoid bounds-check overhead
+                gpuAssign.withUnsafeBufferPointer { assignBuf in
+                    for i in 0..<n {
+                        let newA = Int(assignBuf[i])
+                        if assignments[i] != newA { changed = true; assignments[i] = newA }
+                    }
                 }
                 if !changed { break }
             } else {
-                // GPU failed, fall back to full CPU k-means
-                print("[ColorRegions]   kmeansGPU: GPU assign failed on iter \\(iter), falling back to CPU k-means")
+                print("[ColorRegions]   kmeansGPU: GPU assign failed on iter \(iter), falling back to CPU k-means")
                 return KMeansClusterer.cluster(points: points, k: k, lWeight: lWeight)
             }
 
             // Update step on CPU (tiny: just k centroids)
             var sums = [(L: Float, a: Float, b: Float, count: Int)](
                 repeating: (0, 0, 0, 0), count: centroids.count)
-            for i in 0..<points.count {
+            for i in 0..<n {
                 let c = assignments[i]
                 sums[c].L += points[i].L
                 sums[c].a += points[i].a
@@ -212,7 +225,7 @@ enum ColorRegionsProcessor {
             if maxShift < 0.001 { break }
         }
 
-        print("[ColorRegions]   kmeansGPU: k=\(k), \(points.count) pts, \(iterations) iters (GPU)")
+        print("[ColorRegions]   kmeansGPU: k=\(k), \(n) pts, \(iterations) iters (GPU)")
         return KMeansResult(centroids: centroids, assignments: assignments)
     }
 

@@ -144,9 +144,9 @@ final class MetalContext {
         return readPixels(from: dstBuf, count: count)
     }
 
-    /// RGB → Oklab on GPU. Returns interleaved [Float] lab array and the source pixel MTLBuffer
-    /// (reusable by remapByLabel to avoid a second upload).
-    func rgbToOklab(pixels: [UInt8], width: Int, height: Int) -> (lab: [Float], srcBuffer: MTLBuffer)? {
+    /// RGB → Oklab on GPU. Returns interleaved [Float] lab array, the source pixel MTLBuffer,
+    /// and the lab MTLBuffer (reusable by assignBands and kmeansAssign).
+    func rgbToOklab(pixels: [UInt8], width: Int, height: Int) -> (lab: [Float], srcBuffer: MTLBuffer, labBuffer: MTLBuffer)? {
         let count = width * height
 
         guard let srcBuf = makePixelBuffer(pixels),
@@ -163,13 +163,13 @@ final class MetalContext {
 
         let labPtr = labBuf.contents().bindMemory(to: Float.self, capacity: count * 3)
         let labArray = Array(UnsafeBufferPointer(start: labPtr, count: count * 3))
-        return (labArray, srcBuf)
+        return (labArray, srcBuf, labBuf)
     }
 
-    /// Assign each pixel to a luminance band. Returns [Int32] of band indices.
-    func assignBands(lab: [Float], count: Int, thresholds: [Float], totalBands: Int) -> [Int32]? {
-        guard let labBuf = makeBuffer(lab),
-              let bandBuf = makeBuffer(length: count * MemoryLayout<Int32>.stride),
+    /// Assign each pixel to a luminance band. Accepts lab MTLBuffer to avoid re-upload.
+    /// Returns [Int32] of band indices.
+    func assignBands(labBuffer: MTLBuffer, count: Int, thresholds: [Float], totalBands: Int) -> [Int32]? {
+        guard let bandBuf = makeBuffer(length: count * MemoryLayout<Int32>.stride),
               let threshBuf = makeBuffer(thresholds) else { return nil }
 
         var params = BandAssignParamsSwift(
@@ -182,17 +182,17 @@ final class MetalContext {
                                                options: .storageModeShared) else { return nil }
 
         dispatch(pipeline: bandAssignPipeline,
-                 buffers: [(labBuf, 0), (bandBuf, 1), (paramBuf, 2), (threshBuf, 3)],
+                 buffers: [(labBuffer, 0), (bandBuf, 1), (paramBuf, 2), (threshBuf, 3)],
                  gridSize: count)
 
         let ptr = bandBuf.contents().bindMemory(to: Int32.self, capacity: count)
         return Array(UnsafeBufferPointer(start: ptr, count: count))
     }
 
-    /// K-Means assignment step on GPU. Returns [UInt32] cluster assignments.
-    func kmeansAssign(pixelLab: [Float], count: Int, centroidLab: [Float], k: Int, lWeight: Float) -> [UInt32]? {
-        guard let pixBuf = makeBuffer(pixelLab),
-              let centBuf = makeBuffer(centroidLab),
+    /// K-Means assignment step on GPU. Accepts pre-uploaded pixel lab MTLBuffer.
+    /// Returns [UInt32] cluster assignments.
+    func kmeansAssign(pixelLabBuffer: MTLBuffer, count: Int, centroidLab: [Float], k: Int, lWeight: Float) -> [UInt32]? {
+        guard let centBuf = makeBuffer(centroidLab),
               let assignBuf = makeBuffer(length: count * MemoryLayout<UInt32>.stride) else { return nil }
 
         var params = KMeansAssignParamsSwift(
@@ -205,16 +205,17 @@ final class MetalContext {
                                                options: .storageModeShared) else { return nil }
 
         dispatch(pipeline: kmeansAssignPipeline,
-                 buffers: [(pixBuf, 0), (centBuf, 1), (assignBuf, 2), (paramBuf, 3)],
+                 buffers: [(pixelLabBuffer, 0), (centBuf, 1), (assignBuf, 2), (paramBuf, 3)],
                  gridSize: count)
 
         let ptr = assignBuf.contents().bindMemory(to: UInt32.self, capacity: count)
         return Array(UnsafeBufferPointer(start: ptr, count: count))
     }
 
-    /// Quantize + label map on GPU. Returns (outputPixels [UInt8], labelMap [Int32]).
+    /// Quantize + label map on GPU. Returns (srcBuffer, labelMap [Int32]).
+    /// The srcBuffer is the uploaded pixel data — reuse it for valueRemap.
     func quantize(pixels: [UInt8], width: Int, height: Int,
-                  thresholds: [Float], totalLevels: Int) -> (output: [UInt8], labels: [Int32])? {
+                  thresholds: [Float], totalLevels: Int) -> (srcBuffer: MTLBuffer, labels: [Int32])? {
         let count = width * height
 
         guard let srcBuf  = makePixelBuffer(pixels),
@@ -238,7 +239,7 @@ final class MetalContext {
         let lblPtr = lblBuf.contents().bindMemory(to: Int32.self, capacity: count)
         let lblArr = Array(UnsafeBufferPointer(start: lblPtr, count: count))
 
-        return (readPixels(from: dstBuf, count: count), lblArr)
+        return (srcBuf, lblArr)
     }
 
     /// Remap pixels by label → Oklab centroids. Accepts a source pixel MTLBuffer
@@ -265,9 +266,9 @@ final class MetalContext {
     }
 
     /// Re-render label map to evenly-spaced value grays after region cleanup.
-    func valueRemap(pixels: [UInt8], labels: [Int32], count: Int, totalLevels: Int) -> [UInt8]? {
-        guard let srcBuf = makePixelBuffer(pixels),
-              let lblBuf = makeBuffer(labels),
+    /// Accepts the srcBuffer from quantize() to avoid re-uploading pixels.
+    func valueRemap(srcBuffer: MTLBuffer, labels: [Int32], count: Int, totalLevels: Int) -> [UInt8]? {
+        guard let lblBuf = makeBuffer(labels),
               let dstBuf = makeBuffer(length: count * 4) else { return nil }
 
         var params = ValueRemapParamsSwift(
@@ -279,7 +280,7 @@ final class MetalContext {
                                                options: .storageModeShared) else { return nil }
 
         dispatch(pipeline: valueRemapPipeline,
-                 buffers: [(srcBuf, 0), (lblBuf, 1), (dstBuf, 2), (paramBuf, 3)],
+                 buffers: [(srcBuffer, 0), (lblBuf, 1), (dstBuf, 2), (paramBuf, 3)],
                  gridSize: count)
 
         return readPixels(from: dstBuf, count: count)

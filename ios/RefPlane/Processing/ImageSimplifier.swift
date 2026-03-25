@@ -6,15 +6,19 @@ import CoreImage
 //
 // Pipeline mirrors the web version's UltraSharp flow:
 //   1. Box-downsample the input by `downscale` factor
-//   2. Tile the downsampled image into 256×256 patches
+//   2. Tile the downsampled image into 256×256 patches with overlap padding
 //   3. Run each patch through the 4× super-resolution model
-//   4. Stitch tiles and scale back to original dimensions
+//   4. Stitch tiles (trimming overlap) and scale back to original dimensions
+//
+// Tiling follows the upstream Real-ESRGAN approach:
+//   - Each tile is extracted with `tilePad` pixels of overlap on every side
+//   - The whole image is pre-padded with `prePad` pixels (reflect) so edge
+//     tiles have real context instead of black/stretched fill
+//   - After inference, only the non-padded core of each output tile is kept
+//   - This eliminates visible seams between adjacent tiles
 //
 // The downsample→upscale cycle replaces fine texture with AI-hallucinated
 // detail, producing a simplified/smoothed version of the original image.
-// Tiling ensures the downscale factor actually controls simplification:
-//   - Low downscale → large intermediate → many tiles → more detail
-//   - High downscale → small intermediate → fewer tiles → more simplified
 //
 // Add RealESRGAN_x4.mlpackage (or a quantized variant) to the Xcode project.
 // Download from: https://huggingface.co/marshiyar/RealESRGAN_x4_CoreML
@@ -23,6 +27,15 @@ enum ImageSimplifier {
 
     private static let modelInputSize = 256
     private static let modelOutputSize = 1024  // 4× input
+    private static let upscaleFactor = 4
+
+    /// Overlap padding per tile edge (pixels in input space).
+    /// Matches upstream Real-ESRGAN default of 10.
+    private static let tilePad = 10
+
+    /// Pre-padding applied to the entire image before tiling (reflect).
+    /// Ensures edge tiles have real context. Matches upstream default of 10.
+    private static let prePad = 10
 
     // MARK: - Model loading (lazy, cached)
 
@@ -109,121 +122,220 @@ enum ImageSimplifier {
         }.value
     }
 
-    // MARK: - Tile-based ML inference
+    // MARK: - Tile-based ML inference (upstream Real-ESRGAN approach)
 
-    /// Process an image through the fixed-size model in tiles, then stitch results.
+    /// Process an image through the fixed-size model in overlapping tiles.
     ///
-    /// The model expects 256×256 input and produces 1024×1024 output (4× upscale).
-    /// For images larger than 256×256 we split into tiles, run each through the
-    /// model, and composite the outputs. This means:
-    ///   - Low downscale → large image → many tiles → preserved detail
-    ///   - High downscale → small image → few tiles → simplified/abstract
+    /// Following the upstream Real-ESRGAN `tile_process()`:
+    ///   1. Pre-pad the image with reflect padding so edge tiles have context
+    ///   2. Split into tiles of `modelInputSize` with `tilePad` overlap
+    ///   3. Run each tile through the model
+    ///   4. Trim the padded overlap from each output tile
+    ///   5. Place only the valid (non-overlapping) core into the output canvas
+    ///   6. Remove the pre-pad region from the final output
     private static func processInTiles(_ input: CGImage, model: MLModel) -> UIImage? {
         let srcW = input.width
         let srcH = input.height
-        let scale = modelOutputSize / modelInputSize  // 4
-        let tileIn = modelInputSize   // 256
-        let tileOut = modelOutputSize  // 1024
+        let scale = upscaleFactor
 
-        let tilesX = max(1, Int(ceil(Double(srcW) / Double(tileIn))))
-        let tilesY = max(1, Int(ceil(Double(srcH) / Double(tileIn))))
-        let outW = srcW * scale
-        let outH = srcH * scale
+        // Step 1: Pre-pad the image with reflect padding
+        let padded: CGImage
+        let paddedW: Int
+        let paddedH: Int
+        if prePad > 0 {
+            guard let p = reflectPad(input, pad: prePad) else { return nil }
+            padded = p
+            paddedW = srcW + prePad * 2
+            paddedH = srcH + prePad * 2
+        } else {
+            padded = input
+            paddedW = srcW
+            paddedH = srcH
+        }
 
-        print("[ImageSimplifier] Tiling \(srcW)×\(srcH) → \(tilesX)×\(tilesY) tiles (\(tilesX * tilesY) total)")
+        let tileSize = modelInputSize
+        let tilesX = max(1, Int(ceil(Double(paddedW) / Double(tileSize))))
+        let tilesY = max(1, Int(ceil(Double(paddedH) / Double(tileSize))))
+        let outW = paddedW * scale
+        let outH = paddedH * scale
 
-        // Process each tile through the model
-        var tileResults: [(destRect: CGRect, image: CGImage)] = []
-        tileResults.reserveCapacity(tilesX * tilesY)
+        print("[ImageSimplifier] Tiling \(paddedW)×\(paddedH) (pre-padded from \(srcW)×\(srcH)) → \(tilesX)×\(tilesY) tiles, tilePad=\(tilePad)")
+
+        // Allocate output pixel buffer (RGBA)
+        var outputPixels = [UInt8](repeating: 0, count: outW * outH * 4)
 
         for ty in 0..<tilesY {
             for tx in 0..<tilesX {
-                let srcX = tx * tileIn
-                let srcY = ty * tileIn
-                let tileW = min(tileIn, srcW - srcX)
-                let tileH = min(tileIn, srcH - srcY)
+                // Input tile area (non-padded core)
+                let inputStartX = tx * tileSize
+                let inputEndX   = min(inputStartX + tileSize, paddedW)
+                let inputStartY = ty * tileSize
+                let inputEndY   = min(inputStartY + tileSize, paddedH)
 
-                // Extract tile from the downsampled image
-                guard let tileCG = input.cropping(
-                    to: CGRect(x: srcX, y: srcY, width: tileW, height: tileH)
-                ) else { continue }
+                // Input tile area with overlap padding (clamped to image bounds)
+                let inputStartXPad = max(inputStartX - tilePad, 0)
+                let inputEndXPad   = min(inputEndX + tilePad, paddedW)
+                let inputStartYPad = max(inputStartY - tilePad, 0)
+                let inputEndYPad   = min(inputEndY + tilePad, paddedH)
 
-                // Pad to 256×256 if this is a partial edge tile
-                let modelInputCG: CGImage
-                if tileW == tileIn && tileH == tileIn {
-                    modelInputCG = tileCG
-                } else {
-                    guard let padded = padTileToModelSize(tileCG) else { continue }
-                    modelInputCG = padded
-                }
+                let inputTileWidth  = inputEndX - inputStartX
+                let inputTileHeight = inputEndY - inputStartY
 
-                // Run model inference → 1024×1024
+                // Extract tile with padding from the pre-padded image
+                guard let tileCG = padded.cropping(to: CGRect(
+                    x: inputStartXPad, y: inputStartYPad,
+                    width: inputEndXPad - inputStartXPad,
+                    height: inputEndYPad - inputStartYPad
+                )) else { continue }
+
+                // Resize tile to model input size (256×256)
+                let modelInputImage = resizeToPixels(
+                    UIImage(cgImage: tileCG),
+                    width: modelInputSize, height: modelInputSize
+                )
+                guard let modelInputCG = modelInputImage.cgImage else { continue }
+
+                // Run model inference → 1024×1024 output
                 guard let outputImage = runModel(model, input: modelInputCG),
                       let outCG = outputImage.cgImage else { continue }
 
-                // Crop to valid region (only needed for padded edge tiles)
-                let validW = tileW * scale
-                let validH = tileH * scale
-                let drawCG: CGImage
-                if validW < tileOut || validH < tileOut {
-                    drawCG = outCG.cropping(
-                        to: CGRect(x: 0, y: 0, width: validW, height: validH)
-                    ) ?? outCG
-                } else {
-                    drawCG = outCG
+                // Read output tile pixels
+                let outTileW = outCG.width
+                let outTileH = outCG.height
+                var outTilePixels = [UInt8](repeating: 0, count: outTileW * outTileH * 4)
+                guard let outCtx = CGContext(
+                    data: &outTilePixels,
+                    width: outTileW, height: outTileH,
+                    bitsPerComponent: 8, bytesPerRow: outTileW * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                ) else { continue }
+                outCtx.draw(outCG, in: CGRect(x: 0, y: 0, width: outTileW, height: outTileH))
+
+                // Calculate the valid region within the model output.
+                // The model output maps to the padded input tile; we need to
+                // find where the non-padded core sits within the output.
+                let paddedTileW = inputEndXPad - inputStartXPad
+                let paddedTileH = inputEndYPad - inputStartYPad
+
+                // Scale factors from padded tile → model output
+                let scaleX = Double(outTileW) / Double(paddedTileW)
+                let scaleY = Double(outTileH) / Double(paddedTileH)
+
+                // Offset of the valid core within the padded tile
+                let coreOffsetX = inputStartX - inputStartXPad
+                let coreOffsetY = inputStartY - inputStartYPad
+
+                // Valid region in output tile coordinates
+                let outCoreStartX = Int(round(Double(coreOffsetX) * scaleX))
+                let outCoreStartY = Int(round(Double(coreOffsetY) * scaleY))
+                let outCoreW = Int(round(Double(inputTileWidth) * scaleX))
+                let outCoreH = Int(round(Double(inputTileHeight) * scaleY))
+
+                // Destination in the full output image
+                let destX = inputStartX * scale
+                let destY = inputStartY * scale
+                let destW = inputTileWidth * scale
+                let destH = inputTileHeight * scale
+
+                // Copy valid pixels from output tile → output canvas
+                // (scale from outCore → dest if they differ slightly due to rounding)
+                for dy in 0..<destH {
+                    let srcRow = min(outCoreStartY + dy * outCoreH / destH, outTileH - 1)
+                    for dx in 0..<destW {
+                        let srcCol = min(outCoreStartX + dx * outCoreW / destW, outTileW - 1)
+
+                        let srcIdx = (srcRow * outTileW + srcCol) * 4
+                        let dstIdx = ((destY + dy) * outW + (destX + dx)) * 4
+
+                        guard dstIdx + 3 < outputPixels.count,
+                              srcIdx + 3 < outTilePixels.count else { continue }
+
+                        outputPixels[dstIdx]     = outTilePixels[srcIdx]
+                        outputPixels[dstIdx + 1] = outTilePixels[srcIdx + 1]
+                        outputPixels[dstIdx + 2] = outTilePixels[srcIdx + 2]
+                        outputPixels[dstIdx + 3] = 255
+                    }
                 }
-
-                tileResults.append((
-                    destRect: CGRect(x: srcX * scale, y: srcY * scale,
-                                     width: validW, height: validH),
-                    image: drawCG
-                ))
             }
         }
 
-        guard !tileResults.isEmpty else { return nil }
+        // Step 6: Remove pre-pad from the output
+        let finalW = srcW * scale
+        let finalH = srcH * scale
+        let prePadScaled = prePad * scale
 
-        // Stitch tiles onto the output canvas
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.0
-        let renderer = UIGraphicsImageRenderer(
-            size: CGSize(width: outW, height: outH),
-            format: format
-        )
-        return renderer.image { _ in
-            for tile in tileResults {
-                UIImage(cgImage: tile.image).draw(in: tile.destRect)
-            }
+        guard let fullImage = UIImage.fromPixelData(outputPixels, width: outW, height: outH),
+              let fullCG = fullImage.cgImage else { return nil }
+
+        if prePad > 0 {
+            guard let cropped = fullCG.cropping(to: CGRect(
+                x: prePadScaled, y: prePadScaled,
+                width: finalW, height: finalH
+            )) else { return nil }
+            return UIImage(cgImage: cropped)
         }
+
+        return fullImage
     }
 
-    /// Pad a sub-tile to 256×256 for model input.
-    /// Stretches the tile to fill (approximate edge extension), then overdraws
-    /// the tile at actual size in the top-left corner.
-    private static func padTileToModelSize(_ tile: CGImage) -> CGImage? {
-        let w = tile.width
-        let h = tile.height
-        let target = modelInputSize
+    /// Reflect-pad an image on all four sides.
+    ///
+    /// Mirrors `F.pad(img, (pad, pad, pad, pad), 'reflect')` from the upstream
+    /// Real-ESRGAN pre_process step. This gives edge tiles real mirrored context
+    /// instead of black borders or stretched content.
+    private static func reflectPad(_ image: CGImage, pad: Int) -> CGImage? {
+        let w = image.width
+        let h = image.height
+        let newW = w + pad * 2
+        let newH = h + pad * 2
 
-        guard let ctx = CGContext(
-            data: nil,
-            width: target, height: target,
-            bitsPerComponent: 8,
-            bytesPerRow: target * 4,
+        // Read source pixels
+        var srcPixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let srcCtx = CGContext(
+            data: &srcPixels,
+            width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: w * 4,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         ) else { return nil }
+        srcCtx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
 
-        // Fill entire canvas by stretching the tile (extends edges approximately)
-        ctx.interpolationQuality = .none
-        ctx.draw(tile, in: CGRect(x: 0, y: 0, width: target, height: target))
+        // Build padded image with reflected edges
+        var dstPixels = [UInt8](repeating: 0, count: newW * newH * 4)
 
-        // Overdraw at actual size in the top-left corner
-        // CGContext origin is bottom-left, so top-left = (0, target - h)
-        ctx.interpolationQuality = .high
-        ctx.draw(tile, in: CGRect(x: 0, y: target - h, width: w, height: h))
+        for dy in 0..<newH {
+            // Reflect Y: map destination row → source row
+            var sy = dy - pad
+            if sy < 0 { sy = -sy }
+            if sy >= h { sy = 2 * h - sy - 2 }
+            sy = max(0, min(h - 1, sy))
 
-        return ctx.makeImage()
+            for dx in 0..<newW {
+                // Reflect X: map destination col → source col
+                var sx = dx - pad
+                if sx < 0 { sx = -sx }
+                if sx >= w { sx = 2 * w - sx - 2 }
+                sx = max(0, min(w - 1, sx))
+
+                let srcIdx = (sy * w + sx) * 4
+                let dstIdx = (dy * newW + dx) * 4
+                dstPixels[dstIdx]     = srcPixels[srcIdx]
+                dstPixels[dstIdx + 1] = srcPixels[srcIdx + 1]
+                dstPixels[dstIdx + 2] = srcPixels[srcIdx + 2]
+                dstPixels[dstIdx + 3] = 255
+            }
+        }
+
+        guard let dstCtx = CGContext(
+            data: &dstPixels,
+            width: newW, height: newH,
+            bitsPerComponent: 8, bytesPerRow: newW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return nil }
+        // Force render — CGContext data pointer is our dstPixels
+        return dstCtx.makeImage()
     }
 
     // MARK: - Model inference
