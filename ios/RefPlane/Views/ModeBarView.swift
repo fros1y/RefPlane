@@ -37,7 +37,15 @@ private struct ModeButton: View {
                     .fill(isSelected ? Color.blue.opacity(0.7) : Color.clear)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ModeButtonStyle())
         .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+}
+
+/// Custom button style that shows immediate press feedback via opacity.
+private struct ModeButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.5 : 1.0)
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ImageCanvasView: View {
     @EnvironmentObject private var state: AppState
+    @Binding var showImagePicker: Bool
 
     @GestureState private var gestureScale: CGFloat     = 1.0
     @GestureState private var gesturePan: CGSize        = .zero
@@ -17,79 +18,99 @@ struct ImageCanvasView: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                Color.black.ignoresSafeArea()
+            ZStack(alignment: .topLeading) {
+                // Main content layer
+                ZStack {
+                    Color.black.ignoresSafeArea()
 
-                if let img = displayImage {
-                    let combinedScale  = currentScale * gestureScale
-                    let combinedOffset = CGSize(
-                        width:  currentOffset.width  + gesturePan.width,
-                        height: currentOffset.height + gesturePan.height
-                    )
+                    if let img = displayImage {
+                        let combinedScale  = currentScale * gestureScale
+                        let combinedOffset = CGSize(
+                            width:  currentOffset.width  + gesturePan.width,
+                            height: currentOffset.height + gesturePan.height
+                        )
 
-                    ZStack {
-                        Image(uiImage: img)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        ZStack {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                        if state.gridConfig.enabled {
-                            GridOverlayView()
-                        }
-                    }
-                    .scaleEffect(combinedScale)
-                    .offset(combinedOffset)
-                    .gesture(
-                        MagnificationGesture()
-                            .updating($gestureScale) { value, state, _ in state = value }
-                            .onEnded { value in
-                                currentScale = max(1.0, min(8.0, currentScale * value))
-                                if currentScale == 1.0 { currentOffset = .zero }
+                            if state.gridConfig.enabled {
+                                GridOverlayView()
                             }
-                    )
-                    .simultaneousGesture(
-                        DragGesture()
-                            .updating($gesturePan) { value, state, _ in state = value.translation }
-                            .onEnded { value in
-                                currentOffset = CGSize(
-                                    width:  currentOffset.width  + value.translation.width,
-                                    height: currentOffset.height + value.translation.height
-                                )
-                            }
-                    )
-                    .onTapGesture(count: 2) {
-                        withAnimation(.spring()) {
-                            currentScale  = 1.0
-                            currentOffset = .zero
                         }
+                        .scaleEffect(combinedScale)
+                        .offset(combinedOffset)
+                        .gesture(
+                            MagnificationGesture()
+                                .updating($gestureScale) { value, state, _ in state = value }
+                                .onEnded { value in
+                                    currentScale = max(1.0, min(8.0, currentScale * value))
+                                    if currentScale == 1.0 { currentOffset = .zero }
+                                }
+                        )
+                        .simultaneousGesture(
+                            DragGesture()
+                                .updating($gesturePan) { value, state, _ in state = value.translation }
+                                .onEnded { value in
+                                    currentOffset = CGSize(
+                                        width:  currentOffset.width  + value.translation.width,
+                                        height: currentOffset.height + value.translation.height
+                                    )
+                                }
+                        )
+                        .onTapGesture(count: 2) {
+                            withAnimation(.spring()) {
+                                currentScale  = 1.0
+                                currentOffset = .zero
+                            }
+                        }
+
+                    } else {
+                        // Empty state — tap to open image
+                        Button(action: { showImagePicker = true }) {
+                            VStack(spacing: 16) {
+                                Image(systemName: "photo.on.rectangle")
+                                    .font(.system(size: 60))
+                                    .foregroundColor(.white.opacity(0.3))
+                                Text("Tap to open an image")
+                                    .font(.headline)
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
 
-                } else {
-                    // Empty state
-                    VStack(spacing: 16) {
-                        Image(systemName: "photo.on.rectangle")
-                            .font(.system(size: 60))
-                            .foregroundColor(.white.opacity(0.3))
-                        Text("Open an image to get started")
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.4))
+                    // Processing overlay
+                    if state.isProcessing {
+                        ZStack {
+                            Color.black.opacity(0.45)
+                            VStack(spacing: 10) {
+                                ProgressView(value: state.processingProgress)
+                                    .tint(.white)
+                                    .frame(width: 160)
+                                Text("Processing\u{2026}")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                        }
+                        .ignoresSafeArea()
                     }
                 }
 
-                // Processing overlay
-                if state.isProcessing {
-                    ZStack {
-                        Color.black.opacity(0.45)
-                        VStack(spacing: 10) {
-                            ProgressView(value: state.processingProgress)
-                                .tint(.white)
-                                .frame(width: 160)
-                            Text("Processing…")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
+                // Back button overlay (when image is loaded)
+                if state.originalImage != nil {
+                    Button(action: { showImagePicker = true }) {
+                        Image(systemName: "arrow.backward")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(10)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
                     }
-                    .ignoresSafeArea()
+                    .padding(.leading, 12)
+                    .padding(.top, 12)
                 }
             }
         }

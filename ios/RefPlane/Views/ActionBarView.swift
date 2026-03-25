@@ -2,21 +2,11 @@ import SwiftUI
 
 struct ActionBarView: View {
     @EnvironmentObject private var state: AppState
-    @Binding var showImagePicker: Bool
     @State private var showShareSheet = false
     @State private var exportImage: UIImage?
 
     var body: some View {
         HStack(spacing: 4) {
-            ActionButton(icon: "folder.badge.plus", label: "Open") {
-                showImagePicker = true
-            }
-
-            ActionButton(icon: "crop", label: "Crop") {
-                state.showCrop = true
-            }
-            .disabled(state.originalImage == nil)
-
             ActionButton(icon: "rectangle.split.2x1", label: "Compare") {
                 state.showCompare = true
             }

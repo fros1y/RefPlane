@@ -2,12 +2,11 @@ import SwiftUI
 
 struct ControlPanelView: View {
     @EnvironmentObject private var state: AppState
-    @Binding var showImagePicker: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             // Action bar always at top
-            ActionBarView(showImagePicker: $showImagePicker)
+            ActionBarView()
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
                 .padding(.bottom, 6)

@@ -22,7 +22,6 @@
 		A049AEDD4C6141208AEBAC09 /* CompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC8D69363CDB4E37AB598F8A /* CompareView.swift */; };
 		A19D27A8F16448F282CB39AD /* GrayscaleProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25800C7CC7D04D37A930959D /* GrayscaleProcessor.swift */; };
 		B060BBCBD6FF473F83A23CEA /* KMeansClusterer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C649C9D17B5463C9B8B0D37 /* KMeansClusterer.swift */; };
-		B137CAF5B83C4F20A1634567 /* CropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AC8A92A34745A694FA7587 /* CropView.swift */; };
 		B741A149437E482EAFF0AAB4 /* UIImageExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */; };
 		BE4EBBE37D1B43FFBB5F78B1 /* PaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3EA40383874CE288B53828 /* PaletteView.swift */; };
 		BF40722118FF4AE6A73E5141 /* RegionCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 632255DE24DC47B99F2567C2 /* RegionCleaner.swift */; };
@@ -65,7 +64,6 @@
 		CC8D69363CDB4E37AB598F8A /* CompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompareView.swift; path = Views/CompareView.swift; sourceTree = "<group>"; };
 		CCC0BBE0E4F4452FBC8CFDB1 /* GridSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridSettingsView.swift; path = Views/GridSettingsView.swift; sourceTree = "<group>"; };
 		D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UIImageExtensions.swift; path = Processing/UIImageExtensions.swift; sourceTree = "<group>"; };
-		E5AC8A92A34745A694FA7587 /* CropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CropView.swift; path = Views/CropView.swift; sourceTree = "<group>"; };
 		E636B285F8FF462997175C6A /* RefPlane.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RefPlane.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E748F0C71BD24DB6A46F633D /* RefPlaneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefPlaneApp.swift; sourceTree = "<group>"; };
 		F160D00F80954B0C9211E7F6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -107,7 +105,6 @@
 				CCC0BBE0E4F4452FBC8CFDB1 /* GridSettingsView.swift */,
 				84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */,
 				CC8D69363CDB4E37AB598F8A /* CompareView.swift */,
-				E5AC8A92A34745A694FA7587 /* CropView.swift */,
 				CA3EA40383874CE288B53828 /* PaletteView.swift */,
 				AA8F46FC114F41C5BDDA822F /* ActionBarView.swift */,
 				8AAC218192354565AEBABE44 /* ImagePickerView.swift */,
@@ -254,7 +251,6 @@
 				DEE1B8C3F0794606913F638C /* GridSettingsView.swift in Sources */,
 				9D269B4A36CD4FF1B68B714A /* GridOverlayView.swift in Sources */,
 				A049AEDD4C6141208AEBAC09 /* CompareView.swift in Sources */,
-				B137CAF5B83C4F20A1634567 /* CropView.swift in Sources */,
 				BE4EBBE37D1B43FFBB5F78B1 /* PaletteView.swift in Sources */,
 				43761882D6BF45CE9CBE61F7 /* ActionBarView.swift in Sources */,
 				D56F23CE705242D4BC737DD6 /* ImagePickerView.swift in Sources */,

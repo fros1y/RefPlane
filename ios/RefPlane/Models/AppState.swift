@@ -5,7 +5,7 @@ import Combine
 class AppState: ObservableObject {
     // Source images
     @Published var originalImage: UIImage?  = nil
-    @Published var sourceImage: UIImage?    = nil   // after crop
+    @Published var sourceImage: UIImage?    = nil
 
     // Processed results
     @Published var processedImage: UIImage? = nil
@@ -17,7 +17,6 @@ class AppState: ObservableObject {
     @Published var isProcessing: Bool       = false
     @Published var processingProgress: Double = 0
     @Published var showCompare: Bool        = false
-    @Published var showCrop: Bool           = false
     @Published var isolatedBand: Int?       = nil
     @Published var errorMessage: String?    = nil
 
@@ -53,19 +52,6 @@ class AppState: ObservableObject {
         paletteColors  = []
         paletteBands   = []
         isolatedBand   = nil
-        triggerProcessing()
-    }
-
-    func applyCrop(_ crop: CGRect) {
-        guard let original = originalImage else { return }
-        let cropped = original.cropped(to: crop)
-        sourceImage    = cropped
-        simplifiedImage = nil
-        processedImage = nil
-        paletteColors  = []
-        paletteBands   = []
-        isolatedBand   = nil
-        showCrop       = false
         triggerProcessing()
     }
 
@@ -124,8 +110,12 @@ class AppState: ObservableObject {
     }
 
     func setMode(_ mode: RefPlaneMode) {
+        guard mode != activeMode else { return }
         activeMode = mode
         isolatedBand = nil
+        processedImage = nil
+        paletteColors = []
+        paletteBands = []
         triggerProcessing()
     }
 
