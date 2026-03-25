@@ -26,6 +26,8 @@ class AppState: ObservableObject {
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
     @Published var simplifyEnabled: Bool    = false
+    /// Simplification strength 0–1. Maps to downscale 2–8 (matching web version).
+    @Published var simplifyStrength: Double  = 0.5
 
     // Simplified image (after upscale/denoise)
     @Published var simplifiedImage: UIImage? = nil
@@ -69,7 +71,7 @@ class AppState: ObservableObject {
 
     func triggerProcessing() {
         processingTask?.cancel()
-        guard let source = sourceImage else {
+        guard let source = displayBaseImage else {
             isProcessing = false
             processingProgress = 0
             return
@@ -133,9 +135,11 @@ class AppState: ObservableObject {
 
     func applySimplify() {
         guard let source = sourceImage else { return }
+        // Map strength 0–1 → downscale 2–8 (same as web: lerp(2, 8, s))
+        let downscale = CGFloat(2.0 + simplifyStrength * 6.0)
         Task {
             await MainActor.run { self.isProcessing = true }
-            let simplified = await ImageSimplifier.simplify(image: source)
+            let simplified = await ImageSimplifier.simplify(image: source, downscale: downscale)
             await MainActor.run {
                 self.simplifiedImage = simplified
                 self.isProcessing    = false

@@ -31,9 +31,9 @@ struct ControlPanelView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 6)
 
-                    // Simplify toggle
+                    // Simplify toggle + strength
                     PanelSection(title: "Simplify") {
-                        Toggle("Noise Reduction", isOn: Binding(
+                        Toggle("UltraSharp", isOn: Binding(
                             get: { state.simplifyEnabled },
                             set: { val in
                                 state.simplifyEnabled = val
@@ -42,6 +42,29 @@ struct ControlPanelView: View {
                         ))
                         .toggleStyle(SwitchToggleStyle(tint: .blue))
                         .font(.subheadline)
+
+                        if state.simplifyEnabled {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Strength")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white.opacity(0.8))
+                                    Spacer()
+                                    Text("\(Int(state.simplifyStrength * 100))%")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .monospacedDigit()
+                                }
+                                Slider(value: $state.simplifyStrength, in: 0...1, step: 0.05) {
+                                    Text("Strength")
+                                } onEditingChanged: { editing in
+                                    if !editing {
+                                        state.applySimplify()
+                                    }
+                                }
+                                .tint(.blue)
+                            }
+                        }
                     }
 
                     // Mode bar
