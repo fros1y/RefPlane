@@ -4,7 +4,7 @@ import CoreImage
 
 // MARK: - Image simplification using a 4× RealESRGAN CoreML model
 //
-// Pipeline mirrors the web version's UltraSharp flow:
+// UltraSharp-style simplification pipeline:
 //   1. Box-downsample the input by `downscale` factor
 //   2. Tile the downsampled image into 256×256 patches with overlap padding
 //   3. Run each patch through the 4× super-resolution model

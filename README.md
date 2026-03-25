@@ -1,70 +1,73 @@
 # RefPlane
 
-A photographic reference image preparation tool for painting and drawing.
+A photographic reference image preparation tool for painting and drawing, built natively for iOS with Swift and SwiftUI.
 
-## iOS Native App
+## Features
 
-An iOS native version built in Swift with SwiftUI + CoreImage + CoreML is in the [`ios/`](ios/) directory.
-See [`ios/README.md`](ios/README.md) for build and usage instructions.
+- **Image modes**: Source · Tonal (grayscale) · Value Study · Color Regions
+- **Simplify**: Core Image noise-reduction + sharpening pipeline (plug in a Core ML `.mlmodel` in `ImageSimplifier.swift` to swap in super-resolution)
+- **Grid overlay**: configurable divisions, square/image-fit cells, diagonals, center-lines, opacity, custom colour
+- **Crop**: non-destructive corner-handle crop tool
+- **Compare**: drag-split before/after view
+- **Palette**: extracted colour swatches with per-band isolation
+- **Export**: native iOS share sheet
 
-## Web App – Local development
+## Requirements
 
-### Prerequisites
+| Tool | Version |
+|------|---------|
+| Xcode | 15 or later |
+| iOS Deployment Target | 16.0+ |
+| Swift | 5.9+ |
 
-- Node.js 20+ is recommended
-- npm
+No third-party dependencies — the project uses only Apple system frameworks (SwiftUI, PhotosUI, CoreImage, CoreML).
 
-### Run in a terminal
+## Building
 
-```bash
-npm install
-npm run dev
+### Xcode
+
+1. Open `ios/RefPlane.xcodeproj` in Xcode.
+2. Select a simulator or connected device (iPhone or iPad).
+3. Press **⌘R** to build and run.
+
+### VSCode (macOS)
+
+The workspace ships with `.vscode/tasks.json` build tasks. Use **Terminal → Run Task…**:
+
+| Task | Description |
+|------|-------------|
+| **iOS: Build Debug (Simulator)** | Compile the app for the iOS Simulator (Debug) |
+| **iOS: Build Release (no signing)** | Release build with code-signing disabled (CI-friendly) |
+| **iOS: Clean** | Remove derived data for a clean rebuild |
+| **iOS: Run on Simulator (iPhone 16)** | Boot an iPhone 16 simulator, install, and launch the app |
+| **iOS: Open in Xcode** | Open `RefPlane.xcodeproj` in Xcode for full IDE workflow |
+
+#### Recommended extensions
+
+- **[SweetPad](https://marketplace.visualstudio.com/items?itemName=sweetpad.sweetpad)** — xcodebuild integration + simulator launch with LLDB attach
+- **[Swift](https://marketplace.visualstudio.com/items?itemName=sswg.swift-lang)** — syntax highlighting, code completion, diagnostics
+
+With SweetPad, use the **iOS: Run on Simulator** launch configuration to build, boot the simulator, and attach the debugger in one step.
+
+## Project Structure
+
 ```
-
-The Vite dev server runs at `http://127.0.0.1:5173`.
-
-### Develop in VSCode
-
-1. Open the project folder in VSCode.
-2. Run the `Install dependencies` task once if needed.
-3. Press `F5` and choose `RefPlane: Launch Chrome`.
-
-VSCode will start the Vite dev server in the background and open the app in a debug browser session.
-
-### Production build
-
-```bash
-npm run build
-```
-
-### Tests
-
-Install Playwright browsers once before running browser tests:
-
-```bash
-npx playwright install chromium
-```
-
-Fast unit and component tests:
-
-```bash
-npm run test:unit
-```
-
-Browser workflow tests:
-
-```bash
-npm run test:e2e
-```
-
-Visual baseline tests:
-
-```bash
-npm run test:visual
-```
-
-If you need to record or refresh screenshot baselines:
-
-```bash
-npm run test:visual:update
+ios/
+├── RefPlane.xcodeproj/       Xcode project
+└── RefPlane/
+    ├── RefPlaneApp.swift      App entry point (@main)
+    ├── Models/
+    │   ├── AppModels.swift    Data types (modes, configs, enums)
+    │   └── AppState.swift     Observable state + processing dispatch
+    ├── Processing/
+    │   ├── OklabColorSpace.swift     Oklab math (RGB↔Oklab)
+    │   ├── KMeansClusterer.swift     k-means++ clustering
+    │   ├── RegionCleaner.swift       Flood-fill small-region cleanup
+    │   ├── GrayscaleProcessor.swift  Rec 709 luminance grayscale
+    │   ├── ValueStudyProcessor.swift Quantise → cleanup → band colours
+    │   ├── ColorRegionsProcessor.swift Per-band k-means colour regions
+    │   ├── ImageSimplifier.swift     Core Image simplification pipeline
+    │   ├── ImageProcessor.swift      Actor coordinator
+    │   └── UIImageExtensions.swift   UIImage pixel-data helpers
+    └── Views/                        SwiftUI views
 ```

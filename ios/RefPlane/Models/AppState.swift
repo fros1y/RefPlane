@@ -26,7 +26,7 @@ class AppState: ObservableObject {
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
     @Published var simplifyEnabled: Bool    = false
-    /// Simplification strength 0–1. Maps to downscale 2–8 (matching web version).
+    /// Simplification strength 0–1. Maps to downscale factor 2–8.
     @Published var simplifyStrength: Double  = 0.5
 
     // Simplified image (after upscale/denoise)
