@@ -31,3 +31,4 @@ ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
 *.dSYM
 *.xcuserstate
 IDEWorkspaceChecks.plist
+ios/scripts/.venv/
