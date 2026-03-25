@@ -6,11 +6,15 @@ import CoreImage
 //
 // Pipeline mirrors the web version's UltraSharp flow:
 //   1. Box-downsample the input by `downscale` factor
-//   2. Feed through the 4× super-resolution model (fixed 256×256 input)
-//   3. Scale the 1024×1024 output back to original dimensions
+//   2. Tile the downsampled image into 256×256 patches
+//   3. Run each patch through the 4× super-resolution model
+//   4. Stitch tiles and scale back to original dimensions
 //
 // The downsample→upscale cycle replaces fine texture with AI-hallucinated
 // detail, producing a simplified/smoothed version of the original image.
+// Tiling ensures the downscale factor actually controls simplification:
+//   - Low downscale → large intermediate → many tiles → more detail
+//   - High downscale → small intermediate → fewer tiles → more simplified
 //
 // Add RealESRGAN_x4.mlpackage (or a quantized variant) to the Xcode project.
 // Download from: https://huggingface.co/marshiyar/RealESRGAN_x4_CoreML
@@ -86,26 +90,140 @@ enum ImageSimplifier {
             let origW = sourceCG.width
             let origH = sourceCG.height
 
-            // Step 1: Downsample by the strength factor
-            let smallW = max(1, Int(round(Double(origW) / Double(downscale))))
-            let smallH = max(1, Int(round(Double(origH) / Double(downscale))))
-            let small = resizeToPixels(image, width: smallW, height: smallH)
-
-            // Step 2: Resize to model input size (256×256)
-            let modelInput = resizeToPixels(small, width: modelInputSize, height: modelInputSize)
-
-            // Step 3: Run through CoreML model
             guard let model = loadModel() else {
                 print("[ImageSimplifier] Model unavailable, returning original")
                 return image
             }
 
-            guard let inputCG = modelInput.cgImage,
-                  let outputImage = runModel(model, input: inputCG) else { return image }
+            // Step 1: Downsample by the strength factor
+            let smallW = max(1, Int(round(Double(origW) / Double(downscale))))
+            let smallH = max(1, Int(round(Double(origH) / Double(downscale))))
+            let small = resizeToPixels(image, width: smallW, height: smallH)
+            guard let smallCG = small.cgImage else { return image }
 
-            // Step 4: Resize back to original pixel dimensions
-            return resizeToPixels(outputImage, width: origW, height: origH)
+            // Step 2: Process the downsampled image in 256×256 tiles through the model
+            guard let upscaled = processInTiles(smallCG, model: model) else { return image }
+
+            // Step 3: Resize back to original pixel dimensions
+            return resizeToPixels(upscaled, width: origW, height: origH)
         }.value
+    }
+
+    // MARK: - Tile-based ML inference
+
+    /// Process an image through the fixed-size model in tiles, then stitch results.
+    ///
+    /// The model expects 256×256 input and produces 1024×1024 output (4× upscale).
+    /// For images larger than 256×256 we split into tiles, run each through the
+    /// model, and composite the outputs. This means:
+    ///   - Low downscale → large image → many tiles → preserved detail
+    ///   - High downscale → small image → few tiles → simplified/abstract
+    private static func processInTiles(_ input: CGImage, model: MLModel) -> UIImage? {
+        let srcW = input.width
+        let srcH = input.height
+        let scale = modelOutputSize / modelInputSize  // 4
+        let tileIn = modelInputSize   // 256
+        let tileOut = modelOutputSize  // 1024
+
+        let tilesX = max(1, Int(ceil(Double(srcW) / Double(tileIn))))
+        let tilesY = max(1, Int(ceil(Double(srcH) / Double(tileIn))))
+        let outW = srcW * scale
+        let outH = srcH * scale
+
+        print("[ImageSimplifier] Tiling \(srcW)×\(srcH) → \(tilesX)×\(tilesY) tiles (\(tilesX * tilesY) total)")
+
+        // Process each tile through the model
+        var tileResults: [(destRect: CGRect, image: CGImage)] = []
+        tileResults.reserveCapacity(tilesX * tilesY)
+
+        for ty in 0..<tilesY {
+            for tx in 0..<tilesX {
+                let srcX = tx * tileIn
+                let srcY = ty * tileIn
+                let tileW = min(tileIn, srcW - srcX)
+                let tileH = min(tileIn, srcH - srcY)
+
+                // Extract tile from the downsampled image
+                guard let tileCG = input.cropping(
+                    to: CGRect(x: srcX, y: srcY, width: tileW, height: tileH)
+                ) else { continue }
+
+                // Pad to 256×256 if this is a partial edge tile
+                let modelInputCG: CGImage
+                if tileW == tileIn && tileH == tileIn {
+                    modelInputCG = tileCG
+                } else {
+                    guard let padded = padTileToModelSize(tileCG) else { continue }
+                    modelInputCG = padded
+                }
+
+                // Run model inference → 1024×1024
+                guard let outputImage = runModel(model, input: modelInputCG),
+                      let outCG = outputImage.cgImage else { continue }
+
+                // Crop to valid region (only needed for padded edge tiles)
+                let validW = tileW * scale
+                let validH = tileH * scale
+                let drawCG: CGImage
+                if validW < tileOut || validH < tileOut {
+                    drawCG = outCG.cropping(
+                        to: CGRect(x: 0, y: 0, width: validW, height: validH)
+                    ) ?? outCG
+                } else {
+                    drawCG = outCG
+                }
+
+                tileResults.append((
+                    destRect: CGRect(x: srcX * scale, y: srcY * scale,
+                                     width: validW, height: validH),
+                    image: drawCG
+                ))
+            }
+        }
+
+        guard !tileResults.isEmpty else { return nil }
+
+        // Stitch tiles onto the output canvas
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: outW, height: outH),
+            format: format
+        )
+        return renderer.image { _ in
+            for tile in tileResults {
+                UIImage(cgImage: tile.image).draw(in: tile.destRect)
+            }
+        }
+    }
+
+    /// Pad a sub-tile to 256×256 for model input.
+    /// Stretches the tile to fill (approximate edge extension), then overdraws
+    /// the tile at actual size in the top-left corner.
+    private static func padTileToModelSize(_ tile: CGImage) -> CGImage? {
+        let w = tile.width
+        let h = tile.height
+        let target = modelInputSize
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: target, height: target,
+            bitsPerComponent: 8,
+            bytesPerRow: target * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return nil }
+
+        // Fill entire canvas by stretching the tile (extends edges approximately)
+        ctx.interpolationQuality = .none
+        ctx.draw(tile, in: CGRect(x: 0, y: 0, width: target, height: target))
+
+        // Overdraw at actual size in the top-left corner
+        // CGContext origin is bottom-left, so top-left = (0, target - h)
+        ctx.interpolationQuality = .high
+        ctx.draw(tile, in: CGRect(x: 0, y: target - h, width: w, height: h))
+
+        return ctx.makeImage()
     }
 
     // MARK: - Model inference

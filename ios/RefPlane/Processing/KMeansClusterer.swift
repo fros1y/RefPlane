@@ -17,7 +17,7 @@ enum KMeansClusterer {
         }
         let k = min(k, points.count)
 
-        var centroids = kMeansPlusPlus(points: points, k: k, lWeight: lWeight)
+        var centroids = kMeansPlusPlusInit(points: points, k: k, lWeight: lWeight)
         var assignments = [Int](repeating: 0, count: points.count)
 
         for _ in 0..<20 {
@@ -61,9 +61,9 @@ enum KMeansClusterer {
         return KMeansResult(centroids: centroids, assignments: assignments)
     }
 
-    // MARK: - Private
+    // MARK: - K-Means++ initialization (exposed for GPU hybrid path)
 
-    private static func kMeansPlusPlus(points: [OklabColor], k: Int, lWeight: Float) -> [OklabColor] {
+    static func kMeansPlusPlusInit(points: [OklabColor], k: Int, lWeight: Float) -> [OklabColor] {
         var centroids: [OklabColor] = []
         // Pick first centroid randomly
         centroids.append(points[Int.random(in: 0..<points.count)])

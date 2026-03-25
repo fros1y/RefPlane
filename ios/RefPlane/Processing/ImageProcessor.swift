@@ -25,6 +25,9 @@ actor ImageProcessor {
         onProgress(0.1)
         try Task.checkCancellation()
 
+        let start = CFAbsoluteTimeGetCurrent()
+        print("[ImageProcessor] Processing mode=\(mode) image=\(image.size.width)×\(image.size.height)")
+
         switch mode {
         case .original:
             return ProcessingResult(image: image, palette: [], paletteBands: [])
@@ -35,6 +38,8 @@ actor ImageProcessor {
             guard let gray = GrayscaleProcessor.process(image: image) else {
                 throw ProcessingError.conversionFailed
             }
+            let tonalMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            print("[ImageProcessor] Tonal total: \(String(format: "%.1f", tonalMs)) ms")
             onProgress(1.0)
             return ProcessingResult(image: gray, palette: [], paletteBands: [])
 
@@ -44,6 +49,8 @@ actor ImageProcessor {
             guard let result = ValueStudyProcessor.process(image: image, config: valueConfig) else {
                 throw ProcessingError.conversionFailed
             }
+            let valueMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            print("[ImageProcessor] Value total: \(String(format: "%.1f", valueMs)) ms")
             onProgress(1.0)
             let palette = result.levelColors.map { uiColor -> Color in Color(uiColor) }
             let bands   = (0..<palette.count).map { $0 }
@@ -55,6 +62,8 @@ actor ImageProcessor {
             guard let result = ColorRegionsProcessor.process(image: image, config: colorConfig) else {
                 throw ProcessingError.conversionFailed
             }
+            let colorMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            print("[ImageProcessor] Color total: \(String(format: "%.1f", colorMs)) ms")
             onProgress(1.0)
             return ProcessingResult(image: result.image, palette: result.palette,
                                     paletteBands: result.paletteBands)
