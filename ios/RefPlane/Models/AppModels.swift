@@ -69,6 +69,7 @@ struct ValueConfig {
 struct ColorConfig {
     var colorFamilies: Int       = 3
     var valuesPerFamily: Int     = 2
+    var paletteSpread: Double    = 0
     var warmCoolEmphasis: Double = 0
     var valueThresholds: [Double] = defaultThresholds(for: 2)
     var minRegionSize: MinRegionSize = .small

@@ -71,12 +71,18 @@ enum ColorRegionsProcessor {
             labBuffer: labBuffer,
             count: total,
             k: colorFamilies,
-            lWeight: familyLWeight
+            lWeight: familyLWeight,
+            spreadBias: Float(config.paletteSpread)
         ) {
             familyCentroids = gpuCentroids
             print("[ColorStudy][GPU] choose_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         } else {
-            familyCentroids = selectFamilyCentroids(labArray: labArray, k: colorFamilies, lWeight: familyLWeight)
+            familyCentroids = selectFamilyCentroids(
+                labArray: labArray,
+                k: colorFamilies,
+                lWeight: familyLWeight,
+                spreadBias: Float(config.paletteSpread)
+            )
             print("[ColorStudy][CPU] choose_families_fallback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         }
 
@@ -221,7 +227,12 @@ enum ColorRegionsProcessor {
         print("[ColorStudy][CPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        var familyCentroids = selectFamilyCentroids(points: points, k: colorFamilies, lWeight: familyLWeight)
+        var familyCentroids = selectFamilyCentroids(
+            points: points,
+            k: colorFamilies,
+            lWeight: familyLWeight,
+            spreadBias: Float(config.paletteSpread)
+        )
         print("[ColorStudy][CPU] choose_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         if config.warmCoolEmphasis != 0 {
             familyCentroids = applyWarmCoolEmphasis(to: familyCentroids, amount: config.warmCoolEmphasis)
@@ -307,7 +318,8 @@ enum ColorRegionsProcessor {
         labBuffer: MTLBuffer,
         count: Int,
         k: Int,
-        lWeight: Float
+        lWeight: Float,
+        spreadBias: Float
     ) -> [OklabColor]? {
         guard count > 0, k > 0,
               let histogram = gpu.buildColorHistogram(
@@ -331,7 +343,12 @@ enum ColorRegionsProcessor {
         guard !candidates.isEmpty else { return nil }
 
         let targetCount = min(k, candidates.count)
-        var centroids = seededFamilyCentroids(candidates: candidates, k: targetCount, lWeight: lWeight)
+        var centroids = seededFamilyCentroids(
+            candidates: candidates,
+            k: targetCount,
+            lWeight: lWeight,
+            spreadBias: spreadBias
+        )
 
         for _ in 0..<4 {
             var sums = [(L: Float, a: Float, b: Float, weight: Float)](
@@ -340,7 +357,12 @@ enum ColorRegionsProcessor {
             )
 
             for candidate in candidates {
-                let index = nearestCentroidIndex(for: candidate.color, centroids: centroids, lWeight: lWeight)
+                let index = nearestRefinementCentroidIndex(
+                    for: candidate.color,
+                    centroids: centroids,
+                    lWeight: lWeight,
+                    spreadBias: spreadBias
+                )
                 sums[index].L += candidate.color.L * candidate.weight
                 sums[index].a += candidate.color.a * candidate.weight
                 sums[index].b += candidate.color.b * candidate.weight
@@ -370,7 +392,8 @@ enum ColorRegionsProcessor {
     private static func selectFamilyCentroids(
         labArray: [Float],
         k: Int,
-        lWeight: Float
+        lWeight: Float,
+        spreadBias: Float
     ) -> [OklabColor] {
         guard !labArray.isEmpty, k > 0 else { return [] }
 
@@ -378,7 +401,12 @@ enum ColorRegionsProcessor {
         guard !candidates.isEmpty else { return [] }
 
         let targetCount = min(k, candidates.count)
-        var centroids = seededFamilyCentroids(candidates: candidates, k: targetCount, lWeight: lWeight)
+        var centroids = seededFamilyCentroids(
+            candidates: candidates,
+            k: targetCount,
+            lWeight: lWeight,
+            spreadBias: spreadBias
+        )
 
         for _ in 0..<4 {
             var sums = [(L: Float, a: Float, b: Float, weight: Float)](
@@ -387,7 +415,12 @@ enum ColorRegionsProcessor {
             )
 
             for candidate in candidates {
-                let index = nearestCentroidIndex(for: candidate.color, centroids: centroids, lWeight: lWeight)
+                let index = nearestRefinementCentroidIndex(
+                    for: candidate.color,
+                    centroids: centroids,
+                    lWeight: lWeight,
+                    spreadBias: spreadBias
+                )
                 sums[index].L += candidate.color.L * candidate.weight
                 sums[index].a += candidate.color.a * candidate.weight
                 sums[index].b += candidate.color.b * candidate.weight
@@ -417,7 +450,8 @@ enum ColorRegionsProcessor {
     private static func selectFamilyCentroids(
         points: [OklabColor],
         k: Int,
-        lWeight: Float
+        lWeight: Float,
+        spreadBias: Float
     ) -> [OklabColor] {
         guard !points.isEmpty, k > 0 else { return [] }
 
@@ -425,7 +459,12 @@ enum ColorRegionsProcessor {
         guard !candidates.isEmpty else { return [] }
 
         let targetCount = min(k, candidates.count)
-        var centroids = seededFamilyCentroids(candidates: candidates, k: targetCount, lWeight: lWeight)
+        var centroids = seededFamilyCentroids(
+            candidates: candidates,
+            k: targetCount,
+            lWeight: lWeight,
+            spreadBias: spreadBias
+        )
 
         for _ in 0..<4 {
             var sums = [(L: Float, a: Float, b: Float, weight: Float)](
@@ -434,7 +473,12 @@ enum ColorRegionsProcessor {
             )
 
             for candidate in candidates {
-                let index = nearestCentroidIndex(for: candidate.color, centroids: centroids, lWeight: lWeight)
+                let index = nearestRefinementCentroidIndex(
+                    for: candidate.color,
+                    centroids: centroids,
+                    lWeight: lWeight,
+                    spreadBias: spreadBias
+                )
                 sums[index].L += candidate.color.L * candidate.weight
                 sums[index].a += candidate.color.a * candidate.weight
                 sums[index].b += candidate.color.b * candidate.weight
@@ -597,10 +641,12 @@ enum ColorRegionsProcessor {
     private static func seededFamilyCentroids(
         candidates: [HistogramCandidate],
         k: Int,
-        lWeight: Float
+        lWeight: Float,
+        spreadBias: Float
     ) -> [OklabColor] {
         guard !candidates.isEmpty, k > 0 else { return [] }
 
+        let clampedSpreadBias = max(0, min(1, spreadBias))
         let maxWeight = candidates.first?.weight ?? 1
         var centroids = [candidates[0].color]
 
@@ -614,7 +660,10 @@ enum ColorRegionsProcessor {
                 }
                 guard minDistance > 0.000001 else { continue }
                 let prominence = sqrtf(candidate.weight / maxWeight)
-                let score = minDistance * (0.35 + 0.65 * prominence)
+                let dominanceFactor = 0.35 + 0.65 * prominence
+                let hueCoverage = normalizedHueCoverage(for: candidate.color, against: centroids)
+                let biasFactor = ((1 - clampedSpreadBias) * dominanceFactor) + (clampedSpreadBias * hueCoverage)
+                let score = minDistance * biasFactor
 
                 if score > bestScore + 0.000001 ||
                     (abs(score - bestScore) <= 0.000001 && isPreferredHistogramCandidate(candidate, over: bestCandidate)) {
@@ -628,6 +677,37 @@ enum ColorRegionsProcessor {
         }
 
         return centroids
+    }
+
+    private static func normalizedHueCoverage(
+        for color: OklabColor,
+        against centroids: [OklabColor]
+    ) -> Float {
+        let candidateChroma = sqrtf((color.a * color.a) + (color.b * color.b))
+        let chromaStrength = min(1, candidateChroma / 0.14)
+        guard chromaStrength > 0.001 else { return 0.2 }
+
+        let candidateHue = atan2f(color.b, color.a)
+        var bestHueDistance = Float.pi
+        var foundColorfulCentroid = false
+
+        for centroid in centroids {
+            let centroidChroma = sqrtf((centroid.a * centroid.a) + (centroid.b * centroid.b))
+            guard centroidChroma > 0.02 else { continue }
+            foundColorfulCentroid = true
+
+            let centroidHue = atan2f(centroid.b, centroid.a)
+            let rawDistance = abs(candidateHue - centroidHue)
+            let wrappedDistance = min(rawDistance, (2 * Float.pi) - rawDistance)
+            bestHueDistance = min(bestHueDistance, wrappedDistance)
+        }
+
+        if !foundColorfulCentroid {
+            return 0.7 + (0.3 * chromaStrength)
+        }
+
+        let normalizedDistance = bestHueDistance / Float.pi
+        return (0.2 + (0.8 * normalizedDistance)) * chromaStrength
     }
 
     private static func nearestCentroidIndex(
@@ -647,6 +727,52 @@ enum ColorRegionsProcessor {
         }
 
         return bestIndex
+    }
+
+    private static func nearestRefinementCentroidIndex(
+        for point: OklabColor,
+        centroids: [OklabColor],
+        lWeight: Float,
+        spreadBias: Float
+    ) -> Int {
+        let clampedSpreadBias = max(0, min(1, spreadBias))
+        guard clampedSpreadBias > 0.001 else {
+            return nearestCentroidIndex(for: point, centroids: centroids, lWeight: lWeight)
+        }
+
+        var bestIndex = 0
+        var bestDistance = Float.greatestFiniteMagnitude
+
+        for (index, centroid) in centroids.enumerated() {
+            let baseDistance = oklabDistanceColorWeighted(point, centroid, lWeight: lWeight)
+            let huePenalty = refinementHuePenalty(between: point, and: centroid)
+            let distance = baseDistance * (1 + (clampedSpreadBias * huePenalty))
+
+            if distance < bestDistance {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+
+        return bestIndex
+    }
+
+    private static func refinementHuePenalty(
+        between lhs: OklabColor,
+        and rhs: OklabColor
+    ) -> Float {
+        let lhsChroma = sqrtf((lhs.a * lhs.a) + (lhs.b * lhs.b))
+        let rhsChroma = sqrtf((rhs.a * rhs.a) + (rhs.b * rhs.b))
+        let chromaStrength = min(1, min(lhsChroma, rhsChroma) / 0.12)
+        guard chromaStrength > 0.001 else { return 0 }
+
+        let lhsHue = atan2f(lhs.b, lhs.a)
+        let rhsHue = atan2f(rhs.b, rhs.a)
+        let rawDistance = abs(lhsHue - rhsHue)
+        let wrappedDistance = min(rawDistance, (2 * Float.pi) - rawDistance)
+        let normalizedDistance = wrappedDistance / Float.pi
+
+        return 4 * sqrtf(normalizedDistance) * chromaStrength
     }
 
     private static func histogramIndex(for color: OklabColor) -> Int {

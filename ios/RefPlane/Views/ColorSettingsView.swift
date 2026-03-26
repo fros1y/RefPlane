@@ -36,6 +36,21 @@ struct ColorSettingsView: View {
             )
 
             LabeledSlider(
+                label: "Palette Spread",
+                value: Binding(
+                    get: { state.colorConfig.paletteSpread },
+                    set: { state.colorConfig.paletteSpread = $0; state.triggerProcessing() }
+                ),
+                range: 0...1,
+                step: 0.01,
+                displayFormat: { value in
+                    if value <= 0.01 { return "Mass" }
+                    if value >= 0.99 { return "Hue" }
+                    return String(format: "%.2f", value)
+                }
+            )
+
+            LabeledSlider(
                 label: "Warm/Cool",
                 value: Binding(
                     get: { state.colorConfig.warmCoolEmphasis },
