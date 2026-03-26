@@ -87,9 +87,15 @@ struct ImageCanvasView: View {
                         ZStack {
                             Color.black.opacity(0.45)
                             VStack(spacing: 10) {
-                                ProgressView(value: state.processingProgress)
-                                    .tint(.white)
-                                    .frame(width: 160)
+                                if state.processingIsIndeterminate {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(1.2)
+                                } else {
+                                    ProgressView(value: state.processingProgress)
+                                        .tint(.white)
+                                        .frame(width: 160)
+                                }
                                 Text(state.processingLabel)
                                     .font(.caption)
                                     .foregroundColor(.white.opacity(0.8))

@@ -12,8 +12,9 @@ struct ContentView: View {
                     if state.compareMode,
                        let base = state.displayBaseImage {
                         // Determine what to show on the right side
+                        let beforeImage = state.originalImage ?? base
                         let afterImage = state.processedImage ?? base
-                        CompareSliderView(beforeImage: base, afterImage: afterImage)
+                        CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ImageCanvasView(showImagePicker: $showImagePicker)
@@ -29,8 +30,9 @@ struct ContentView: View {
                     if state.compareMode,
                        let base = state.displayBaseImage {
                         // Determine what to show on the right side
+                        let beforeImage = state.originalImage ?? base
                         let afterImage = state.processedImage ?? base
-                        CompareSliderView(beforeImage: base, afterImage: afterImage)
+                        CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ImageCanvasView(showImagePicker: $showImagePicker)

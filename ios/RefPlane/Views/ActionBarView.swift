@@ -11,7 +11,7 @@ struct ActionBarView: View {
             }
             .disabled(state.displayBaseImage == nil)
 
-            ActionButton(icon: "square.and.arrow.up", label: "Export") {
+            ActionButton(icon: "square.and.arrow.up", label: "Export", isActive: exportItem != nil) {
                 if let img = state.exportCurrentImage() {
                     exportItem = ExportItem(image: img)
                 }

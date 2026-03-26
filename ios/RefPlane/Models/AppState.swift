@@ -17,6 +17,7 @@ class AppState: ObservableObject {
     @Published var isProcessing: Bool       = false
     @Published var processingProgress: Double = 0
     @Published var processingLabel: String  = "Processing…"
+    @Published var processingIsIndeterminate: Bool = false
     @Published var showCompare: Bool        = false
     @Published var compareMode: Bool        = false
     @Published var isolatedBand: Int?       = nil
@@ -41,6 +42,8 @@ class AppState: ObservableObject {
 
     private var simplifyTask: Task<Void, Never>? = nil
     private var simplifyGeneration: Int = 0
+
+    private var loadingTask: Task<Void, Never>? = nil
 
     var availableSimplificationMethods: [SimplificationMethod] {
         SimplificationMethod.allCases.filter { method in
@@ -73,20 +76,40 @@ class AppState: ObservableObject {
     }
 
     func loadImage(_ image: UIImage) {
-        let maxSize: CGFloat = 1600
-        let scaled = image.scaledDown(toMaxDimension: maxSize)
-        originalImage  = scaled
-        sourceImage    = scaled
-        simplifiedImage = nil
-        processedImage = nil
-        paletteColors  = []
-        paletteBands   = []
-        isolatedBand   = nil
-        triggerProcessing()
+        // Cancel any in-flight work before starting fresh.
+        loadingTask?.cancel()
+        processingTask?.cancel()
+        simplifyTask?.cancel()
+
+        // Show a loading spinner immediately — before async scaling —
+        // so the UI never looks frozen after the photo picker closes.
+        originalImage             = nil
+        sourceImage               = nil
+        simplifiedImage           = nil
+        processedImage            = nil
+        paletteColors             = []
+        paletteBands              = []
+        isolatedBand              = nil
+        isProcessing              = true
+        processingProgress        = 0
+        processingLabel           = "Loading…"
+        processingIsIndeterminate = true
+
+        loadingTask = Task {
+            let maxSize: CGFloat = 1600
+            let scaled = await image.scaledDownAsync(toMaxDimension: maxSize)
+            guard !Task.isCancelled else { return }
+            originalImage             = scaled
+            sourceImage               = scaled
+            processingLabel           = "Processing…"
+            processingIsIndeterminate = false
+            triggerProcessing()
+        }
     }
 
     func triggerProcessing() {
         processingTask?.cancel()
+        processingIsIndeterminate = false
         guard let source = displayBaseImage else {
             isProcessing = false
             processingProgress = 0

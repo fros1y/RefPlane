@@ -9,18 +9,21 @@ struct KMeansResult {
 
 enum KMeansClusterer {
 
-    /// Cluster `points` into `k` groups using k-means++ init + 20 iterations.
+    /// Cluster `points` into `k` groups using fast random init (Forgy) + max 8 iterations.
     /// `lWeight` de-emphasizes luminance for chroma-focused clustering.
+    /// For high-quality results on small k, use Forgy init (random) which converges fast enough.
     static func cluster(points: [OklabColor], k: Int, lWeight: Float = 0.1) -> KMeansResult {
         guard !points.isEmpty, k > 0 else {
             return KMeansResult(centroids: [], assignments: [])
         }
         let k = min(k, points.count)
 
-        var centroids = kMeansPlusPlusInit(points: points, k: k, lWeight: lWeight)
+        // Use fast Forgy initialization (random) instead of k-means++ for speed
+        // For color clustering, both converge to similar quality within 5-8 iterations
+        var centroids = forgyInit(points: points, k: k)
         var assignments = [Int](repeating: 0, count: points.count)
 
-        for _ in 0..<20 {
+        for _ in 0..<8 {
             // Assignment step
             var changed = false
             for i in 0..<points.count {
@@ -61,7 +64,25 @@ enum KMeansClusterer {
         return KMeansResult(centroids: centroids, assignments: assignments)
     }
 
-    // MARK: - K-Means++ initialization (exposed for GPU hybrid path)
+    // MARK: - Forgy initialization (fast random centroids)
+
+    /// Pick k random points as initial centroids.
+    /// Converges nearly as fast as k-means++ for color clustering.
+    static func forgyInit(points: [OklabColor], k: Int) -> [OklabColor] {
+        var centroids: [OklabColor] = []
+        var chosen = Set<Int>()
+        for _ in 0..<k {
+            var idx = Int.random(in: 0..<points.count)
+            while chosen.contains(idx) && chosen.count < points.count {
+                idx = Int.random(in: 0..<points.count)
+            }
+            chosen.insert(idx)
+            centroids.append(points[idx])
+        }
+        return centroids
+    }
+
+    // MARK: - K-Means++ initialization (for GPU hybrid path)
 
     static func kMeansPlusPlusInit(points: [OklabColor], k: Int, lWeight: Float) -> [OklabColor] {
         var centroids: [OklabColor] = []

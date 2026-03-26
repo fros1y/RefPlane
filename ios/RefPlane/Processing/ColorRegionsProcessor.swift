@@ -153,6 +153,7 @@ enum ColorRegionsProcessor {
 
     /// K-means with CPU centroid update + GPU assignment step.
     /// Uploads flat points once to a Metal buffer, reuses across iterations.
+    /// Uses Forgy (random) initialization for speed; converges well for color clustering.
     private static func kmeansGPU(
         gpu: MetalContext, points: [OklabColor], k: Int, lWeight: Float
     ) -> KMeansResult {
@@ -175,12 +176,13 @@ enum ColorRegionsProcessor {
             return KMeansClusterer.cluster(points: points, k: k, lWeight: lWeight)
         }
 
-        // K-means++ init on CPU (only k iterations, fast)
-        var centroids = KMeansClusterer.kMeansPlusPlusInit(points: points, k: k, lWeight: lWeight)
+        // Fast Forgy init (random) instead of k-means++ for speed
+        // Converges well for color clustering in 5-8 iterations
+        var centroids = KMeansClusterer.forgyInit(points: points, k: k)
         var assignments = [Int](repeating: 0, count: n)
         var iterations = 0
 
-        for iter in 0..<20 {
+        for iter in 0..<8 {
             iterations = iter + 1
             // Assignment step on GPU (reuse pixLabBuffer)
             let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }

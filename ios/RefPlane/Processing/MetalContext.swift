@@ -76,7 +76,9 @@ final class MetalContext {
 
     func makeBuffer<T>(_ data: [T]) -> MTLBuffer? {
         guard !data.isEmpty else { return nil }
-        return device.makeBuffer(bytes: data, length: MemoryLayout<T>.stride * data.count, options: .storageModeShared)
+        return data.withUnsafeBytes { bufferPtr in
+            device.makeBuffer(bytes: bufferPtr.baseAddress!, length: bufferPtr.count, options: .storageModeShared)
+        }
     }
 
     func makeBuffer(length: Int) -> MTLBuffer? {

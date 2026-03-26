@@ -5,6 +5,7 @@ import SwiftUI
 
 extension UIImage {
 
+    /// NOTE: Do not call from the main/UI thread! Performs drawing and may block responsiveness.
     /// Scale image down so longest dimension ≤ maxDimension, maintaining aspect ratio.
     func scaledDown(toMaxDimension maxDimension: CGFloat) -> UIImage {
         let maxWH = max(size.width, size.height)
@@ -15,6 +16,16 @@ extension UIImage {
         let renderer = UIGraphicsImageRenderer(size: newSize)
         return renderer.image { _ in
             draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
+
+    /// Async version of scaledDown that performs rendering off the main/UI thread.
+    func scaledDownAsync(toMaxDimension maxDimension: CGFloat) async -> UIImage {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = self.scaledDown(toMaxDimension: maxDimension)
+                continuation.resume(returning: result)
+            }
         }
     }
 
