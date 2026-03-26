@@ -16,6 +16,7 @@
 		54865C4DBC864140A2C83A6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F160D00F80954B0C9211E7F6 /* Assets.xcassets */; };
 		59B41B79D851484E8F2028BC /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523EB845BCBA42B4BBDC7E12 /* AppState.swift */; };
 		6256FE8690AA438BAFA74E15 /* ThresholdSliderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9960E48DDC404E14A65578E6 /* ThresholdSliderView.swift */; };
+		6A0D66489A3D486AA65C28D1 /* AboutPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */; };
 		77475E85729846BCB2B25460 /* ErrorToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0493CA914D0B4273902F650E /* ErrorToastView.swift */; };
 		8C646892F8744755A7B478D4 /* ColorSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AF7FD89A0E49169C002685 /* ColorSettingsView.swift */; };
 		9D269B4A36CD4FF1B68B714A /* GridOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */; };
@@ -48,6 +49,7 @@
 		3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ValueSettingsView.swift; path = Views/ValueSettingsView.swift; sourceTree = "<group>"; };
 		523EB845BCBA42B4BBDC7E12 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppState.swift; path = Models/AppState.swift; sourceTree = "<group>"; };
 		632255DE24DC47B99F2567C2 /* RegionCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegionCleaner.swift; path = Processing/RegionCleaner.swift; sourceTree = "<group>"; };
+		6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AboutPrivacyView.swift; path = Views/AboutPrivacyView.swift; sourceTree = "<group>"; };
 		84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridOverlayView.swift; path = Views/GridOverlayView.swift; sourceTree = "<group>"; };
 		87AF7FD89A0E49169C002685 /* ColorSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorSettingsView.swift; path = Views/ColorSettingsView.swift; sourceTree = "<group>"; };
 		886EB1023AF84A2984073327 /* ModeBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModeBarView.swift; path = Views/ModeBarView.swift; sourceTree = "<group>"; };
@@ -64,7 +66,7 @@
 		CC8D69363CDB4E37AB598F8A /* CompareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompareView.swift; path = Views/CompareView.swift; sourceTree = "<group>"; };
 		CCC0BBE0E4F4452FBC8CFDB1 /* GridSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridSettingsView.swift; path = Views/GridSettingsView.swift; sourceTree = "<group>"; };
 		D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UIImageExtensions.swift; path = Processing/UIImageExtensions.swift; sourceTree = "<group>"; };
-		E636B285F8FF462997175C6A /* RefPlane.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RefPlane.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E636B285F8FF462997175C6A /* Underpaint.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Underpaint.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E748F0C71BD24DB6A46F633D /* RefPlaneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefPlaneApp.swift; sourceTree = "<group>"; };
 		F160D00F80954B0C9211E7F6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F5C95ED152AB4658AA629DF5 /* ImageSimplifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageSimplifier.swift; path = Processing/ImageSimplifier.swift; sourceTree = "<group>"; };
@@ -97,6 +99,7 @@
 			isa = PBXGroup;
 			children = (
 				C80B3D2D0E20405194A6C9B5 /* ContentView.swift */,
+				6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */,
 				3BD4968AA7154D2FAC3796C3 /* ImageCanvasView.swift */,
 				B8B5E61D8D7B47A4AEB29906 /* ControlPanelView.swift */,
 				886EB1023AF84A2984073327 /* ModeBarView.swift */,
@@ -135,7 +138,7 @@
 		8B62BEE22E8D4E52A4A9828D /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E636B285F8FF462997175C6A /* RefPlane.app */,
+				E636B285F8FF462997175C6A /* Underpaint.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -177,8 +180,8 @@
 			dependencies = (
 			);
 			name = RefPlane;
-			productName = RefPlane;
-			productReference = E636B285F8FF462997175C6A /* RefPlane.app */;
+			productName = Underpaint;
+			productReference = E636B285F8FF462997175C6A /* Underpaint.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -256,6 +259,7 @@
 				D56F23CE705242D4BC737DD6 /* ImagePickerView.swift in Sources */,
 				77475E85729846BCB2B25460 /* ErrorToastView.swift in Sources */,
 				6256FE8690AA438BAFA74E15 /* ThresholdSliderView.swift in Sources */,
+				6A0D66489A3D486AA65C28D1 /* AboutPrivacyView.swift in Sources */,
 				F2E3D4C5B6A74839D8C9E001 /* APISR_GRL_x4.mlpackage in Sources */,
 				AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */,
 				AA11BB22CC334455DD66778A /* Shaders.metal in Sources */,
@@ -325,9 +329,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
+				INFOPLIST_KEY_CFBundleName = Underpaint;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Underpaint;
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Underpaint needs access to your photo library so you can choose reference images for study and painting.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -336,7 +340,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.refplane.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Underpaint;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -351,9 +355,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
+				INFOPLIST_KEY_CFBundleName = Underpaint;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Underpaint;
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Underpaint needs access to your photo library so you can choose reference images for study and painting.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -362,7 +366,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.refplane.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Underpaint;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

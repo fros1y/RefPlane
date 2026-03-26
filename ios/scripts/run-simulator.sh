@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the RefPlane app on an iOS Simulator.
+# Run the Underpaint app on an iOS Simulator.
 # Usage: ./ios/scripts/run-simulator.sh [SimulatorName]
 # Default simulator: iPhone 16
 
@@ -38,15 +38,17 @@ xcodebuild \
     build
 
 # ── 3. Locate the built .app bundle ─────────────────────────────────────────
-APP_DIR=$(xcodebuild \
+BUILD_SETTINGS=$(xcodebuild \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -configuration Debug \
     -destination "platform=iOS Simulator,id=$DEVICE_ID" \
-    -showBuildSettings 2>/dev/null \
-    | awk -F' = ' '/^\s*BUILT_PRODUCTS_DIR/{print $2}')
+    -showBuildSettings 2>/dev/null)
 
-APP_PATH="$APP_DIR/$SCHEME.app"
+APP_DIR=$(printf '%s\n' "$BUILD_SETTINGS" | awk -F' = ' '/^\s*BUILT_PRODUCTS_DIR/{print $2}')
+WRAPPER_NAME=$(printf '%s\n' "$BUILD_SETTINGS" | awk -F' = ' '/^\s*WRAPPER_NAME/{print $2}')
+
+APP_PATH="$APP_DIR/$WRAPPER_NAME"
 
 if [ ! -d "$APP_PATH" ]; then
     echo "❌  Built app not found at: $APP_PATH"

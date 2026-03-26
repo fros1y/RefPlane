@@ -1,69 +1,79 @@
 import SwiftUI
 
-// MARK: - Multi-handle threshold slider
+// MARK: - Threshold controls
 
-struct ThresholdSliderView: View {
+struct ThresholdListView: View {
     @Binding var thresholds: [Double]
     let levels: Int
-    let colorForLevel: (Int, Int) -> Color
 
     var body: some View {
-        GeometryReader { geo in
-            let trackH: CGFloat = 20
-            let handleW: CGFloat = 12
-            let expectedHandles = max(0, levels - 1)
+        let expectedHandles = max(0, levels - 1)
 
-            // Sanitize: ensure the array is exactly levels-1 elements, sorted, clamped to 0..1
-            let safeThresholds: [Double] = {
-                var t = thresholds.filter { $0 >= 0 && $0 <= 1 }.sorted()
-                // Pad missing handles with evenly-spaced fallback values, then re-sort
-                while t.count < expectedHandles {
-                    t.append(Double(t.count + 1) / Double(expectedHandles + 1))
-                }
-                t.sort()
-                if t.count > expectedHandles { t = Array(t.prefix(expectedHandles)) }
-                return t
-            }()
-
-            ZStack(alignment: .leading) {
-                // Track background — segments colored by level
-                HStack(spacing: 0) {
-                    ForEach(0..<levels, id: \.self) { lvl in
-                        let segStart: Double = lvl == 0          ? 0.0 : safeThresholds[lvl - 1]
-                        let segEnd:   Double = lvl == levels - 1 ? 1.0 : safeThresholds[lvl]
-                        let segWidth = CGFloat(segEnd - segStart) * (geo.size.width - handleW)
-                        colorForLevel(lvl, levels)
-                            .frame(width: max(0, segWidth), height: trackH)
-                    }
-                }
-                .cornerRadius(4)
-                .offset(x: handleW / 2)
-
-                // Handles
-                ForEach(0..<expectedHandles, id: \.self) { i in
-                    let val = safeThresholds[i]
-                    let x   = CGFloat(val) * (geo.size.width - handleW)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color(.systemBackground))
-                        .frame(width: handleW, height: trackH + 8)
-                        .shadow(color: Color(.separator), radius: 2)
-                        .offset(x: x)
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { drag in
-                                    let newVal = (drag.location.x - handleW / 2) / (geo.size.width - handleW)
-                                    let lower  = i > 0                  ? safeThresholds[i - 1] + 0.02 : 0.02
-                                    let upper  = i < expectedHandles - 1 ? safeThresholds[i + 1] - 0.02 : 0.98
-                                    var t = safeThresholds
-                                    t[i] = max(lower, min(upper, newVal))
-                                    thresholds = t
-                                }
-                        )
-                }
+        VStack(spacing: 10) {
+            ForEach(0..<expectedHandles, id: \.self) { index in
+                LabeledSlider(
+                    label: thresholdLabel(for: index),
+                    value: thresholdBinding(for: index, expectedHandles: expectedHandles),
+                    range: thresholdRange(for: index, expectedHandles: expectedHandles),
+                    step: 0.01,
+                    displayFormat: { "\(Int(($0 * 100).rounded()))%" }
+                )
             }
-            .frame(height: trackH + 8)
         }
-        .frame(height: 28)
+        .onAppear {
+            normalizeThresholds(expectedHandles: expectedHandles)
+        }
+        .onChange(of: levels) { _ in
+            normalizeThresholds(expectedHandles: expectedHandles)
+        }
+    }
+
+    private func thresholdLabel(for index: Int) -> String {
+        "Threshold \(index + 1)"
+    }
+
+    private func thresholdBinding(for index: Int, expectedHandles: Int) -> Binding<Double> {
+        Binding(
+            get: {
+                if index < thresholds.count {
+                    return thresholds[index]
+                }
+                return Double(index + 1) / Double(expectedHandles + 1)
+            },
+            set: { newValue in
+                var updated = sanitizedThresholds(expectedHandles: expectedHandles)
+                let lower = index > 0 ? updated[index - 1] + 0.02 : 0.02
+                let upper = index < expectedHandles - 1 ? updated[index + 1] - 0.02 : 0.98
+                updated[index] = max(lower, min(upper, newValue))
+                thresholds = updated
+            }
+        )
+    }
+
+    private func thresholdRange(for index: Int, expectedHandles: Int) -> ClosedRange<Double> {
+        let safeThresholds = sanitizedThresholds(expectedHandles: expectedHandles)
+        let lower = index > 0 ? safeThresholds[index - 1] + 0.02 : 0.02
+        let upper = index < expectedHandles - 1 ? safeThresholds[index + 1] - 0.02 : 0.98
+        return lower...upper
+    }
+
+    private func normalizeThresholds(expectedHandles: Int) {
+        let safe = sanitizedThresholds(expectedHandles: expectedHandles)
+        if safe != thresholds {
+            thresholds = safe
+        }
+    }
+
+    private func sanitizedThresholds(expectedHandles: Int) -> [Double] {
+        var safe = thresholds.filter { $0 >= 0 && $0 <= 1 }.sorted()
+        while safe.count < expectedHandles {
+            safe.append(Double(safe.count + 1) / Double(expectedHandles + 1))
+        }
+        safe.sort()
+        if safe.count > expectedHandles {
+            safe = Array(safe.prefix(expectedHandles))
+        }
+        return safe
     }
 }
 

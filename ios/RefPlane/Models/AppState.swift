@@ -27,7 +27,7 @@ class AppState: ObservableObject {
     @Published var gridConfig: GridConfig   = GridConfig()
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
-    @Published var simplifyEnabled: Bool    = false
+    @Published var simplifyEnabled: Bool    = true
     /// Simplification strength 0–1. Maps to downscale factor 2–12.
     @Published var simplifyStrength: Double  = 0.5
     @Published var simplificationMethod: SimplificationMethod = .apisr
@@ -81,10 +81,10 @@ class AppState: ObservableObject {
         processingTask?.cancel()
         simplifyTask?.cancel()
 
-        // Show a loading spinner immediately — before async scaling —
-        // so the UI never looks frozen after the photo picker closes.
-        originalImage             = nil
-        sourceImage               = nil
+        // Show the picked image immediately, then swap in the scaled version
+        // once preprocessing finishes so the canvas never blanks out.
+        originalImage             = image
+        sourceImage               = image
         simplifiedImage           = nil
         processedImage            = nil
         paletteColors             = []
@@ -102,9 +102,13 @@ class AppState: ObservableObject {
             guard !Task.isCancelled else { return }
             originalImage             = scaled
             sourceImage               = scaled
-            processingLabel           = "Processing…"
-            processingIsIndeterminate = false
-            triggerProcessing()
+            if simplifyEnabled {
+                applySimplify()
+            } else {
+                processingLabel           = "Processing…"
+                processingIsIndeterminate = false
+                triggerProcessing()
+            }
         }
     }
 
@@ -205,6 +209,7 @@ class AppState: ObservableObject {
         isProcessing = true
         processingProgress = 0
         processingLabel = "Simplifying…"
+        processingIsIndeterminate = false
         errorMessage = nil
 
         simplifyTask = Task {

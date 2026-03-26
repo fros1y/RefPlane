@@ -63,7 +63,13 @@ enum ValueStudyProcessor {
         // Region cleanup stays on CPU (BFS flood-fill with branching logic)
         stepStart = CFAbsoluteTimeGetCurrent()
         if let factor = config.minRegionSize.factor {
-            RegionCleaner.clean(labels: &labels, width: width, height: height, minFactor: factor)
+            RegionCleaner.clean(
+                labels: &labels,
+                width: width,
+                height: height,
+                minFactor: factor,
+                labelCapacity: levels
+            )
         }
         print("[ValueStudy]   region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
@@ -125,7 +131,13 @@ enum ValueStudyProcessor {
         }
 
         if let factor = config.minRegionSize.factor {
-            RegionCleaner.clean(labels: &labelMap, width: width, height: height, minFactor: factor)
+            RegionCleaner.clean(
+                labels: &labelMap,
+                width: width,
+                height: height,
+                minFactor: factor,
+                labelCapacity: levels
+            )
         }
 
         var out = [UInt8](repeating: 255, count: total * 4)

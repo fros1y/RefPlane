@@ -10,32 +10,44 @@ enum RegionCleaner {
     ///   - width/height: image dimensions
     ///   - minFactor: fraction of total pixels; regions below this are merged
     /// Optimized: pre-allocated queue, inline neighbor checks, batch processing
-    static func clean(labels: inout [Int32], width: Int, height: Int, minFactor: Double) {
+    static func clean(
+        labels: inout [Int32],
+        width: Int,
+        height: Int,
+        minFactor: Double,
+        labelCapacity: Int
+    ) {
         let total = width * height
         let minPixels = Int(Double(total) * minFactor)
-        guard minPixels > 0 else { return }
+        guard minPixels > 0, labelCapacity > 0 else { return }
 
         var visited = [Bool](repeating: false, count: total)
         // Pre-allocate queue once for all BFS traversals (reuse buffer)
         var queue = [Int](repeating: 0, count: total)
         var region = [Int](repeating: 0, count: total)
+        var neighborCounts = [Int](repeating: 0, count: labelCapacity)
+        var touchedLabels = [Int](repeating: 0, count: labelCapacity)
 
         for startIdx in 0..<total {
             guard !visited[startIdx] else { continue }
 
             let label = labels[startIdx]
-            // BFS with reusable pre-allocated arrays
             queue[0] = startIdx
             visited[startIdx] = true
             var regionCount = 0
+            var storedCount = 0
             var head = 0
             var queueEnd = 1
 
             while head < queueEnd {
                 let idx = queue[head]
                 head += 1
-                region[regionCount] = idx
                 regionCount += 1
+
+                if storedCount < minPixels {
+                    region[storedCount] = idx
+                    storedCount += 1
+                }
 
                 let x = idx % width
                 let y = idx / width
@@ -80,38 +92,114 @@ enum RegionCleaner {
             }
 
             if regionCount < minPixels {
-                // Find most common neighboring label (different from own)
-                var neighborCounts = [Int32: Int]()
-                for i in 0..<regionCount {
+                var touchedCount = 0
+                for i in 0..<storedCount {
                     let idx = region[i]
                     let x = idx % width
                     let y = idx / width
 
-                    // Check 4 neighbors
                     if x > 0 {
-                        let nl = labels[idx - 1]
-                        if nl != label { neighborCounts[nl, default: 0] += 1 }
+                        recordNeighbor(
+                            labels[idx - 1],
+                            originalLabel: label,
+                            counts: &neighborCounts,
+                            touchedLabels: &touchedLabels,
+                            touchedCount: &touchedCount
+                        )
                     }
                     if x < width - 1 {
-                        let nl = labels[idx + 1]
-                        if nl != label { neighborCounts[nl, default: 0] += 1 }
+                        recordNeighbor(
+                            labels[idx + 1],
+                            originalLabel: label,
+                            counts: &neighborCounts,
+                            touchedLabels: &touchedLabels,
+                            touchedCount: &touchedCount
+                        )
                     }
                     if y > 0 {
-                        let nl = labels[idx - width]
-                        if nl != label { neighborCounts[nl, default: 0] += 1 }
+                        recordNeighbor(
+                            labels[idx - width],
+                            originalLabel: label,
+                            counts: &neighborCounts,
+                            touchedLabels: &touchedLabels,
+                            touchedCount: &touchedCount
+                        )
                     }
                     if y < height - 1 {
-                        let nl = labels[idx + width]
-                        if nl != label { neighborCounts[nl, default: 0] += 1 }
+                        recordNeighbor(
+                            labels[idx + width],
+                            originalLabel: label,
+                            counts: &neighborCounts,
+                            touchedLabels: &touchedLabels,
+                            touchedCount: &touchedCount
+                        )
                     }
                 }
 
-                if let replacement = neighborCounts.max(by: { $0.value < $1.value })?.key {
-                    for i in 0..<regionCount {
-                        labels[region[i]] = replacement
+                if let replacement = dominantNeighbor(
+                    counts: neighborCounts,
+                    touchedLabels: touchedLabels,
+                    touchedCount: touchedCount
+                ) {
+                    for i in 0..<storedCount {
+                        labels[region[i]] = Int32(replacement)
                     }
+                }
+
+                for i in 0..<touchedCount {
+                    neighborCounts[touchedLabels[i]] = 0
                 }
             }
         }
+    }
+
+    @inline(__always)
+    private static func recordNeighbor(
+        _ neighborLabel: Int32,
+        originalLabel: Int32,
+        counts: inout [Int],
+        touchedLabels: inout [Int],
+        touchedCount: inout Int
+    ) {
+        guard neighborLabel != originalLabel else { return }
+        let index = Int(neighborLabel)
+        guard index >= 0 && index < counts.count else { return }
+
+        if counts[index] == 0 {
+            touchedLabels[touchedCount] = index
+            touchedCount += 1
+        }
+        counts[index] += 1
+    }
+
+    private static func dominantNeighbor(
+        counts: [Int],
+        touchedLabels: [Int],
+        touchedCount: Int
+    ) -> Int? {
+        var bestLabel: Int?
+        var bestCount = 0
+
+        for i in 0..<touchedCount {
+            let label = touchedLabels[i]
+            let count = counts[label]
+            if count > bestCount {
+                bestCount = count
+                bestLabel = label
+            }
+        }
+
+        return bestLabel
+    }
+
+    static func clean(labels: inout [Int32], width: Int, height: Int, minFactor: Double) {
+        let labelCapacity = Int((labels.max() ?? 0) + 1)
+        clean(
+            labels: &labels,
+            width: width,
+            height: height,
+            minFactor: minFactor,
+            labelCapacity: labelCapacity
+        )
     }
 }

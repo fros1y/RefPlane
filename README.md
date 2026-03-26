@@ -7,7 +7,6 @@ An iOS reference-prep tool for painting and drawing, built natively with Swift a
 - **Image modes**: Original · Tonal · Value · Color
 - **Simplify**: Core Image noise-reduction + sharpening pipeline (plug in a Core ML `.mlmodel` in `ImageSimplifier.swift` to swap in super-resolution)
 - **Grid overlay**: configurable divisions, square/image-fit cells, diagonals, center-lines, opacity, custom colour
-- **Crop**: non-destructive corner-handle crop tool
 - **Compare**: drag-split before/after view
 - **Palette**: extracted colour swatches with per-band isolation
 - **Export**: native iOS share sheet

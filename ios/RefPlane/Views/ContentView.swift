@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var state = AppState()
     @State private var showImagePicker = false
     @State private var showInspector = false
+    @State private var showAbout = false
     @State private var exportItem: ExportItem?
     @State private var usesSidebarLayout = false
 
@@ -63,6 +64,13 @@ struct ContentView: View {
                         Image(systemName: inspectorIconName)
                     }
                     .accessibilityLabel(inspectorAccessibilityLabel)
+
+                    Button {
+                        showAbout = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("About and privacy")
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
@@ -87,6 +95,9 @@ struct ContentView: View {
         }
         .sheet(item: $exportItem) { item in
             ShareSheet(items: [item.image])
+        }
+        .sheet(isPresented: $showAbout) {
+            AboutPrivacyView()
         }
         .alert("Unable to Continue", isPresented: Binding(
             get: { state.errorMessage != nil },
