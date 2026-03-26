@@ -31,6 +31,12 @@ Six approaches, spanning three paradigms:
 |-------|--------|------|-----------------|
 | Anisotropic Kuwahara | Kyprianidis & Semmo 2010 | 0 MB | 2-pass Metal compute shader |
 
+## Scope
+
+**What IS being built:** A model-switching infrastructure for the simplification pipeline, 4 new CoreML models, 1 Metal shader, a conversion script, and a minimal picker UI. This is an exploration tool for comparing approaches.
+
+**What is NOT being built:** Cross-model comparison UI, model download-on-demand, quantization, performance optimization, or any changes to the downstream mode processing (tonal/value/color).
+
 ## Architecture
 
 ### Unified Pipeline
@@ -193,6 +199,27 @@ case .kuwahara:
 
 All existing helper methods (`reflectPad`, `runModel`, `resizeToPixels`, format converters) remain unchanged.
 
+The entire `simplify()` body remains wrapped in `Task.detached(priority: .userInitiated)` as it is today, keeping model loading and inference off the main actor.
+
+### Model Cache and Memory
+
+Models are loaded lazily — only when first selected by the user. The dictionary cache avoids reloading on repeated switches. Under memory pressure, the cache should be cleared in response to `UIApplication.didReceiveMemoryWarningNotification`:
+
+```swift
+private static func registerMemoryWarning() {
+    NotificationCenter.default.addObserver(
+        forName: UIApplication.didReceiveMemoryWarningNotification,
+        object: nil, queue: nil
+    ) { _ in cachedModels.removeAll() }
+}
+```
+
+With all 5 models loaded (~81 MB of weights), memory pressure is possible on older devices. Lazy loading means typical usage (trying 1-2 models) keeps only 1-2 models resident.
+
+### Error Handling for Missing Models
+
+If `loadModel(for:)` returns nil (model not bundled, corrupt, etc.), `simplify()` returns the original image unchanged. The UI does not disable picker options — all methods are always shown. A console log is printed identifying which model failed to load. This is sufficient for the exploration phase; a production version would surface errors to the user.
+
 ## Anisotropic Kuwahara Metal Shader
 
 Two new compute kernels in `Shaders.metal`.
@@ -229,12 +256,24 @@ func anisotropicKuwahara(_ image: CGImage, radius: Int = 6) -> UIImage?
 ```
 
 The method:
-1. Creates input texture from CGImage
-2. Allocates structure tensor intermediate texture (`.rgba32Float`)
-3. Dispatches Pass 1
-4. Allocates output texture
-5. Dispatches Pass 2
-6. Reads result back to UIImage
+1. Creates input `MTLTexture` from CGImage pixels (`.rgba8Unorm`, `usage: [.shaderRead]`)
+2. Allocates structure tensor intermediate texture (`.rgba32Float`, `usage: [.shaderRead, .shaderWrite]`)
+3. Dispatches Pass 1 with 2D threadgroups: `MTLSize(width: ceil(w/16), height: ceil(h/16), depth: 1)`, threads per group `MTLSize(width: 16, height: 16, depth: 1)`
+4. Allocates output texture (`.rgba8Unorm`, `usage: [.shaderRead, .shaderWrite]`)
+5. Dispatches Pass 2 with same 2D threadgroup layout
+6. Reads result back via `getBytes()` into pixel array, constructs UIImage via `UIImage.fromPixelData()`
+
+This uses **texture-based dispatch** rather than the existing buffer-based 1D `dispatch()` helper. The `anisotropicKuwahara()` method manages its own command buffer and compute encoder directly, similar to how `CIContext` operates, rather than extending the existing `dispatch()` helper which is designed for flat buffer operations.
+
+### Kuwahara Shader Parameters
+
+The following parameters are **hardcoded as constants in the shader** for the exploration phase:
+- Number of sectors: 8
+- Polynomial weight constants: ζ = 1.0, η = 1.0 (Kyprianidis defaults)
+- Structure tensor Gaussian blur radius: 2
+- Filter kernel radius: passed as a buffer constant, defaults to 6
+
+Only the kernel radius is exposed to Swift via the `radius` parameter. Other parameters can be promoted to buffer constants later if tuning is needed.
 
 ### Reference Implementations
 
@@ -265,13 +304,19 @@ A Python script `scripts/convert_models.py` handles conversion for all models.
 **White-box Cartoonization:**
 - Download ONNX from [PINTO_model_zoo/019](https://github.com/PINTO0309/PINTO_model_zoo/tree/main/019_White-box-Cartoonization) (pre-converted available)
 - `coremltools.convert()` from ONNX → `.mlpackage`
-- Input: `[1, 3, H, W]` (fully convolutional) → Output: same dimensions
+- Input shape must use `ct.RangeDim` for H and W to allow arbitrary sizes at runtime:
+  ```python
+  ct.convert(model, inputs=[ct.ImageType(shape=(1, 3, ct.RangeDim(64, 1024), ct.RangeDim(64, 1024)))])
+  ```
+- If flexible shapes cause conversion issues, fall back to a fixed size matching the downsampled image's typical dimensions (e.g., 256×256) and resize before/after inference
+- Output type: image (RGB pixel buffer) — the existing `runModel()` handles this via its `.image` branch
 
 **AnimeGANv3:**
 - Download ONNX from repo (e.g., `AnimeGANv3_Hayao_36.onnx`)
 - `coremltools.convert()` from ONNX → `.mlpackage`
+- Same flexible shape approach as White-box Cartoonization above
 - Start with a style that produces the flattest output (USA cartoon or Shinkai)
-- Input: `[1, 3, H, W]` → Output: same dimensions
+- Output type: image (RGB pixel buffer)
 
 ### Script Interface
 
@@ -283,9 +328,11 @@ python scripts/convert_models.py --model animegan
 python scripts/convert_models.py --all
 ```
 
-Each invocation downloads weights if not cached, converts, validates with a 256×256 test inference, and outputs `.mlpackage` to `ios/RefPlane/`.
+Each invocation downloads weights if not cached, converts, validates with a 256×256 test inference, and outputs `.mlpackage` to `ios/RefPlane/` (alongside the existing `RealESRGAN_x4.mlpackage`).
 
 All models use `compute_units=ALL` and float32 precision (no quantization during exploration).
+
+Adding the `.mlpackage` files to the Xcode project's bundle resources is a manual step after conversion — drag into Xcode and ensure "Copy items if needed" and target membership are set. The conversion script does not modify the `.xcodeproj`.
 
 ## UI Changes
 
@@ -339,3 +386,19 @@ No other UI changes. Compare view, export, mode processing all work unchanged on
 | `ControlPanelView.swift` | Add method picker, rename toggle label |
 | `scripts/convert_models.py` | New — model download and CoreML conversion script |
 | Bundle | Add 4 new `.mlpackage` files (APISR, SwinIR, WhiteBox, AnimeGAN) |
+
+## Housekeeping
+
+Fix the stale doc comment in `AppState.swift` line 29: change "downscale factor 2–8" to "downscale factor 2–12" to match the actual implementation (`2.0 + simplifyStrength * 10.0`).
+
+Update the MetalContext pipeline count log message from "7 compute pipelines" to "9 compute pipelines" after adding the two Kuwahara kernels.
+
+## Verification
+
+This is an exploration project — success is subjective (visual quality of simplification). Verification:
+
+1. **Smoke test each method:** Load a test image, select each method in the picker, confirm simplification runs without crash and produces a visibly different result.
+2. **Visual comparison:** For each method at strength 50%, check that edges/large structures are preserved while fine texture is reduced compared to the original.
+3. **Strength slider:** Confirm that increasing strength produces more aggressive simplification for all methods.
+4. **Mode stacking:** Confirm that tonal/value/color modes work correctly on top of each simplification method's output.
+5. **Memory:** Switch between all 6 methods repeatedly, confirm no crash from memory pressure on a physical device.
