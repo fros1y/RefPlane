@@ -1,13 +1,13 @@
 import UIKit
 import SwiftUI
 
-// MARK: - Color Regions pipeline
+// MARK: - Color study pipeline
 
 enum ColorRegionsProcessor {
 
     struct Result {
         let image: UIImage
-        /// Centroids in SwiftUI Color, grouped by band index
+        /// Palette colors grouped by family index.
         let palette: [Color]
         let paletteBands: [Int]
     }
@@ -15,323 +15,421 @@ enum ColorRegionsProcessor {
     static func process(image: UIImage, config: ColorConfig) -> Result? {
         let t0 = CFAbsoluteTimeGetCurrent()
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
-        let total = width * height
-        let t1 = CFAbsoluteTimeGetCurrent()
-        print("[ColorRegions] toPixelData: \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
 
-        // GPU path
-        if let gpu = MetalContext.shared {
-            let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height, config: config)
-            let t2 = CFAbsoluteTimeGetCurrent()
-            print("[ColorRegions] ✅ GPU path — \(total) px, \(config.bands) bands × \(config.colorsPerBand) cpb in \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
+        if let gpu = MetalContext.shared,
+           let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height, config: config) {
+            let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+            print("[ColorStudy] GPU path in \(String(format: "%.1f", totalMs)) ms")
             return result
         }
 
-        // CPU fallback
-        print("[ColorRegions] ⚠️ CPU fallback (MetalContext.shared = nil)")
         let result = processCPU(pixels: pixels, width: width, height: height, config: config)
-        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-        print("[ColorRegions] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
+        let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+        print("[ColorStudy] CPU path in \(String(format: "%.1f", totalMs)) ms")
         return result
     }
 
     // MARK: - GPU path
 
     private static func processGPU(
-        gpu: MetalContext, pixels: [UInt8], width: Int, height: Int, config: ColorConfig
+        gpu: MetalContext,
+        pixels: [UInt8],
+        width: Int,
+        height: Int,
+        config: ColorConfig
     ) -> Result? {
         let total = width * height
-        let bands = max(2, min(6, config.bands))
-        let cpb   = max(1, min(4, config.colorsPerBand))
+        let colorFamilies = max(2, min(6, config.colorFamilies))
+        let valuesPerFamily = max(1, min(4, config.valuesPerFamily))
+        let thresholds = normalizedThresholds(config.valueThresholds, levels: valuesPerFamily)
 
-        // 1. RGB → Oklab on GPU
         var stepStart = CFAbsoluteTimeGetCurrent()
         guard let (labArray, srcBuffer, labBuffer) = gpu.rgbToOklab(pixels: pixels, width: width, height: height) else {
-            print("[ColorRegions] ⚠️ GPU rgb_to_oklab failed, falling back to CPU")
-            return processCPU(pixels: pixels, width: width, height: height, config: config)
-        }
-        print("[ColorRegions]   rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-
-        // 2. Assign bands on GPU (reuse labBuffer)
-        stepStart = CFAbsoluteTimeGetCurrent()
-        let thresholdFloats = config.thresholds.map { Float($0) }
-        guard let bandAssignRaw = gpu.assignBands(labBuffer: labBuffer, count: total,
-                                                   thresholds: thresholdFloats,
-                                                   totalBands: bands) else {
-            print("[ColorRegions] ⚠️ GPU band_assign failed, falling back to CPU")
-            return processCPU(pixels: pixels, width: width, height: height, config: config)
-        }
-        print("[ColorRegions]   band_assign: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-
-        // 3. Build per-band pixel index lists (CPU — lightweight bookkeeping)
-        var indicesByBand = Array(repeating: [Int](), count: bands)
-        for i in 0..<total {
-            indicesByBand[Int(bandAssignRaw[i])].append(i)
-        }
-
-        // 4. K-means per band (init + update on CPU, assignment on GPU)
-        stepStart = CFAbsoluteTimeGetCurrent()
-        var centroidsByBand: [[OklabColor]] = []
-        var globalLabel = [Int32](repeating: 0, count: total)
-
-        for bnd in 0..<bands {
-            let indices = indicesByBand[bnd]
-            let k = min(cpb, indices.count)
-
-            if k < 1 || indices.isEmpty {
-                let midL = bands > 1 ? Float(bnd) / Float(bands - 1) : 0.5
-                centroidsByBand.append([OklabColor(L: midL, a: 0, b: 0)])
-                continue
-            }
-
-            // Extract band pixel Lab data
-            let bandLab = indices.map { OklabColor(L: labArray[$0 * 3], a: labArray[$0 * 3 + 1], b: labArray[$0 * 3 + 2]) }
-
-            // K-means with GPU-accelerated assignment step
-            let result = kmeansGPU(gpu: gpu, points: bandLab, k: k, lWeight: Float(0.1))
-
-            var centroids = result.centroids
-
-            // Apply warm/cool emphasis
-            if config.warmCoolEmphasis != 0 {
-                let angle = Float(config.warmCoolEmphasis) * Float.pi / 4
-                centroids = centroids.map { c in
-                    let r = sqrtf(c.a * c.a + c.b * c.b)
-                    let theta = atan2f(c.b, c.a) + angle
-                    return OklabColor(L: c.L, a: r * cosf(theta), b: r * sinf(theta))
-                }
-            }
-
-            centroidsByBand.append(centroids)
-            for (j, pi) in indices.enumerated() {
-                let clusterIdx = result.assignments.isEmpty ? 0 : min(result.assignments[j], centroids.count - 1)
-                globalLabel[pi] = Int32(bnd * cpb + clusterIdx)
-            }
-        }
-
-        print("[ColorRegions]   kmeans (\(bands) bands): \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-
-        // 5. Region cleanup (CPU — BFS)
-        stepStart = CFAbsoluteTimeGetCurrent()
-        if let factor = config.minRegionSize.factor {
-            RegionCleaner.clean(labels: &globalLabel, width: width, height: height, minFactor: factor)
-        }
-
-        print("[ColorRegions]   region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-
-        // 6. Build flat centroid table and remap on GPU
-        stepStart = CFAbsoluteTimeGetCurrent()
-        var flatCentroids: [Float] = []
-        var palette: [Color] = []
-        var paletteBands: [Int] = []
-
-        for bnd in 0..<bands {
-            for c in centroidsByBand[bnd] {
-                flatCentroids.append(c.L)
-                flatCentroids.append(c.a)
-                flatCentroids.append(c.b)
-                let (r, g, b) = oklabToRGB(c)
-                palette.append(Color(red: Double(r)/255, green: Double(g)/255, blue: Double(b)/255))
-                paletteBands.append(bnd)
-            }
-        }
-
-        guard let out = gpu.remapByLabel(srcBuffer: srcBuffer, labels: globalLabel,
-                                          centroids: flatCentroids, count: total) else {
             return nil
         }
+        print("[ColorStudy][GPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        print("[ColorRegions]   remap_by_label: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        let points = labArrayToColors(labArray)
+        stepStart = CFAbsoluteTimeGetCurrent()
+        var familyCentroids = kmeansGPU(gpu: gpu, points: points, pixelLabBuffer: labBuffer, k: colorFamilies, lWeight: 0.08)
+        print("[ColorStudy][GPU] kmeans_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+
+        if config.warmCoolEmphasis != 0 {
+            familyCentroids = applyWarmCoolEmphasis(to: familyCentroids, amount: config.warmCoolEmphasis)
+        }
+
+        guard !familyCentroids.isEmpty else { return nil }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        guard let img = UIImage.fromPixelData(out, width: width, height: height) else { return nil }
-        print("[ColorRegions]   fromPixelData: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-        return Result(image: img, palette: palette, paletteBands: paletteBands)
+        let assignments = assignFamiliesGPU(
+            gpu: gpu,
+            pixelLabBuffer: labBuffer,
+            count: total,
+            centroids: familyCentroids,
+            lWeight: 0.08
+        )
+        print("[ColorStudy][GPU] assign_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+
+        stepStart = CFAbsoluteTimeGetCurrent()
+        var globalLabels = buildLabels(
+            points: points,
+            familyAssignments: assignments,
+            familyCount: familyCentroids.count,
+            valuesPerFamily: valuesPerFamily,
+            thresholds: thresholds
+        )
+        print("[ColorStudy][CPU] build_labels: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+
+        if let factor = config.minRegionSize.factor {
+            stepStart = CFAbsoluteTimeGetCurrent()
+            RegionCleaner.clean(labels: &globalLabels, width: width, height: height, minFactor: factor)
+            print("[ColorStudy][CPU] region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        }
+
+        stepStart = CFAbsoluteTimeGetCurrent()
+        let quantized = makeQuantizedCentroids(
+            points: points,
+            labels: globalLabels,
+            familyCentroids: familyCentroids,
+            valuesPerFamily: valuesPerFamily,
+            thresholds: thresholds
+        )
+        print("[ColorStudy][CPU] quantize_values: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+
+        let flatCentroids = quantized.centroids.flatMap { [$0.L, $0.a, $0.b] }
+        stepStart = CFAbsoluteTimeGetCurrent()
+        guard let outputPixels = gpu.remapByLabel(
+            srcBuffer: srcBuffer,
+            labels: globalLabels,
+            centroids: flatCentroids,
+            count: total
+        ),
+        let image = UIImage.fromPixelData(outputPixels, width: width, height: height) else {
+            return nil
+        }
+        print("[ColorStudy][GPU] remap_by_label: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+
+        return Result(image: image, palette: quantized.palette, paletteBands: quantized.paletteBands)
     }
 
-    // MARK: - GPU-accelerated k-means
-
-    /// K-means with CPU centroid update + GPU assignment step.
-    /// Uploads flat points once to a Metal buffer, reuses across iterations.
-    /// Uses Forgy (random) initialization for speed; converges well for color clustering.
-    private static func kmeansGPU(
-        gpu: MetalContext, points: [OklabColor], k: Int, lWeight: Float
-    ) -> KMeansResult {
-        guard !points.isEmpty, k > 0 else {
-            return KMeansResult(centroids: [], assignments: [])
-        }
-        let k = min(k, points.count)
-        let n = points.count
-
-        // Flatten to interleaved floats and upload once
-        var flatPoints = [Float](repeating: 0, count: n * 3)
-        flatPoints.withUnsafeMutableBufferPointer { buf in
-            for i in 0..<n {
-                buf[i * 3]     = points[i].L
-                buf[i * 3 + 1] = points[i].a
-                buf[i * 3 + 2] = points[i].b
-            }
-        }
-        guard let pixLabBuffer = gpu.makeBuffer(flatPoints) else {
-            return KMeansClusterer.cluster(points: points, k: k, lWeight: lWeight)
-        }
-
-        // Fast Forgy init (random) instead of k-means++ for speed
-        // Converges well for color clustering in 5-8 iterations
-        var centroids = KMeansClusterer.forgyInit(points: points, k: k)
-        var assignments = [Int](repeating: 0, count: n)
-        var iterations = 0
-
-        for iter in 0..<8 {
-            iterations = iter + 1
-            // Assignment step on GPU (reuse pixLabBuffer)
-            let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
-            if let gpuAssign = gpu.kmeansAssign(pixelLabBuffer: pixLabBuffer, count: n,
-                                                 centroidLab: flatCentroids, k: k, lWeight: lWeight) {
-                var changed = false
-                // Use withUnsafeBufferPointer to avoid bounds-check overhead
-                gpuAssign.withUnsafeBufferPointer { assignBuf in
-                    for i in 0..<n {
-                        let newA = Int(assignBuf[i])
-                        if assignments[i] != newA { changed = true; assignments[i] = newA }
-                    }
-                }
-                if !changed { break }
-            } else {
-                print("[ColorRegions]   kmeansGPU: GPU assign failed on iter \(iter), falling back to CPU k-means")
-                return KMeansClusterer.cluster(points: points, k: k, lWeight: lWeight)
-            }
-
-            // Update step on CPU (tiny: just k centroids)
-            var sums = [(L: Float, a: Float, b: Float, count: Int)](
-                repeating: (0, 0, 0, 0), count: centroids.count)
-            for i in 0..<n {
-                let c = assignments[i]
-                sums[c].L += points[i].L
-                sums[c].a += points[i].a
-                sums[c].b += points[i].b
-                sums[c].count += 1
-            }
-
-            var maxShift: Float = 0
-            for c in 0..<centroids.count {
-                if sums[c].count > 0 {
-                    let n = Float(sums[c].count)
-                    let newC = OklabColor(L: sums[c].L / n, a: sums[c].a / n, b: sums[c].b / n)
-                    let shift = oklabDistance(centroids[c], newC)
-                    if shift > maxShift { maxShift = shift }
-                    centroids[c] = newC
-                }
-            }
-
-            if maxShift < 0.001 { break }
-        }
-
-        print("[ColorRegions]   kmeansGPU: k=\(k), \(n) pts, \(iterations) iters (GPU)")
-        return KMeansResult(centroids: centroids, assignments: assignments)
-    }
-
-    // MARK: - CPU fallback
+    // MARK: - CPU path
 
     private static func processCPU(
-        pixels: [UInt8], width: Int, height: Int, config: ColorConfig
+        pixels: [UInt8],
+        width: Int,
+        height: Int,
+        config: ColorConfig
     ) -> Result? {
         let total = width * height
-        let bands = max(2, min(6, config.bands))
-        let cpb   = max(1, min(4, config.colorsPerBand))
+        let colorFamilies = max(2, min(6, config.colorFamilies))
+        let valuesPerFamily = max(1, min(4, config.valuesPerFamily))
+        let thresholds = normalizedThresholds(config.valueThresholds, levels: valuesPerFamily)
 
-        // 1. Convert all pixels to Oklab
-        var lab = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
+        var stepStart = CFAbsoluteTimeGetCurrent()
+        var points = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
         for i in 0..<total {
             let base = i * 4
-            lab[i] = rgbToOklab(r: pixels[base], g: pixels[base+1], b: pixels[base+2])
+            points[i] = rgbToOklab(r: pixels[base], g: pixels[base + 1], b: pixels[base + 2])
+        }
+        print("[ColorStudy][CPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+
+        stepStart = CFAbsoluteTimeGetCurrent()
+        var familyCentroids = KMeansClusterer.cluster(points: points, k: colorFamilies, lWeight: 0.08).centroids
+        print("[ColorStudy][CPU] kmeans_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        if config.warmCoolEmphasis != 0 {
+            familyCentroids = applyWarmCoolEmphasis(to: familyCentroids, amount: config.warmCoolEmphasis)
         }
 
-        // 2. Assign each pixel to a brightness band
-        let thresholds = config.thresholds.map { Float($0) }
-        var bandAssign = [Int](repeating: 0, count: total)
-        for i in 0..<total {
-            var bnd = 0
-            for t in thresholds { if lab[i].L >= t { bnd += 1 } }
-            bandAssign[i] = min(bnd, bands - 1)
-        }
+        guard !familyCentroids.isEmpty else { return nil }
 
-        // 3. Build per-band index lists
-        var indicesByBand = Array(repeating: [Int](), count: bands)
-        for i in 0..<total {
-            indicesByBand[bandAssign[i]].append(i)
-        }
+        stepStart = CFAbsoluteTimeGetCurrent()
+        let assignments = assignFamiliesCPU(points: points, centroids: familyCentroids, lWeight: 0.08)
+        print("[ColorStudy][CPU] assign_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        var centroidsByBand: [[OklabColor]] = []
-        var globalLabel = [Int32](repeating: 0, count: total)
+        stepStart = CFAbsoluteTimeGetCurrent()
+        var globalLabels = buildLabels(
+            points: points,
+            familyAssignments: assignments,
+            familyCount: familyCentroids.count,
+            valuesPerFamily: valuesPerFamily,
+            thresholds: thresholds
+        )
+        print("[ColorStudy][CPU] build_labels: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        for bnd in 0..<bands {
-            let indices = indicesByBand[bnd]
-            let bandLab = indices.map { lab[$0] }
-            let k = min(cpb, bandLab.count)
-
-            var centroids: [OklabColor]
-            var assignments: [Int]
-
-            if k < 1 || bandLab.isEmpty {
-                let midL = bands > 1 ? Float(bnd) / Float(bands - 1) : 0.5
-                centroids = [OklabColor(L: midL, a: 0, b: 0)]
-                assignments = []
-            } else {
-                let result = KMeansClusterer.cluster(points: bandLab, k: k, lWeight: 0.1)
-                centroids = result.centroids
-                assignments = result.assignments
-            }
-
-            if config.warmCoolEmphasis != 0 {
-                let angle = Float(config.warmCoolEmphasis) * Float.pi / 4
-                centroids = centroids.map { c in
-                    let r = sqrtf(c.a * c.a + c.b * c.b)
-                    let theta = atan2f(c.b, c.a) + angle
-                    return OklabColor(L: c.L, a: r * cosf(theta), b: r * sinf(theta))
-                }
-            }
-
-            centroidsByBand.append(centroids)
-            for (j, pi) in indices.enumerated() {
-                let clusterIdx = assignments.isEmpty ? 0 : min(assignments[j], centroids.count - 1)
-                globalLabel[pi] = Int32(bnd * cpb + clusterIdx)
-            }
-        }
-
-        // 4. Region cleanup
         if let factor = config.minRegionSize.factor {
-            RegionCleaner.clean(labels: &globalLabel, width: width, height: height, minFactor: factor)
+            stepStart = CFAbsoluteTimeGetCurrent()
+            RegionCleaner.clean(labels: &globalLabels, width: width, height: height, minFactor: factor)
+            print("[ColorStudy][CPU] region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         }
 
-        // 5. Build output
+        stepStart = CFAbsoluteTimeGetCurrent()
+        let quantized = makeQuantizedCentroids(
+            points: points,
+            labels: globalLabels,
+            familyCentroids: familyCentroids,
+            valuesPerFamily: valuesPerFamily,
+            thresholds: thresholds
+        )
+        print("[ColorStudy][CPU] quantize_values: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+
+        stepStart = CFAbsoluteTimeGetCurrent()
         var out = [UInt8](repeating: 255, count: total * 4)
-        var palette: [Color] = []
-        var paletteBands: [Int] = []
-
-        var flatCentroids: [OklabColor] = []
-        for bnd in 0..<bands {
-            for c in centroidsByBand[bnd] {
-                let (r, g, b) = oklabToRGB(c)
-                palette.append(Color(red: Double(r)/255, green: Double(g)/255, blue: Double(b)/255))
-                paletteBands.append(bnd)
-                flatCentroids.append(c)
-            }
-        }
-
         for i in 0..<total {
-            var lbl = Int(globalLabel[i])
-            if lbl < 0 || lbl >= flatCentroids.count { lbl = 0 }
-            let c = flatCentroids[lbl]
-            let (r, g, b) = oklabToRGB(c)
+            var label = Int(globalLabels[i])
+            if label < 0 || label >= quantized.centroids.count {
+                label = 0
+            }
+
+            let color = quantized.centroids[label]
+            let (r, g, b) = oklabToRGB(color)
             let base = i * 4
-            out[base]     = r
+            out[base] = r
             out[base + 1] = g
             out[base + 2] = b
             out[base + 3] = pixels[base + 3]
         }
+        print("[ColorStudy][CPU] remap_pixels: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        guard let img = UIImage.fromPixelData(out, width: width, height: height) else { return nil }
-        return Result(image: img, palette: palette, paletteBands: paletteBands)
+        guard let image = UIImage.fromPixelData(out, width: width, height: height) else {
+            return nil
+        }
+
+        return Result(image: image, palette: quantized.palette, paletteBands: quantized.paletteBands)
+    }
+
+    // MARK: - Shared helpers
+
+    private static func labArrayToColors(_ labArray: [Float]) -> [OklabColor] {
+        stride(from: 0, to: labArray.count, by: 3).map { index in
+            OklabColor(
+                L: labArray[index],
+                a: labArray[index + 1],
+                b: labArray[index + 2]
+            )
+        }
+    }
+
+    private static func kmeansGPU(
+        gpu: MetalContext,
+        points: [OklabColor],
+        pixelLabBuffer: MTLBuffer,
+        k: Int,
+        lWeight: Float
+    ) -> [OklabColor] {
+        guard !points.isEmpty, k > 0 else { return [] }
+
+        let k = min(k, points.count)
+        var centroids = KMeansClusterer.forgyInit(points: points, k: k)
+        var assignments = [Int](repeating: 0, count: points.count)
+
+        for _ in 0..<8 {
+            let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
+            guard let gpuAssignments = gpu.kmeansAssign(
+                pixelLabBuffer: pixelLabBuffer,
+                count: points.count,
+                centroidLab: flatCentroids,
+                k: centroids.count,
+                lWeight: lWeight
+            ) else {
+                return KMeansClusterer.cluster(points: points, k: k, lWeight: lWeight).centroids
+            }
+
+            var changed = false
+            for i in 0..<points.count {
+                let newAssignment = Int(gpuAssignments[i])
+                if assignments[i] != newAssignment {
+                    assignments[i] = newAssignment
+                    changed = true
+                }
+            }
+
+            var sums = [(L: Float, a: Float, b: Float, count: Int)](
+                repeating: (0, 0, 0, 0),
+                count: centroids.count
+            )
+
+            for i in 0..<points.count {
+                let cluster = assignments[i]
+                sums[cluster].L += points[i].L
+                sums[cluster].a += points[i].a
+                sums[cluster].b += points[i].b
+                sums[cluster].count += 1
+            }
+
+            var maxShift: Float = 0
+            for cluster in 0..<centroids.count {
+                if sums[cluster].count > 0 {
+                    let n = Float(sums[cluster].count)
+                    let newCentroid = OklabColor(
+                        L: sums[cluster].L / n,
+                        a: sums[cluster].a / n,
+                        b: sums[cluster].b / n
+                    )
+                    maxShift = max(maxShift, oklabDistance(centroids[cluster], newCentroid))
+                    centroids[cluster] = newCentroid
+                }
+            }
+
+            if !changed || maxShift < 0.001 {
+                break
+            }
+        }
+
+        return centroids
+    }
+
+    private static func assignFamiliesGPU(
+        gpu: MetalContext,
+        pixelLabBuffer: MTLBuffer,
+        count: Int,
+        centroids: [OklabColor],
+        lWeight: Float
+    ) -> [Int] {
+        let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
+        guard let assignments = gpu.kmeansAssign(
+            pixelLabBuffer: pixelLabBuffer,
+            count: count,
+            centroidLab: flatCentroids,
+            k: centroids.count,
+            lWeight: lWeight
+        ) else {
+            return Array(repeating: 0, count: count)
+        }
+
+        return assignments.map(Int.init)
+    }
+
+    private static func assignFamiliesCPU(
+        points: [OklabColor],
+        centroids: [OklabColor],
+        lWeight: Float
+    ) -> [Int] {
+        points.map { point in
+            var bestIndex = 0
+            var bestDistance = Float.greatestFiniteMagnitude
+            for (index, centroid) in centroids.enumerated() {
+                let distance = oklabDistanceColorWeighted(point, centroid, lWeight: lWeight)
+                if distance < bestDistance {
+                    bestDistance = distance
+                    bestIndex = index
+                }
+            }
+            return bestIndex
+        }
+    }
+
+    private static func buildLabels(
+        points: [OklabColor],
+        familyAssignments: [Int],
+        familyCount: Int,
+        valuesPerFamily: Int,
+        thresholds: [Float]
+    ) -> [Int32] {
+        var labels = [Int32](repeating: 0, count: points.count)
+        for i in 0..<points.count {
+            let familyIndex = min(max(familyAssignments[i], 0), familyCount - 1)
+            let valueIndex = valueBucket(for: points[i].L, thresholds: thresholds)
+            labels[i] = Int32(familyIndex * valuesPerFamily + valueIndex)
+        }
+        return labels
+    }
+
+    private static func makeQuantizedCentroids(
+        points: [OklabColor],
+        labels: [Int32],
+        familyCentroids: [OklabColor],
+        valuesPerFamily: Int,
+        thresholds: [Float]
+    ) -> (centroids: [OklabColor], palette: [Color], paletteBands: [Int]) {
+        let familyCount = familyCentroids.count
+        let labelCount = familyCount * valuesPerFamily
+
+        var luminanceSums = [Float](repeating: 0, count: labelCount)
+        var luminanceCounts = [Int](repeating: 0, count: labelCount)
+
+        for i in 0..<points.count {
+            let label = Int(labels[i])
+            guard label >= 0 && label < labelCount else { continue }
+            luminanceSums[label] += points[i].L
+            luminanceCounts[label] += 1
+        }
+
+        var centroids = [OklabColor]()
+        var palette = [Color]()
+        var paletteBands = [Int]()
+
+        for familyIndex in 0..<familyCount {
+            let familyCentroid = familyCentroids[familyIndex]
+            for valueIndex in 0..<valuesPerFamily {
+                let label = familyIndex * valuesPerFamily + valueIndex
+                let luminance: Float
+
+                if luminanceCounts[label] > 0 {
+                    luminance = luminanceSums[label] / Float(luminanceCounts[label])
+                } else {
+                    luminance = bucketMidpoint(for: valueIndex, thresholds: thresholds)
+                }
+
+                let quantized = OklabColor(
+                    L: luminance,
+                    a: familyCentroid.a,
+                    b: familyCentroid.b
+                )
+
+                centroids.append(quantized)
+
+                let (r, g, b) = oklabToRGB(quantized)
+                palette.append(Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255))
+                paletteBands.append(familyIndex)
+            }
+        }
+
+        return (centroids, palette, paletteBands)
+    }
+
+    private static func applyWarmCoolEmphasis(to centroids: [OklabColor], amount: Double) -> [OklabColor] {
+        let angle = Float(amount) * Float.pi / 4
+        return centroids.map { centroid in
+            let radius = sqrtf(centroid.a * centroid.a + centroid.b * centroid.b)
+            let theta = atan2f(centroid.b, centroid.a) + angle
+            return OklabColor(
+                L: centroid.L,
+                a: radius * cosf(theta),
+                b: radius * sinf(theta)
+            )
+        }
+    }
+
+    private static func normalizedThresholds(_ thresholds: [Double], levels: Int) -> [Float] {
+        let expectedCount = max(0, levels - 1)
+        guard expectedCount > 0 else { return [] }
+
+        var normalized = thresholds
+            .filter { $0 > 0 && $0 < 1 }
+            .sorted()
+
+        while normalized.count < expectedCount {
+            normalized.append(Double(normalized.count + 1) / Double(expectedCount + 1))
+        }
+
+        if normalized.count > expectedCount {
+            normalized = Array(normalized.prefix(expectedCount))
+        }
+
+        return normalized.sorted().map(Float.init)
+    }
+
+    private static func valueBucket(for luminance: Float, thresholds: [Float]) -> Int {
+        var bucket = 0
+        for threshold in thresholds where luminance >= threshold {
+            bucket += 1
+        }
+        return min(bucket, thresholds.count)
+    }
+
+    private static func bucketMidpoint(for valueIndex: Int, thresholds: [Float]) -> Float {
+        let lower = valueIndex == 0 ? 0 : thresholds[valueIndex - 1]
+        let upper = valueIndex < thresholds.count ? thresholds[valueIndex] : 1
+        return (lower + upper) * 0.5
     }
 }

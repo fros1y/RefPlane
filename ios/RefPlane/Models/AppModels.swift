@@ -67,10 +67,10 @@ struct ValueConfig {
 }
 
 struct ColorConfig {
-    var bands: Int               = 3
-    var colorsPerBand: Int       = 2
+    var colorFamilies: Int       = 3
+    var valuesPerFamily: Int     = 2
     var warmCoolEmphasis: Double = 0
-    var thresholds: [Double]     = defaultThresholds(for: 3)
+    var valueThresholds: [Double] = defaultThresholds(for: 2)
     var minRegionSize: MinRegionSize = .small
 }
 

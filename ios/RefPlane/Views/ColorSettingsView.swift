@@ -6,13 +6,11 @@ struct ColorSettingsView: View {
     var body: some View {
         Group {
             LabeledSlider(
-                label: "Value Bands",
+                label: "Color Families",
                 value: Binding(
-                    get: { Double(state.colorConfig.bands) },
+                    get: { Double(state.colorConfig.colorFamilies) },
                     set: { newVal in
-                        let bands = Int(newVal.rounded())
-                        state.colorConfig.bands = bands
-                        state.colorConfig.thresholds = defaultThresholds(for: bands)
+                        state.colorConfig.colorFamilies = Int(newVal.rounded())
                         state.triggerProcessing()
                     }
                 ),
@@ -22,11 +20,13 @@ struct ColorSettingsView: View {
             )
 
             LabeledSlider(
-                label: "Colors per Band",
+                label: "Values per Color",
                 value: Binding(
-                    get: { Double(state.colorConfig.colorsPerBand) },
+                    get: { Double(state.colorConfig.valuesPerFamily) },
                     set: { newVal in
-                        state.colorConfig.colorsPerBand = Int(newVal.rounded())
+                        let values = Int(newVal.rounded())
+                        state.colorConfig.valuesPerFamily = values
+                        state.colorConfig.valueThresholds = defaultThresholds(for: values)
                         state.triggerProcessing()
                     }
                 ),
@@ -47,16 +47,16 @@ struct ColorSettingsView: View {
             )
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Band Thresholds")
+                Text("Value Thresholds")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
 
                 ThresholdSliderView(
                     thresholds: Binding(
-                        get: { state.colorConfig.thresholds },
-                        set: { state.colorConfig.thresholds = $0; state.triggerProcessing() }
+                        get: { state.colorConfig.valueThresholds },
+                        set: { state.colorConfig.valueThresholds = $0; state.triggerProcessing() }
                     ),
-                    levels: state.colorConfig.bands,
+                    levels: state.colorConfig.valuesPerFamily,
                     colorForLevel: { level, total in
                         let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
                         return Color(white: t)
