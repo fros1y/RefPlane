@@ -75,17 +75,10 @@ enum ImageSimplifier {
         let config = MLModelConfiguration()
         config.computeUnits = .all
 
-        // RealESRGAN supports quantized variants as fallbacks
-        let candidates: [String]
-        switch method {
-        case .realESRGAN:
-            candidates = ["RealESRGAN_x4", "RealESRGAN_x4_Q-8", "RealESRGAN_x4_pal-4"]
-        default:
-            guard let name = method.modelBundleName else {
-                throw SimplificationError.modelUnavailable(method)
-            }
-            candidates = [name]
+        guard let name = method.modelBundleName else {
+            throw SimplificationError.modelUnavailable(method)
         }
+        let candidates = [name]
 
         for name in candidates {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc"),
@@ -131,7 +124,7 @@ enum ImageSimplifier {
     static func simplify(
         image: UIImage,
         downscale: CGFloat = 4.0,
-        method: SimplificationMethod = .realESRGAN
+        method: SimplificationMethod = .apisr
     ) async throws -> UIImage {
         guard let sourceCG = image.cgImage else {
             throw SimplificationError.inferenceFailed(method)

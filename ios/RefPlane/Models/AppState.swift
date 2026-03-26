@@ -28,7 +28,7 @@ class AppState: ObservableObject {
     @Published var simplifyEnabled: Bool    = false
     /// Simplification strength 0–1. Maps to downscale factor 2–12.
     @Published var simplifyStrength: Double  = 0.5
-    @Published var simplificationMethod: SimplificationMethod = .realESRGAN
+    @Published var simplificationMethod: SimplificationMethod = .apisr
 
     // Simplified image (after upscale/denoise)
     @Published var simplifiedImage: UIImage? = nil
