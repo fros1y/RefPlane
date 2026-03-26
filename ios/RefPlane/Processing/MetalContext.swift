@@ -18,7 +18,7 @@ final class MetalContext {
         if ctx == nil {
             print("[MetalContext] ⚠️ MetalContext init failed (library or pipeline error)")
         } else {
-            print("[MetalContext] ✅ All 9 compute pipelines compiled successfully")
+            print("[MetalContext] ✅ All 11 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -31,6 +31,8 @@ final class MetalContext {
     let grayscalePipeline: MTLComputePipelineState
     let rgbToOklabPipeline: MTLComputePipelineState
     let bandAssignPipeline: MTLComputePipelineState
+    let colorBuildLabelsPipeline: MTLComputePipelineState
+    let colorHistogramPipeline: MTLComputePipelineState
     let kmeansAssignPipeline: MTLComputePipelineState
     let quantizePipeline: MTLComputePipelineState
     let remapByLabelPipeline: MTLComputePipelineState
@@ -49,6 +51,8 @@ final class MetalContext {
             grayscalePipeline              = try Self.makePipeline(device: device, library: lib, name: "grayscale")
             rgbToOklabPipeline             = try Self.makePipeline(device: device, library: lib, name: "rgb_to_oklab")
             bandAssignPipeline             = try Self.makePipeline(device: device, library: lib, name: "band_assign")
+            colorBuildLabelsPipeline       = try Self.makePipeline(device: device, library: lib, name: "color_build_labels")
+            colorHistogramPipeline         = try Self.makePipeline(device: device, library: lib, name: "color_histogram")
             kmeansAssignPipeline           = try Self.makePipeline(device: device, library: lib, name: "kmeans_assign")
             quantizePipeline               = try Self.makePipeline(device: device, library: lib, name: "quantize")
             remapByLabelPipeline           = try Self.makePipeline(device: device, library: lib, name: "remap_by_label")
@@ -216,6 +220,96 @@ final class MetalContext {
 
         let ptr = assignBuf.contents().bindMemory(to: UInt32.self, capacity: count)
         return Array(UnsafeBufferPointer(start: ptr, count: count))
+    }
+
+    /// Build color-study labels from family assignments + Oklab-L thresholds.
+    func buildColorLabels(
+        labBuffer: MTLBuffer,
+        familyAssignments: [UInt32],
+        count: Int,
+        familyCount: Int,
+        valuesPerFamily: Int,
+        thresholds: [Float]
+    ) -> [Int32]? {
+        guard let assignmentBuffer = makeBuffer(familyAssignments),
+              let labelBuffer = makeBuffer(length: count * MemoryLayout<Int32>.stride),
+              let thresholdBuffer = makeBuffer(thresholds) else { return nil }
+
+        var params = ColorLabelParamsSwift(
+            pixelCount: UInt32(count),
+            familyCount: UInt32(familyCount),
+            thresholdCount: UInt32(thresholds.count),
+            valuesPerFamily: UInt32(valuesPerFamily)
+        )
+        guard let paramBuf = device.makeBuffer(
+            bytes: &params,
+            length: MemoryLayout<ColorLabelParamsSwift>.stride,
+            options: .storageModeShared
+        ) else { return nil }
+
+        dispatch(
+            pipeline: colorBuildLabelsPipeline,
+            buffers: [(labBuffer, 0), (assignmentBuffer, 1), (labelBuffer, 2), (paramBuf, 3), (thresholdBuffer, 4)],
+            gridSize: count
+        )
+
+        let ptr = labelBuffer.contents().bindMemory(to: Int32.self, capacity: count)
+        return Array(UnsafeBufferPointer(start: ptr, count: count))
+    }
+
+    /// Build a coarse Oklab histogram on the GPU and return bin counts + summed components.
+    func buildColorHistogram(
+        labBuffer: MTLBuffer,
+        count: Int,
+        lBins: Int,
+        aBins: Int,
+        bBins: Int,
+        aMin: Float,
+        aMax: Float,
+        bMin: Float,
+        bMax: Float
+    ) -> (counts: [UInt32], sumL: [UInt32], sumA: [UInt32], sumB: [UInt32])? {
+        let totalBins = lBins * aBins * bBins
+        let zeroes = [UInt32](repeating: 0, count: totalBins)
+
+        guard let countBuffer = makeBuffer(zeroes),
+              let sumLBuffer = makeBuffer(zeroes),
+              let sumABuffer = makeBuffer(zeroes),
+              let sumBBuffer = makeBuffer(zeroes) else { return nil }
+
+        var params = ColorHistogramParamsSwift(
+            pixelCount: UInt32(count),
+            lBins: UInt32(lBins),
+            aBins: UInt32(aBins),
+            bBins: UInt32(bBins),
+            aMin: aMin,
+            aMax: aMax,
+            bMin: bMin,
+            bMax: bMax
+        )
+        guard let paramBuf = device.makeBuffer(
+            bytes: &params,
+            length: MemoryLayout<ColorHistogramParamsSwift>.stride,
+            options: .storageModeShared
+        ) else { return nil }
+
+        dispatch(
+            pipeline: colorHistogramPipeline,
+            buffers: [(labBuffer, 0), (countBuffer, 1), (sumLBuffer, 2), (sumABuffer, 3), (sumBBuffer, 4), (paramBuf, 5)],
+            gridSize: count
+        )
+
+        let countsPtr = countBuffer.contents().bindMemory(to: UInt32.self, capacity: totalBins)
+        let sumLPtr = sumLBuffer.contents().bindMemory(to: UInt32.self, capacity: totalBins)
+        let sumAPtr = sumABuffer.contents().bindMemory(to: UInt32.self, capacity: totalBins)
+        let sumBPtr = sumBBuffer.contents().bindMemory(to: UInt32.self, capacity: totalBins)
+
+        return (
+            counts: Array(UnsafeBufferPointer(start: countsPtr, count: totalBins)),
+            sumL: Array(UnsafeBufferPointer(start: sumLPtr, count: totalBins)),
+            sumA: Array(UnsafeBufferPointer(start: sumAPtr, count: totalBins)),
+            sumB: Array(UnsafeBufferPointer(start: sumBPtr, count: totalBins))
+        )
     }
 
     /// Quantize + label map on GPU. Returns (srcBuffer, labelMap [Int32]).
@@ -451,6 +545,24 @@ private struct BandAssignParamsSwift {
     var pixelCount: UInt32
     var thresholdCount: UInt32
     var totalBands: UInt32
+}
+
+private struct ColorLabelParamsSwift {
+    var pixelCount: UInt32
+    var familyCount: UInt32
+    var thresholdCount: UInt32
+    var valuesPerFamily: UInt32
+}
+
+private struct ColorHistogramParamsSwift {
+    var pixelCount: UInt32
+    var lBins: UInt32
+    var aBins: UInt32
+    var bBins: UInt32
+    var aMin: Float
+    var aMax: Float
+    var bMin: Float
+    var bMax: Float
 }
 
 private struct QuantizeParamsSwift {

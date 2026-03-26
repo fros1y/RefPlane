@@ -153,6 +153,24 @@ struct BandAssignParams {
     uint totalBands;
 };
 
+struct ColorLabelParams {
+    uint pixelCount;
+    uint familyCount;
+    uint thresholdCount;
+    uint valuesPerFamily;
+};
+
+struct ColorHistogramParams {
+    uint pixelCount;
+    uint lBins;
+    uint aBins;
+    uint bBins;
+    float aMin;
+    float aMax;
+    float bMin;
+    float bMax;
+};
+
 /// Assign each pixel to a luminance band based on its Oklab L value.
 kernel void band_assign(
     device const float*         lab        [[buffer(0)]],  // interleaved L,a,b
@@ -169,6 +187,64 @@ kernel void band_assign(
         if (L >= thresholds[t]) bnd++;
     }
     bandMap[gid] = min(bnd, int(p.totalBands) - 1);
+}
+
+/// Combine per-pixel family assignment with Oklab-L value buckets into a global label.
+kernel void color_build_labels(
+    device const float*         lab               [[buffer(0)]],
+    device const uint*          familyAssignments [[buffer(1)]],
+    device int*                 labelMap          [[buffer(2)]],
+    constant ColorLabelParams&  p                 [[buffer(3)]],
+    constant float*             thresholds        [[buffer(4)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= p.pixelCount) return;
+
+    uint family = familyAssignments[gid];
+    if (family >= p.familyCount) {
+        family = (p.familyCount == 0u) ? 0u : (p.familyCount - 1u);
+    }
+
+    float L = lab[gid * 3u];
+    uint value = 0u;
+    for (uint t = 0u; t < p.thresholdCount; t++) {
+        if (L >= thresholds[t]) value++;
+    }
+    if (value >= p.valuesPerFamily) {
+        value = (p.valuesPerFamily == 0u) ? 0u : (p.valuesPerFamily - 1u);
+    }
+
+    labelMap[gid] = int(family * p.valuesPerFamily + value);
+}
+
+/// Accumulate a coarse Oklab histogram using integer atomics.
+kernel void color_histogram(
+    device const float*              lab     [[buffer(0)]],
+    device atomic_uint*              counts  [[buffer(1)]],
+    device atomic_uint*              sumL    [[buffer(2)]],
+    device atomic_uint*              sumA    [[buffer(3)]],
+    device atomic_uint*              sumB    [[buffer(4)]],
+    constant ColorHistogramParams&   p       [[buffer(5)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= p.pixelCount) return;
+
+    uint base = gid * 3u;
+    float L = clamp(lab[base], 0.0f, 1.0f);
+    float A = clamp(lab[base + 1u], p.aMin, p.aMax);
+    float B = clamp(lab[base + 2u], p.bMin, p.bMax);
+
+    uint lIndex = min(uint(L * float(p.lBins)), p.lBins - 1u);
+    float aNorm = (A - p.aMin) / max(p.aMax - p.aMin, 1e-6f);
+    float bNorm = (B - p.bMin) / max(p.bMax - p.bMin, 1e-6f);
+    uint aIndex = min(uint(aNorm * float(p.aBins)), p.aBins - 1u);
+    uint bIndex = min(uint(bNorm * float(p.bBins)), p.bBins - 1u);
+    uint histogramIndex = (lIndex * p.aBins + aIndex) * p.bBins + bIndex;
+
+    atomic_fetch_add_explicit(&counts[histogramIndex], 1u, memory_order_relaxed);
+    atomic_fetch_add_explicit(&sumL[histogramIndex], uint(round(L * 255.0f)), memory_order_relaxed);
+    atomic_fetch_add_explicit(&sumA[histogramIndex], uint(round(aNorm * 255.0f)), memory_order_relaxed);
+    atomic_fetch_add_explicit(&sumB[histogramIndex], uint(round(bNorm * 255.0f)), memory_order_relaxed);
 }
 
 
