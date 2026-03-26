@@ -7,10 +7,10 @@ struct ActionBarView: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            ActionButton(icon: "rectangle.split.2x1", label: "Compare") {
-                state.showCompare = true
+            ActionButton(icon: "rectangle.split.2x1", label: "Compare", isActive: state.compareMode) {
+                state.compareMode.toggle()
             }
-            .disabled(state.processedImage == nil)
+            .disabled(state.displayBaseImage == nil)
 
             ActionButton(icon: "square.and.arrow.up", label: "Export") {
                 exportImage = state.exportCurrentImage()
@@ -29,6 +29,7 @@ struct ActionBarView: View {
 private struct ActionButton: View {
     let icon: String
     let label: String
+    var isActive: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -39,10 +40,10 @@ private struct ActionButton: View {
                 Text(label)
                     .font(.system(size: 10))
             }
-            .foregroundColor(.white.opacity(0.85))
+            .foregroundColor(isActive ? .blue : .white.opacity(0.85))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
-            .background(Color.white.opacity(0.07))
+            .background(isActive ? Color.blue.opacity(0.15) : Color.white.opacity(0.07))
             .cornerRadius(8)
         }
         .buttonStyle(.plain)

@@ -9,8 +9,16 @@ struct ContentView: View {
             if geo.size.width > geo.size.height {
                 // Landscape / iPad: side by side
                 HStack(spacing: 0) {
-                    ImageCanvasView(showImagePicker: $showImagePicker)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if state.compareMode,
+                       let base = state.displayBaseImage {
+                        // Determine what to show on the right side
+                        let afterImage = state.processedImage ?? base
+                        CompareSliderView(beforeImage: base, afterImage: afterImage)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ImageCanvasView(showImagePicker: $showImagePicker)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                     Divider().background(Color.white.opacity(0.15))
                     ControlPanelView()
                         .frame(width: 284)
@@ -18,8 +26,16 @@ struct ContentView: View {
             } else {
                 // Portrait: canvas top, panel bottom
                 ZStack(alignment: .bottom) {
-                    ImageCanvasView(showImagePicker: $showImagePicker)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if state.compareMode,
+                       let base = state.displayBaseImage {
+                        // Determine what to show on the right side
+                        let afterImage = state.processedImage ?? base
+                        CompareSliderView(beforeImage: base, afterImage: afterImage)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ImageCanvasView(showImagePicker: $showImagePicker)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                     ControlPanelView()
                         .frame(maxHeight: geo.size.height * 0.46)
                 }
@@ -38,14 +54,6 @@ struct ContentView: View {
                     state.errorMessage = nil
                 }
                 .padding(.top, 8)
-            }
-        }
-        .sheet(isPresented: $state.showCompare) {
-            if let base = state.displayBaseImage, let processed = state.processedImage {
-                CompareView(beforeImage: base, afterImage: processed)
-            } else {
-                Text("Process an image first")
-                    .foregroundColor(.secondary)
             }
         }
     }

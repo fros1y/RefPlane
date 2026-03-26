@@ -94,7 +94,7 @@ enum ImageSimplifier {
     ///
     /// - Parameters:
     ///   - image: The source image.
-    ///   - downscale: How aggressively to downsample before upscaling (2–8).
+    ///   - downscale: How aggressively to downsample before upscaling (2–12).
     ///                Higher values produce a more abstract/simplified result.
     /// - Returns: The simplified image at the original dimensions.
     static func simplify(image: UIImage, downscale: CGFloat = 4.0) async -> UIImage {
@@ -138,28 +138,34 @@ enum ImageSimplifier {
         let srcH = input.height
         let scale = upscaleFactor
 
-        // Step 1: Pre-pad the image with reflect padding
-        let padded: CGImage
-        let paddedW: Int
-        let paddedH: Int
-        if prePad > 0 {
-            guard let p = reflectPad(input, pad: prePad) else { return nil }
-            padded = p
-            paddedW = srcW + prePad * 2
-            paddedH = srcH + prePad * 2
-        } else {
-            padded = input
-            paddedW = srcW
-            paddedH = srcH
+        let tileSize = modelInputSize
+        let coreW = srcW + prePad * 2
+        let coreH = srcH + prePad * 2
+        let extraRight = (tileSize - (coreW % tileSize)) % tileSize
+        let extraBottom = (tileSize - (coreH % tileSize)) % tileSize
+        let alignedCoreW = coreW + extraRight
+        let alignedCoreH = coreH + extraBottom
+
+        guard let prePadded = reflectPad(input,
+                                         left: prePad,
+                                         right: prePad + extraRight,
+                                         top: prePad,
+                                         bottom: prePad + extraBottom),
+              let workingImage = reflectPad(prePadded,
+                                            left: tilePad,
+                                            right: tilePad,
+                                            top: tilePad,
+                                            bottom: tilePad) else {
+            return nil
         }
 
-        let tileSize = modelInputSize
-        let tilesX = max(1, Int(ceil(Double(paddedW) / Double(tileSize))))
-        let tilesY = max(1, Int(ceil(Double(paddedH) / Double(tileSize))))
-        let outW = paddedW * scale
-        let outH = paddedH * scale
+        let tilesX = max(1, alignedCoreW / tileSize)
+        let tilesY = max(1, alignedCoreH / tileSize)
+        let outW = alignedCoreW * scale
+        let outH = alignedCoreH * scale
+        let paddedTileSize = tileSize + tilePad * 2
 
-        print("[ImageSimplifier] Tiling \(paddedW)×\(paddedH) (pre-padded from \(srcW)×\(srcH)) → \(tilesX)×\(tilesY) tiles, tilePad=\(tilePad)")
+        print("[ImageSimplifier] Tiling \(alignedCoreW)×\(alignedCoreH) (aligned from \(srcW)×\(srcH)) → \(tilesX)×\(tilesY) tiles, tilePad=\(tilePad)")
 
         // Allocate output pixel buffer (RGBA)
         var outputPixels = [UInt8](repeating: 0, count: outW * outH * 4)
@@ -168,32 +174,26 @@ enum ImageSimplifier {
             for tx in 0..<tilesX {
                 // Input tile area (non-padded core)
                 let inputStartX = tx * tileSize
-                let inputEndX   = min(inputStartX + tileSize, paddedW)
+                let inputEndX   = inputStartX + tileSize
                 let inputStartY = ty * tileSize
-                let inputEndY   = min(inputStartY + tileSize, paddedH)
-
-                // Input tile area with overlap padding (clamped to image bounds)
-                let inputStartXPad = max(inputStartX - tilePad, 0)
-                let inputEndXPad   = min(inputEndX + tilePad, paddedW)
-                let inputStartYPad = max(inputStartY - tilePad, 0)
-                let inputEndYPad   = min(inputEndY + tilePad, paddedH)
+                let inputEndY   = inputStartY + tileSize
 
                 let inputTileWidth  = inputEndX - inputStartX
                 let inputTileHeight = inputEndY - inputStartY
 
-                // Extract tile with padding from the pre-padded image
-                guard let tileCG = padded.cropping(to: CGRect(
-                    x: inputStartXPad, y: inputStartYPad,
-                    width: inputEndXPad - inputStartXPad,
-                    height: inputEndYPad - inputStartYPad
+                // Extract a fixed-size tile including overlap from the aligned canvas.
+                guard let tileCG = workingImage.cropping(to: CGRect(
+                    x: inputStartX,
+                    y: inputStartY,
+                    width: paddedTileSize,
+                    height: paddedTileSize
                 )) else { continue }
 
-                // Resize tile to model input size (256×256)
-                let modelInputImage = resizeToPixels(
+                let tileImage = resizeToPixels(
                     UIImage(cgImage: tileCG),
                     width: modelInputSize, height: modelInputSize
                 )
-                guard let modelInputCG = modelInputImage.cgImage else { continue }
+                guard let modelInputCG = tileImage.cgImage else { continue }
 
                 // Run model inference → 1024×1024 output
                 guard let outputImage = runModel(model, input: modelInputCG),
@@ -215,16 +215,17 @@ enum ImageSimplifier {
                 // Calculate the valid region within the model output.
                 // The model output maps to the padded input tile; we need to
                 // find where the non-padded core sits within the output.
-                let paddedTileW = inputEndXPad - inputStartXPad
-                let paddedTileH = inputEndYPad - inputStartYPad
+                // Scale factors from the resized padded tile space → model output.
+                // The extracted tile includes `tilePad` context on each side and is
+                // resized down to the fixed model input size before inference, so the
+                // valid crop must be mapped from padded-tile coordinates rather than
+                // assuming the whole 256px model input is usable core content.
+                let scaleX = Double(outTileW) / Double(paddedTileSize)
+                let scaleY = Double(outTileH) / Double(paddedTileSize)
 
-                // Scale factors from padded tile → model output
-                let scaleX = Double(outTileW) / Double(paddedTileW)
-                let scaleY = Double(outTileH) / Double(paddedTileH)
-
-                // Offset of the valid core within the padded tile
-                let coreOffsetX = inputStartX - inputStartXPad
-                let coreOffsetY = inputStartY - inputStartYPad
+                // Offset of the valid core within the padded tile.
+                let coreOffsetX = tilePad
+                let coreOffsetY = tilePad
 
                 // Valid region in output tile coordinates
                 let outCoreStartX = Int(round(Double(coreOffsetX) * scaleX))
@@ -260,7 +261,7 @@ enum ImageSimplifier {
             }
         }
 
-        // Step 6: Remove pre-pad from the output
+        // Step 6: Remove alignment padding and pre-pad from the output
         let finalW = srcW * scale
         let finalH = srcH * scale
         let prePadScaled = prePad * scale
@@ -285,12 +286,22 @@ enum ImageSimplifier {
     /// Real-ESRGAN pre_process step. This gives edge tiles real mirrored context
     /// instead of black borders or stretched content.
     private static func reflectPad(_ image: CGImage, pad: Int) -> CGImage? {
+        reflectPad(image, left: pad, right: pad, top: pad, bottom: pad)
+    }
+
+    private static func reflectPad(
+        _ image: CGImage,
+        left: Int,
+        right: Int,
+        top: Int,
+        bottom: Int
+    ) -> CGImage? {
         let w = image.width
         let h = image.height
-        let newW = w + pad * 2
-        let newH = h + pad * 2
+        let newW = w + left + right
+        let newH = h + top + bottom
+        guard w > 0, h > 0, newW > 0, newH > 0 else { return nil }
 
-        // Read source pixels
         var srcPixels = [UInt8](repeating: 0, count: w * h * 4)
         guard let srcCtx = CGContext(
             data: &srcPixels,
@@ -301,26 +312,15 @@ enum ImageSimplifier {
         ) else { return nil }
         srcCtx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
 
-        // Build padded image with reflected edges
         var dstPixels = [UInt8](repeating: 0, count: newW * newH * 4)
 
         for dy in 0..<newH {
-            // Reflect Y: map destination row → source row
-            var sy = dy - pad
-            if sy < 0 { sy = -sy }
-            if sy >= h { sy = 2 * h - sy - 2 }
-            sy = max(0, min(h - 1, sy))
-
+            let sy = reflectedCoordinate(dy - top, limit: h)
             for dx in 0..<newW {
-                // Reflect X: map destination col → source col
-                var sx = dx - pad
-                if sx < 0 { sx = -sx }
-                if sx >= w { sx = 2 * w - sx - 2 }
-                sx = max(0, min(w - 1, sx))
-
+                let sx = reflectedCoordinate(dx - left, limit: w)
                 let srcIdx = (sy * w + sx) * 4
                 let dstIdx = (dy * newW + dx) * 4
-                dstPixels[dstIdx]     = srcPixels[srcIdx]
+                dstPixels[dstIdx] = srcPixels[srcIdx]
                 dstPixels[dstIdx + 1] = srcPixels[srcIdx + 1]
                 dstPixels[dstIdx + 2] = srcPixels[srcIdx + 2]
                 dstPixels[dstIdx + 3] = 255
@@ -334,8 +334,20 @@ enum ImageSimplifier {
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         ) else { return nil }
-        // Force render — CGContext data pointer is our dstPixels
         return dstCtx.makeImage()
+    }
+
+    private static func reflectedCoordinate(_ coordinate: Int, limit: Int) -> Int {
+        guard limit > 1 else { return 0 }
+        var value = coordinate
+        while value < 0 || value >= limit {
+            if value < 0 {
+                value = -value
+            } else {
+                value = 2 * limit - value - 2
+            }
+        }
+        return max(0, min(limit - 1, value))
     }
 
     // MARK: - Model inference

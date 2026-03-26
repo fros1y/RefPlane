@@ -17,6 +17,7 @@ class AppState: ObservableObject {
     @Published var isProcessing: Bool       = false
     @Published var processingProgress: Double = 0
     @Published var showCompare: Bool        = false
+    @Published var compareMode: Bool        = false
     @Published var isolatedBand: Int?       = nil
     @Published var errorMessage: String?    = nil
 
@@ -69,11 +70,15 @@ class AppState: ObservableObject {
             return
         }
 
+        // Set processing state synchronously so the UI shows the spinner
+        // on the very first SwiftUI render after the mode change.
+        isProcessing = true
+        processingProgress = 0
+
         processingGeneration += 1
         let myGeneration = processingGeneration
 
         processingTask = Task {
-            await MainActor.run { self.isProcessing = true; self.processingProgress = 0 }
             do {
                 let result = try await processor.process(
                     image: source,
@@ -125,8 +130,8 @@ class AppState: ObservableObject {
 
     func applySimplify() {
         guard let source = sourceImage else { return }
-        // Map strength 0–1 → downscale 2–8 (same as web: lerp(2, 8, s))
-        let downscale = CGFloat(2.0 + simplifyStrength * 6.0)
+        // Map strength 0–1 → downscale 2–12 for more aggressive simplification options
+        let downscale = CGFloat(2.0 + simplifyStrength * 10.0)
         Task {
             await MainActor.run { self.isProcessing = true }
             let simplified = await ImageSimplifier.simplify(image: source, downscale: downscale)
