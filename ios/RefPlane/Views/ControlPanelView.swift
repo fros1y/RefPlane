@@ -60,11 +60,11 @@ struct ControlPanelView: View {
                         HStack {
                             Text("Strength")
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.primary)
                             Spacer()
                             Text("\(Int(state.simplifyStrength * 100))%")
                                 .font(.subheadline.monospacedDigit())
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.primary)
                         }
 
                         Slider(

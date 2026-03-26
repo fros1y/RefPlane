@@ -29,7 +29,7 @@ struct ValueSettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Thresholds")
                     .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
 
                 ThresholdSliderView(
                     thresholds: Binding(

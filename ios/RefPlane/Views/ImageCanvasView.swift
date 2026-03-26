@@ -100,7 +100,7 @@ struct ImageCanvasView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button("Open Photos") {
+            Button("Open") {
                 showImagePicker = true
             }
             .buttonStyle(.borderedProminent)

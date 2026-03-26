@@ -81,7 +81,7 @@ struct ThresholdSliderView: View {
 
             Text("\(index + 1)")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(isSelected ? .white : .secondary)
+                .foregroundStyle(isSelected ? .white : .primary)
         }
         .frame(width: hitArea, height: hitArea)
         .contentShape(Rectangle())
@@ -222,11 +222,11 @@ struct LabeledSlider: View {
             HStack {
                 Text(label)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                 Spacer()
                 Text(displayFormat(value))
                     .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.primary)
             }
             Slider(value: $value, in: range, step: step)
         }
@@ -245,7 +245,7 @@ struct LabeledPicker<T: Hashable>: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             Picker(title, selection: $selection) {
                 ForEach(options, id: \.self) { opt in
                     Text(label(opt)).tag(opt)

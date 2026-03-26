@@ -35,7 +35,7 @@ struct ContentView: View {
                     Button {
                         showImagePicker = true
                     } label: {
-                        Label("Open Photos", systemImage: "photo.on.rectangle")
+                        Label("Open", systemImage: "photo.on.rectangle")
                     }
                 }
 
