@@ -7,22 +7,21 @@ struct ErrorToastView: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.yellow)
+                .foregroundStyle(.yellow)
             Text(message)
                 .font(.subheadline)
-                .foregroundColor(.white)
+                .foregroundStyle(.primary)
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 4)
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color(white: 0.15).opacity(0.95))
-        .cornerRadius(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
         .padding(.horizontal, 16)
         .transition(.move(edge: .top).combined(with: .opacity))

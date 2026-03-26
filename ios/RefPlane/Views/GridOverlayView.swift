@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GridOverlayView: View {
     @EnvironmentObject private var state: AppState
+    var image: UIImage? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -10,7 +11,7 @@ struct GridOverlayView: View {
                 guard config.enabled else { return }
 
                 let imgSize: CGSize
-                if let img = state.currentDisplayImage {
+                if let img = image ?? state.currentDisplayImage {
                     let aspect = img.size.width / img.size.height
                     let fitW   = min(size.width, size.height * aspect)
                     let fitH   = fitW / aspect

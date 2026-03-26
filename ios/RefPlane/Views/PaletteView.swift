@@ -4,46 +4,55 @@ struct PaletteView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            let maxBand = (state.paletteBands.max() ?? -1)
-            if maxBand >= 0 {
+        Group {
+            let maxBand = state.paletteBands.max() ?? -1
+
+            if maxBand < 0 {
+                Text("Palette swatches appear after you generate a value or color study.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
                 ForEach(0...maxBand, id: \.self) { band in
                     let indices = state.paletteBands.enumerated()
                         .filter { $0.element == band }
                         .map { $0.offset }
+
                     if !indices.isEmpty {
-                        HStack(spacing: 4) {
-                            Text("Band \(band + 1)")
-                                .font(.system(size: 10))
-                                .foregroundColor(.white.opacity(0.4))
-                                .frame(width: 42, alignment: .leading)
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 4) {
-                                    ForEach(indices, id: \.self) { idx in
-                                        let color = state.paletteColors[idx]
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(color)
-                                            .frame(width: 32, height: 24)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .stroke(
-                                                        state.isolatedBand == band
-                                                            ? Color.white : Color.clear,
-                                                        lineWidth: 2
-                                                    )
-                                            )
+                        Button {
+                            state.isolatedBand = state.isolatedBand == band ? nil : band
+                        } label: {
+                            HStack(alignment: .center, spacing: 12) {
+                                Text("Band \(band + 1)")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 64, alignment: .leading)
+
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(indices, id: \.self) { idx in
+                                            let color = state.paletteColors[idx]
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(color)
+                                                .frame(width: 36, height: 28)
+                                                .overlay {
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(
+                                                            state.isolatedBand == band
+                                                                ? Color.accentColor
+                                                                : Color(.separator),
+                                                            lineWidth: state.isolatedBand == band ? 2 : 1
+                                                        )
+                                                }
+                                        }
                                     }
+                                    .padding(.vertical, 4)
                                 }
                             }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if state.isolatedBand == band {
-                                state.isolatedBand = nil
-                            } else {
-                                state.isolatedBand = band
-                            }
-                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Palette band \(band + 1)")
+                        .accessibilityValue(state.isolatedBand == band ? "Selected" : "Not selected")
                     }
                 }
             }

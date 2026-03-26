@@ -18,7 +18,6 @@ class AppState: ObservableObject {
     @Published var processingProgress: Double = 0
     @Published var processingLabel: String  = "Processing…"
     @Published var processingIsIndeterminate: Bool = false
-    @Published var showCompare: Bool        = false
     @Published var compareMode: Bool        = false
     @Published var isolatedBand: Int?       = nil
     @Published var errorMessage: String?    = nil
@@ -91,6 +90,7 @@ class AppState: ObservableObject {
         paletteColors             = []
         paletteBands              = []
         isolatedBand              = nil
+        errorMessage              = nil
         isProcessing              = true
         processingProgress        = 0
         processingLabel           = "Loading…"
@@ -111,6 +111,7 @@ class AppState: ObservableObject {
     func triggerProcessing() {
         processingTask?.cancel()
         processingIsIndeterminate = false
+        errorMessage = nil
         guard let source = displayBaseImage else {
             isProcessing = false
             processingProgress = 0

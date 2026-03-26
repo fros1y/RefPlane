@@ -4,17 +4,13 @@ struct GridSettingsView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Enable toggle
+        Group {
             Toggle("Show Grid", isOn: Binding(
                 get: { state.gridConfig.enabled },
                 set: { state.gridConfig.enabled = $0 }
             ))
-            .toggleStyle(SwitchToggleStyle(tint: .blue))
-            .font(.subheadline)
 
             if state.gridConfig.enabled {
-                // Divisions
                 LabeledSlider(
                     label: "Divisions",
                     value: Binding(
@@ -26,7 +22,6 @@ struct GridSettingsView: View {
                     displayFormat: { "\(Int($0))" }
                 )
 
-                // Cell aspect
                 LabeledPicker(
                     title: "Cell",
                     selection: Binding(
@@ -37,22 +32,16 @@ struct GridSettingsView: View {
                     label: { $0.rawValue }
                 )
 
-                // Toggles
                 Toggle("Diagonals", isOn: Binding(
                     get: { state.gridConfig.showDiagonals },
                     set: { state.gridConfig.showDiagonals = $0 }
                 ))
-                .toggleStyle(SwitchToggleStyle(tint: .blue))
-                .font(.subheadline)
 
                 Toggle("Center Lines", isOn: Binding(
                     get: { state.gridConfig.showCenterLines },
                     set: { state.gridConfig.showCenterLines = $0 }
                 ))
-                .toggleStyle(SwitchToggleStyle(tint: .blue))
-                .font(.subheadline)
 
-                // Line style
                 LabeledPicker(
                     title: "Line Style",
                     selection: Binding(
@@ -63,22 +52,13 @@ struct GridSettingsView: View {
                     label: { $0.rawValue }
                 )
 
-                // Custom color (only when custom style)
                 if state.gridConfig.lineStyle == .custom {
-                    HStack {
-                        Text("Color")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.8))
-                        Spacer()
-                        ColorPicker("", selection: Binding(
-                            get: { state.gridConfig.customColor },
-                            set: { state.gridConfig.customColor = $0 }
-                        ))
-                        .labelsHidden()
-                    }
+                    ColorPicker("Color", selection: Binding(
+                        get: { state.gridConfig.customColor },
+                        set: { state.gridConfig.customColor = $0 }
+                    ))
                 }
 
-                // Opacity
                 LabeledSlider(
                     label: "Opacity",
                     value: Binding(

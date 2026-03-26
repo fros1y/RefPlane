@@ -4,8 +4,7 @@ struct ColorSettingsView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Value Bands
+        Group {
             LabeledSlider(
                 label: "Value Bands",
                 value: Binding(
@@ -22,9 +21,8 @@ struct ColorSettingsView: View {
                 displayFormat: { "\(Int($0))" }
             )
 
-            // Colors per band
             LabeledSlider(
-                label: "Colors / Band",
+                label: "Colors per Band",
                 value: Binding(
                     get: { Double(state.colorConfig.colorsPerBand) },
                     set: { newVal in
@@ -37,7 +35,6 @@ struct ColorSettingsView: View {
                 displayFormat: { "\(Int($0))" }
             )
 
-            // Warm/cool emphasis
             LabeledSlider(
                 label: "Warm/Cool",
                 value: Binding(
@@ -49,25 +46,26 @@ struct ColorSettingsView: View {
                 displayFormat: { String(format: "%.2f", $0) }
             )
 
-            // Band thresholds
-            Text("Band Thresholds")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.6))
-            ThresholdSliderView(
-                thresholds: Binding(
-                    get: { state.colorConfig.thresholds },
-                    set: { state.colorConfig.thresholds = $0; state.triggerProcessing() }
-                ),
-                levels: state.colorConfig.bands,
-                colorForLevel: { level, total in
-                    let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
-                    return Color(white: t)
-                }
-            )
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Band Thresholds")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
 
-            // Min region size
+                ThresholdSliderView(
+                    thresholds: Binding(
+                        get: { state.colorConfig.thresholds },
+                        set: { state.colorConfig.thresholds = $0; state.triggerProcessing() }
+                    ),
+                    levels: state.colorConfig.bands,
+                    colorForLevel: { level, total in
+                        let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
+                        return Color(white: t)
+                    }
+                )
+            }
+
             LabeledPicker(
-                title: "Min Region",
+                title: "Minimum Region",
                 selection: Binding(
                     get: { state.colorConfig.minRegionSize },
                     set: { state.colorConfig.minRegionSize = $0; state.triggerProcessing() }

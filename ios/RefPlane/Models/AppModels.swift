@@ -5,7 +5,7 @@ enum RefPlaneMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .original: return "Source"
+        case .original: return "Original"
         case .tonal:    return "Tonal"
         case .value:    return "Value"
         case .color:    return "Color"
@@ -91,7 +91,12 @@ enum SimplificationMethod: String, CaseIterable, Identifiable {
     case apisr = "APISR"
 
     var id: String { rawValue }
-    var label: String { rawValue }
+    var label: String {
+        switch self {
+        case .apisr:
+            return "Balanced"
+        }
+    }
 
     var processingKind: SimplificationProcessingKind {
         return .superResolution4x

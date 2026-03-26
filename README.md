@@ -1,10 +1,10 @@
-# RefPlane
+# Underpaint
 
-A photographic reference image preparation tool for painting and drawing, built natively for iOS with Swift and SwiftUI.
+An iOS reference-prep tool for painting and drawing, built natively with Swift and SwiftUI.
 
 ## Features
 
-- **Image modes**: Source · Tonal (grayscale) · Value Study · Color Regions
+- **Image modes**: Original · Tonal · Value · Color
 - **Simplify**: Core Image noise-reduction + sharpening pipeline (plug in a Core ML `.mlmodel` in `ImageSimplifier.swift` to swap in super-resolution)
 - **Grid overlay**: configurable divisions, square/image-fit cells, diagonals, center-lines, opacity, custom colour
 - **Crop**: non-destructive corner-handle crop tool
@@ -53,7 +53,7 @@ With SweetPad, use the **iOS: Run on Simulator** launch configuration to build, 
 
 ```
 ios/
-├── RefPlane.xcodeproj/       Xcode project
+├── RefPlane.xcodeproj/       Xcode project for Underpaint
 └── RefPlane/
     ├── RefPlaneApp.swift      App entry point (@main)
     ├── Models/

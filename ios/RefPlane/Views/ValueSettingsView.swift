@@ -3,33 +3,21 @@ import SwiftUI
 struct ValueSettingsView: View {
     @EnvironmentObject private var state: AppState
 
-    private var config: ValueConfig {
-        get { state.valueConfig }
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Notan preset
-            Button(action: applyNotan) {
-                Text("Notan (2 levels)")
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(8)
+        Group {
+            Button("Apply Notan") {
+                applyNotan()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
 
-            // Levels slider
             LabeledSlider(
                 label: "Levels",
                 value: Binding(
                     get: { Double(state.valueConfig.levels) },
                     set: { newVal in
-                        let lvl = Int(newVal.rounded())
-                        state.valueConfig.levels = lvl
-                        state.valueConfig.thresholds = defaultThresholds(for: lvl)
+                        let level = Int(newVal.rounded())
+                        state.valueConfig.levels = level
+                        state.valueConfig.thresholds = defaultThresholds(for: level)
                         state.triggerProcessing()
                     }
                 ),
@@ -38,25 +26,26 @@ struct ValueSettingsView: View {
                 displayFormat: { "\(Int($0))" }
             )
 
-            // Threshold sliders
-            Text("Thresholds")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.6))
-            ThresholdSliderView(
-                thresholds: Binding(
-                    get: { state.valueConfig.thresholds },
-                    set: { state.valueConfig.thresholds = $0; state.triggerProcessing() }
-                ),
-                levels: state.valueConfig.levels,
-                colorForLevel: { level, total in
-                    let t = total > 1 ? Float(level) / Float(total - 1) : 0.5
-                    return Color(white: Double(t))
-                }
-            )
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Thresholds")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
 
-            // Min region size
+                ThresholdSliderView(
+                    thresholds: Binding(
+                        get: { state.valueConfig.thresholds },
+                        set: { state.valueConfig.thresholds = $0; state.triggerProcessing() }
+                    ),
+                    levels: state.valueConfig.levels,
+                    colorForLevel: { level, total in
+                        let t = total > 1 ? Float(level) / Float(total - 1) : 0.5
+                        return Color(white: Double(t))
+                    }
+                )
+            }
+
             LabeledPicker(
-                title: "Min Region",
+                title: "Minimum Region",
                 selection: Binding(
                     get: { state.valueConfig.minRegionSize },
                     set: { state.valueConfig.minRegionSize = $0; state.triggerProcessing() }

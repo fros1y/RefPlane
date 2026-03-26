@@ -44,9 +44,9 @@ struct ThresholdSliderView: View {
                     let val = safeThresholds[i]
                     let x   = CGFloat(val) * (geo.size.width - handleW)
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white)
+                        .fill(Color(.systemBackground))
                         .frame(width: handleW, height: trackH + 8)
-                        .shadow(radius: 2)
+                        .shadow(color: Color(.separator), radius: 2)
                         .offset(x: x)
                         .gesture(
                             DragGesture(minimumDistance: 0)
@@ -81,14 +81,13 @@ struct LabeledSlider: View {
             HStack {
                 Text(label)
                     .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Text(displayFormat(value))
                     .font(.subheadline.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundStyle(.tertiary)
             }
             Slider(value: $value, in: range, step: step)
-                .tint(.blue)
         }
     }
 }
@@ -105,14 +104,13 @@ struct LabeledPicker<T: Hashable>: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.subheadline)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundStyle(.secondary)
             Picker(title, selection: $selection) {
                 ForEach(options, id: \.self) { opt in
                     Text(label(opt)).tag(opt)
                 }
             }
             .pickerStyle(.segmented)
-            .colorMultiply(.init(white: 0.8))
         }
     }
 }

@@ -1,174 +1,136 @@
 import SwiftUI
 
 struct ControlPanelView: View {
+    enum Presentation {
+        case sheet
+        case sidebar
+    }
+
     @EnvironmentObject private var state: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let presentation: Presentation
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Collapse handle
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    state.panelCollapsed = true
+        Group {
+            switch presentation {
+            case .sheet:
+                inspectorForm
+                    .navigationTitle("Adjustments")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        if let onClose {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Done", action: onClose)
+                            }
+                        }
+                    }
+            case .sidebar:
+                VStack(spacing: 0) {
+                    ActionBarView(showsDismissButton: true, onDismiss: closeSidebar)
+                    inspectorForm
                 }
-            } label: {
-                Capsule()
-                    .fill(Color.white.opacity(0.25))
-                    .frame(width: 36, height: 4)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // Action bar always at top
-            ActionBarView()
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
-
-            Divider().background(Color.white.opacity(0.12))
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Header
-                    HStack {
-                        Text("RefPlane")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                        Spacer()
-                        Text(state.activeMode.label)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                            .textCase(.uppercase)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-
-                    // Simplify toggle + strength + method picker
-                    PanelSection(title: "Simplify") {
-                        Toggle("Enable Simplification", isOn: Binding(
-                            get: { state.simplifyEnabled },
-                            set: { val in
-                                state.simplifyEnabled = val
-                                if val { state.applySimplify() } else { state.resetSimplify() }
-                            }
-                        ))
-                        .toggleStyle(SwitchToggleStyle(tint: .blue))
-                        .font(.subheadline)
-
-                        if state.simplifyEnabled {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Strength")
-                                        .font(.subheadline)
-                                        .foregroundColor(.white.opacity(0.8))
-                                    Spacer()
-                                    Text("\(Int(state.simplifyStrength * 100))%")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.5))
-                                        .monospacedDigit()
-                                }
-                                Slider(value: $state.simplifyStrength, in: 0...1, step: 0.05) {
-                                    Text("Strength")
-                                } onEditingChanged: { editing in
-                                    if !editing {
-                                        state.applySimplify()
-                                    }
-                                }
-                                .tint(.blue)
-                            }
-
-                            if state.availableSimplificationMethods.count > 1 {
-                                Picker("Method", selection: Binding(
-                                    get: { state.simplificationMethod },
-                                    set: { method in
-                                        state.simplificationMethod = method
-                                        if state.simplifyEnabled {
-                                            state.applySimplify()
-                                        }
-                                    }
-                                )) {
-                                    ForEach(state.availableSimplificationMethods) { method in
-                                        Text(method.label).tag(method)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(.blue)
-                            }
-                        }
-                    }
-
-                    // Mode bar
-                    PanelSection(title: "Mode") {
-                        ModeBarView()
-                    }
-
-                    // Adjustments
-                    if state.activeMode == .value {
-                        PanelSection(title: "Value Settings") {
-                            ValueSettingsView()
-                        }
-                    } else if state.activeMode == .color {
-                        PanelSection(title: "Color Settings") {
-                            ColorSettingsView()
-                        }
-                    }
-
-                    // Palette
-                    if (state.activeMode == .value || state.activeMode == .color)
-                        && !state.paletteColors.isEmpty {
-                        PanelSection(title: "Palette") {
-                            PaletteView()
-                        }
-                    }
-
-                    // Grid
-                    PanelSection(title: "Grid") {
-                        GridSettingsView()
-                    }
-
-                    Spacer(minLength: 20)
-                }
+                .background(Color(.systemGroupedBackground))
             }
         }
-        .background(Color(white: 0.10))
     }
-}
 
-// MARK: - Reusable panel section
-
-struct PanelSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: () -> Content
-    @State private var expanded = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: { withAnimation(.easeInOut(duration: 0.18)) { expanded.toggle() } }) {
-                HStack {
-                    Text(title)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white.opacity(0.55))
-                        .textCase(.uppercase)
-                        .kerning(0.5)
-                    Spacer()
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.4))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
+    private var inspectorForm: some View {
+        Form {
+            Section("Mode") {
+                ModeBarView()
             }
-            if expanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    content()
+
+            Section("Simplify") {
+                Toggle("Simplify Image", isOn: Binding(
+                    get: { state.simplifyEnabled },
+                    set: { isEnabled in
+                        state.simplifyEnabled = isEnabled
+                        if isEnabled {
+                            state.applySimplify()
+                        } else {
+                            state.resetSimplify()
+                        }
+                    }
+                ))
+
+                if state.simplifyEnabled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Strength")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(Int(state.simplifyStrength * 100))%")
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        Slider(
+                            value: $state.simplifyStrength,
+                            in: 0...1,
+                            step: 0.05
+                        ) {
+                            Text("Strength")
+                        } onEditingChanged: { editing in
+                            if !editing {
+                                state.applySimplify()
+                            }
+                        }
+                    }
+
+                    if state.availableSimplificationMethods.count > 1 {
+                        Picker("Style", selection: Binding(
+                            get: { state.simplificationMethod },
+                            set: { method in
+                                state.simplificationMethod = method
+                                if state.simplifyEnabled {
+                                    state.applySimplify()
+                                }
+                            }
+                        )) {
+                            ForEach(state.availableSimplificationMethods) { method in
+                                Text(method.label).tag(method)
+                            }
+                        }
+                    }
                 }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 10)
             }
-            Divider().background(Color.white.opacity(0.08))
+
+            if state.activeMode == .value {
+                Section("Adjustments") {
+                    ValueSettingsView()
+                }
+            } else if state.activeMode == .color {
+                Section("Adjustments") {
+                    ColorSettingsView()
+                }
+            }
+
+            if (state.activeMode == .value || state.activeMode == .color) && !state.paletteColors.isEmpty {
+                Section("Palette") {
+                    PaletteView()
+                }
+            }
+
+            Section("Grid") {
+                GridSettingsView()
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private func closeSidebar() {
+        if reduceMotion {
+            withAnimation(.linear(duration: 0.2)) {
+                onClose?()
+            }
+        } else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                onClose?()
+            }
         }
     }
 }

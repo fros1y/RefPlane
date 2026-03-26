@@ -1,23 +1,41 @@
 import SwiftUI
 
-/// Before/after split-view with draggable divider.
 struct CompareView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var state: AppState
     let beforeImage: UIImage
-    let afterImage:  UIImage
+    let afterImage: UIImage
 
     @State private var splitFraction: CGFloat = 0.5
 
     var body: some View {
+        compareCanvas(topPadding: 48)
+            .overlay(alignment: .topTrailing) {
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(16)
+                }
+                .accessibilityLabel("Close comparison")
+            }
+            .ignoresSafeArea()
+            .environment(\.colorScheme, .dark)
+    }
+
+    private func compareCanvas(topPadding: CGFloat) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                // After (right side / full width underneath)
                 Image(uiImage: afterImage)
                     .resizable()
                     .scaledToFit()
                     .frame(width: geo.size.width, height: geo.size.height)
 
-                // Before (left side, clipped)
+                if state.gridConfig.enabled {
+                    GridOverlayView(image: afterImage)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                }
+
                 Image(uiImage: beforeImage)
                     .resizable()
                     .scaledToFit()
@@ -29,72 +47,28 @@ struct CompareView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     )
 
-                // Divider handle
-                let divX = geo.size.width * splitFraction
-                ZStack {
-                    Rectangle()
-                        .frame(width: 2)
-                        .foregroundColor(.white.opacity(0.9))
+                CompareDividerHandle(splitFraction: $splitFraction, width: geo.size.width, height: geo.size.height)
 
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 34, height: 34)
-                        .shadow(radius: 4)
-                        .overlay(
-                            Image(systemName: "arrow.left.and.right")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.black)
-                        )
-                }
-                .frame(height: geo.size.height)
-                .position(x: divX, y: geo.size.height / 2)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            let fraction = value.location.x / geo.size.width
-                            splitFraction = max(0.02, min(0.98, fraction))
-                        }
-                )
-
-                // Labels
                 VStack {
                     HStack {
-                        Label("Before", systemImage: "photo")
-                            .font(.caption)
-                            .padding(5)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(6)
-                            .padding(.leading, 10)
+                        CompareTag(title: "Original", icon: "photo")
+                            .padding(.leading, 12)
                         Spacer()
-                        Label("After", systemImage: "wand.and.stars")
-                            .font(.caption)
-                            .padding(5)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(6)
-                            .padding(.trailing, 10)
+                        CompareTag(title: "Processed", icon: "wand.and.stars")
+                            .padding(.trailing, 12)
                     }
-                    .foregroundColor(.white)
-                    .padding(.top, 48)
+                    .padding(.top, topPadding)
+
                     Spacer()
                 }
             }
             .background(Color.black)
-            .overlay(alignment: .topTrailing) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(16)
-                }
-            }
         }
-        .ignoresSafeArea()
     }
 }
 
-/// Integrated before/after split-view with draggable horizontal slider.
-/// Displays original (left) vs. processed (right) with comparison slider.
 struct CompareSliderView: View {
+    @EnvironmentObject private var state: AppState
     let beforeImage: UIImage
     let afterImage: UIImage
 
@@ -103,13 +77,16 @@ struct CompareSliderView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                // After (right side / full width underneath)
                 Image(uiImage: afterImage)
                     .resizable()
                     .scaledToFit()
                     .frame(width: geo.size.width, height: geo.size.height)
 
-                // Before (left side, clipped by mask)
+                if state.gridConfig.enabled {
+                    GridOverlayView(image: afterImage)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                }
+
                 Image(uiImage: beforeImage)
                     .resizable()
                     .scaledToFit()
@@ -121,56 +98,88 @@ struct CompareSliderView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     )
 
-                // Divider handle
-                let divX = geo.size.width * splitFraction
-                ZStack {
-                    Rectangle()
-                        .frame(width: 2)
-                        .foregroundColor(.white.opacity(0.9))
+                CompareDividerHandle(splitFraction: $splitFraction, width: geo.size.width, height: geo.size.height)
 
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 34, height: 34)
-                        .shadow(radius: 4)
-                        .overlay(
-                            Image(systemName: "arrow.left.and.right")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.black)
-                        )
-                }
-                .frame(height: geo.size.height)
-                .position(x: divX, y: geo.size.height / 2)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            let fraction = value.location.x / geo.size.width
-                            splitFraction = max(0.02, min(0.98, fraction))
-                        }
-                )
-
-                // Labels
                 VStack {
                     HStack {
-                        Label("Before", systemImage: "photo")
-                            .font(.caption)
-                            .padding(5)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(6)
-                            .padding(.leading, 10)
+                        CompareTag(title: "Original", icon: "photo")
+                            .padding(.leading, 12)
                         Spacer()
-                        Label("After", systemImage: "wand.and.stars")
-                            .font(.caption)
-                            .padding(5)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(6)
-                            .padding(.trailing, 10)
+                        CompareTag(title: "Processed", icon: "wand.and.stars")
+                            .padding(.trailing, 12)
                     }
-                    .foregroundColor(.white)
-                    .padding(.top, 8)
+                    .padding(.top, 10)
+
                     Spacer()
                 }
             }
             .background(Color.black)
         }
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+private struct CompareDividerHandle: View {
+    @Binding var splitFraction: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        let xPosition = width * splitFraction
+
+        ZStack {
+            Rectangle()
+                .fill(Color.white.opacity(0.9))
+                .frame(width: 2)
+
+            Circle()
+                .fill(.regularMaterial)
+                .frame(width: 40, height: 40)
+                .overlay {
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                }
+        }
+        .frame(height: height)
+        .position(x: xPosition, y: height / 2)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    let fraction = value.location.x / width
+                    splitFraction = max(0.02, min(0.98, fraction))
+                }
+        )
+        .accessibilityElement()
+        .accessibilityLabel("Comparison divider")
+        .accessibilityValue("\(Int(splitFraction * 100)) percent")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                splitFraction = min(0.98, splitFraction + 0.05)
+            case .decrement:
+                splitFraction = max(0.02, splitFraction - 0.05)
+            @unknown default:
+                break
+            }
+        }
+    }
+}
+
+private struct CompareTag: View {
+    let title: String
+    let icon: String
+
+    var body: some View {
+        Label(title, systemImage: icon)
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .foregroundStyle(.white)
     }
 }

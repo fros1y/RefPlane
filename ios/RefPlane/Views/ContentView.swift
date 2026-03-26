@@ -1,105 +1,176 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @StateObject private var state = AppState()
     @State private var showImagePicker = false
+    @State private var showInspector = false
+    @State private var exportItem: ExportItem?
+    @State private var usesSidebarLayout = false
 
     var body: some View {
-        GeometryReader { geo in
-            if geo.size.width > geo.size.height {
-                // Landscape / iPad: side by side
-                HStack(spacing: 0) {
-                    if state.compareMode,
-                       let base = state.displayBaseImage {
-                        // Determine what to show on the right side
-                        let beforeImage = state.originalImage ?? base
-                        let afterImage = state.processedImage ?? base
-                        CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ImageCanvasView(showImagePicker: $showImagePicker)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        NavigationStack {
+            GeometryReader { geo in
+                let showsSidebar = geo.size.width > geo.size.height
+
+                mainLayout(showsSidebar: showsSidebar, size: geo.size)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemBackground).ignoresSafeArea())
+                    .onAppear {
+                        usesSidebarLayout = showsSidebar
                     }
-                    if state.panelCollapsed {
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                state.panelCollapsed = false
-                            }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.7))
-                                .frame(width: 28)
-                                .frame(maxHeight: .infinity)
-                                .background(Color(white: 0.12))
+                    .onChange(of: showsSidebar) { isSidebar in
+                        usesSidebarLayout = isSidebar
+                        if isSidebar {
+                            showInspector = false
                         }
-                        .buttonStyle(.plain)
-                        .transition(.move(edge: .trailing))
-                    } else {
-                        Divider().background(Color.white.opacity(0.15))
-                        ControlPanelView()
-                            .frame(width: 284)
-                            .transition(.move(edge: .trailing))
+                    }
+            }
+            .navigationTitle("Underpaint")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showImagePicker = true
+                    } label: {
+                        Label("Open Photos", systemImage: "photo.on.rectangle")
                     }
                 }
-            } else {
-                // Portrait: canvas top, panel bottom
-                ZStack(alignment: .bottom) {
-                    if state.compareMode,
-                       let base = state.displayBaseImage {
-                        // Determine what to show on the right side
-                        let beforeImage = state.originalImage ?? base
-                        let afterImage = state.processedImage ?? base
-                        CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ImageCanvasView(showImagePicker: $showImagePicker)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        state.compareMode.toggle()
+                    } label: {
+                        Image(systemName: state.compareMode ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
                     }
-                    if state.panelCollapsed {
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                state.panelCollapsed = false
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "chevron.up")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text("Show Panel")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color(white: 0.15).opacity(0.95))
-                            .clipShape(Capsule())
-                            .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
+                    .disabled(state.displayBaseImage == nil)
+                    .accessibilityLabel(state.compareMode ? "Hide comparison" : "Show comparison")
+
+                    Button {
+                        if let image = state.exportCurrentImage() {
+                            exportItem = ExportItem(image: image)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.bottom, 16)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        ControlPanelView()
-                            .frame(maxHeight: geo.size.height * 0.46)
-                            .transition(.move(edge: .bottom))
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
                     }
+                    .disabled(state.currentDisplayImage == nil)
+                    .accessibilityLabel("Export image")
+
+                    Button {
+                        toggleInspector()
+                    } label: {
+                        Image(systemName: inspectorIconName)
+                    }
+                    .accessibilityLabel(inspectorAccessibilityLabel)
                 }
             }
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.regularMaterial, for: .navigationBar)
         }
         .environmentObject(state)
-        .background(Color.black)
         .sheet(isPresented: $showImagePicker) {
             ImagePickerView { image in
                 state.loadImage(image)
             }
         }
-        .overlay(alignment: .top) {
-            if let msg = state.errorMessage {
-                ErrorToastView(message: msg) {
+        .sheet(isPresented: $showInspector) {
+            NavigationStack {
+                ControlPanelView(
+                    presentation: .sheet,
+                    onClose: { showInspector = false }
+                )
+                .environmentObject(state)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $exportItem) { item in
+            ShareSheet(items: [item.image])
+        }
+        .alert("Unable to Continue", isPresented: Binding(
+            get: { state.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
                     state.errorMessage = nil
                 }
-                .padding(.top, 8)
             }
+        )) {
+            Button("OK", role: .cancel) {
+                state.errorMessage = nil
+            }
+        } message: {
+            Text(state.errorMessage ?? "")
         }
     }
+
+    @ViewBuilder
+    private func mainLayout(showsSidebar: Bool, size: CGSize) -> some View {
+        if showsSidebar {
+            HStack(spacing: 0) {
+                canvasArea
+
+                if !state.panelCollapsed {
+                    Divider()
+                    ControlPanelView(
+                        presentation: .sidebar,
+                        onClose: { state.panelCollapsed = true }
+                    )
+                    .frame(width: min(max(size.width * 0.32, 320), 360))
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .animation(sidebarAnimation, value: state.panelCollapsed)
+        } else {
+            canvasArea
+        }
+    }
+
+    @ViewBuilder
+    private var canvasArea: some View {
+        if state.compareMode, let base = state.displayBaseImage {
+            let beforeImage = state.originalImage ?? base
+            let afterImage = state.processedImage ?? base
+            CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ImageCanvasView(showImagePicker: $showImagePicker)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var sidebarAnimation: Animation {
+        reduceMotion
+            ? .linear(duration: 0.2)
+            : .spring(response: 0.3, dampingFraction: 0.85)
+    }
+
+    private func toggleInspector() {
+        if usesSidebarLayout {
+            withAnimation(sidebarAnimation) {
+                state.panelCollapsed.toggle()
+            }
+        } else {
+            showInspector.toggle()
+        }
+    }
+
+    private var inspectorIconName: String {
+        if usesSidebarLayout, !state.panelCollapsed {
+            return "sidebar.trailing"
+        }
+        return "slider.horizontal.3"
+    }
+
+    private var inspectorAccessibilityLabel: String {
+        if usesSidebarLayout {
+            return state.panelCollapsed ? "Show adjustments" : "Hide adjustments"
+        }
+        return showInspector ? "Hide adjustments" : "Show adjustments"
+    }
+}
+
+private struct ExportItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
 }
