@@ -31,12 +31,16 @@ struct ValueSettingsView: View {
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
 
-                ThresholdListView(
+                ThresholdSliderView(
                     thresholds: Binding(
                         get: { state.valueConfig.thresholds },
                         set: { state.valueConfig.thresholds = $0; state.triggerProcessing() }
                     ),
-                    levels: state.valueConfig.levels
+                    levels: state.valueConfig.levels,
+                    colorForLevel: { level, total in
+                        let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
+                        return Color(white: t)
+                    }
                 )
             }
 
