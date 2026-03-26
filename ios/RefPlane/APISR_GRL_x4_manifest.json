@@ -1,0 +1,17 @@
+{
+  "method_id": "apisr",
+  "bundle_name": "APISR_GRL_x4",
+  "processing_kind": "superResolution4x",
+  "input_type": "MLMultiArray [1,3,256,256] float32",
+  "output_type": "MLMultiArray [1,3,1024,1024] float32",
+  "fixed_input_shape": [
+    1,
+    3,
+    256,
+    256
+  ],
+  "flexible_shapes": false,
+  "test_inference_ok": true,
+  "converted_at": "2026-03-26T01:31:24.743599+00:00",
+  "notes": "Traced from 4x_APISR_GRL_GAN_generator.pth via spandrel"
+}

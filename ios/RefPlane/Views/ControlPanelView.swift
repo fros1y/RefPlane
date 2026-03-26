@@ -30,9 +30,9 @@ struct ControlPanelView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 6)
 
-                    // Simplify toggle + strength
+                    // Simplify toggle + strength + method picker
                     PanelSection(title: "Simplify") {
-                        Toggle("UltraSharp", isOn: Binding(
+                        Toggle("Enable Simplification", isOn: Binding(
                             get: { state.simplifyEnabled },
                             set: { val in
                                 state.simplifyEnabled = val
@@ -61,6 +61,24 @@ struct ControlPanelView: View {
                                         state.applySimplify()
                                     }
                                 }
+                                .tint(.blue)
+                            }
+
+                            if state.availableSimplificationMethods.count > 1 {
+                                Picker("Method", selection: Binding(
+                                    get: { state.simplificationMethod },
+                                    set: { method in
+                                        state.simplificationMethod = method
+                                        if state.simplifyEnabled {
+                                            state.applySimplify()
+                                        }
+                                    }
+                                )) {
+                                    ForEach(state.availableSimplificationMethods) { method in
+                                        Text(method.label).tag(method)
+                                    }
+                                }
+                                .pickerStyle(.menu)
                                 .tint(.blue)
                             }
                         }

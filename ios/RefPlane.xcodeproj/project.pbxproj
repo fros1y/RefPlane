@@ -35,6 +35,8 @@
 		F2563CEB8768461DAE57C9F1 /* ValueStudyProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97921D53AC4F4C3C8A108993 /* ValueStudyProcessor.swift */; };
 		FB5EA8B452EA430384374737 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80B3D2D0E20405194A6C9B5 /* ContentView.swift */; };
 		F1E2D3C4B5A64938C7D8E9F0 /* RealESRGAN_x4.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64718B9CDEF01 /* RealESRGAN_x4.mlpackage */; };
+		F2E3D4C5B6A74839D8C9E001 /* APISR_GRL_x4.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */; };
+		F3E4D5C6B7A84950E9D0F002 /* SwinIR_Lightweight_x4.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A3B4C5D6E7F84920D1CDEF03 /* SwinIR_Lightweight_x4.mlpackage */; };
 		AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD667789 /* MetalContext.swift */; };
 		AA11BB22CC334455DD66778A /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD66778B /* Shaders.metal */; };
 /* End PBXBuildFile section */
@@ -69,6 +71,8 @@
 		F160D00F80954B0C9211E7F6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F5C95ED152AB4658AA629DF5 /* ImageSimplifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageSimplifier.swift; path = Processing/ImageSimplifier.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F64718B9CDEF01 /* RealESRGAN_x4.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = RealESRGAN_x4.mlpackage; sourceTree = "<group>"; };
+		A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = APISR_GRL_x4.mlpackage; sourceTree = "<group>"; };
+		A3B4C5D6E7F84920D1CDEF03 /* SwinIR_Lightweight_x4.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SwinIR_Lightweight_x4.mlpackage; sourceTree = "<group>"; };
 		AA11BB22CC334455DD667789 /* MetalContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetalContext.swift; path = Processing/MetalContext.swift; sourceTree = "<group>"; };
 		AA11BB22CC334455DD66778B /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; name = Shaders.metal; path = Processing/Shaders.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -156,6 +160,8 @@
 				37937B61A6B54EDB80118D8C /* Views */,
 				F160D00F80954B0C9211E7F6 /* Assets.xcassets */,
 				A1B2C3D4E5F64718B9CDEF01 /* RealESRGAN_x4.mlpackage */,
+				A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */,
+				A3B4C5D6E7F84920D1CDEF03 /* SwinIR_Lightweight_x4.mlpackage */,
 				8B62BEE22E8D4E52A4A9828D /* Products */,
 			);
 			path = RefPlane;
@@ -257,6 +263,8 @@
 				77475E85729846BCB2B25460 /* ErrorToastView.swift in Sources */,
 				6256FE8690AA438BAFA74E15 /* ThresholdSliderView.swift in Sources */,
 				F1E2D3C4B5A64938C7D8E9F0 /* RealESRGAN_x4.mlpackage in Sources */,
+				F2E3D4C5B6A74839D8C9E001 /* APISR_GRL_x4.mlpackage in Sources */,
+				F3E4D5C6B7A84950E9D0F002 /* SwinIR_Lightweight_x4.mlpackage in Sources */,
 				AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */,
 				AA11BB22CC334455DD66778A /* Shaders.metal in Sources */,
 			);

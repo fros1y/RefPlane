@@ -324,3 +324,188 @@ kernel void value_remap(
     uint alpha = (src[gid] >> 24u) & 0xFFu;
     dst[gid] = outGray | (outGray << 8u) | (outGray << 16u) | (alpha << 24u);
 }
+
+
+// ──────────────────────────────────────────────────────────────
+// MARK: - Anisotropic Kuwahara: structure tensor pass
+// ──────────────────────────────────────────────────────────────
+//
+// Pass 1: For each pixel, compute the smoothed structure tensor from a
+// small Sobel gradient neighbourhood (3×3 Sobel + 5×5 Gaussian smooth).
+// Output is a float4 texture storing (Jxx, Jxy, Jyy, 0).
+//
+// The structure tensor J encodes local orientation:
+//   Jxx = E[Gx²]   Jxy = E[Gx·Gy]   Jyy = E[Gy²]
+// where E[] denotes Gaussian-weighted expectation over a small window.
+
+struct KuwaharaParams {
+    uint width;
+    uint height;
+    int  radius;
+};
+
+kernel void kuwahara_structure_tensor(
+    texture2d<float, access::sample>  src    [[texture(0)]],
+    texture2d<float, access::write>   dst    [[texture(1)]],
+    constant KuwaharaParams&          p      [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= p.width || gid.y >= p.height) return;
+
+    constexpr sampler s(coord::pixel, filter::nearest, address::clamp_to_edge);
+
+    // Gaussian weights for a 5×5 window centred at (0,0)
+    // σ = 1 approximation: kernel = [1,4,6,4,1]/16 separable
+    const float gk[5] = { 1.0f/16.0f, 4.0f/16.0f, 6.0f/16.0f, 4.0f/16.0f, 1.0f/16.0f };
+
+    float Jxx = 0.0f, Jxy = 0.0f, Jyy = 0.0f;
+
+    for (int wy = -2; wy <= 2; wy++) {
+        for (int wx = -2; wx <= 2; wx++) {
+            float2 coord = float2(gid) + float2(wx, wy);
+
+            // Sobel 3×3 gradient at this neighbour
+            float gx = 0.0f, gy = 0.0f;
+            for (int ky = -1; ky <= 1; ky++) {
+                for (int kx = -1; kx <= 1; kx++) {
+                    float3 col = src.sample(s, coord + float2(kx, ky)).rgb;
+                    float lum  = dot(col, float3(0.2126f, 0.7152f, 0.0722f));
+
+                    // Sobel x kernel:  -1 0 1 / -2 0 2 / -1 0 1  (column factor)
+                    float sx = (kx == -1) ? -1.0f : (kx == 1 ? 1.0f : 0.0f);
+                    sx *= (ky == 0) ? 2.0f : 1.0f;
+                    // Sobel y kernel:  -1 -2 -1 / 0 0 0 / 1 2 1  (row factor)
+                    float sy = (ky == -1) ? -1.0f : (ky == 1 ? 1.0f : 0.0f);
+                    sy *= (kx == 0) ? 2.0f : 1.0f;
+
+                    gx += sx * lum;
+                    gy += sy * lum;
+                }
+            }
+
+            float w = gk[wy + 2] * gk[wx + 2];
+            Jxx += w * gx * gx;
+            Jxy += w * gx * gy;
+            Jyy += w * gy * gy;
+        }
+    }
+
+    dst.write(float4(Jxx, Jxy, Jyy, 0.0f), gid);
+}
+
+
+// ──────────────────────────────────────────────────────────────
+// MARK: - Anisotropic Kuwahara: filter pass
+// ──────────────────────────────────────────────────────────────
+//
+// Pass 2: For each pixel, read the structure tensor, compute local
+// orientation (θ) and anisotropy (A), then sweep 8 equally-spaced sectors
+// in an anisotropy-scaled elliptical neighbourhood.  Output the weighted
+// mean colour of the sector with the lowest weighted variance.
+//
+// Based on the formulation from Kyprianidis et al. (2009).
+
+kernel void kuwahara_filter(
+    texture2d<float, access::sample>  src    [[texture(0)]],
+    texture2d<float, access::sample>  tensor [[texture(1)]],
+    texture2d<float, access::write>   dst    [[texture(2)]],
+    constant KuwaharaParams&          p      [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= p.width || gid.y >= p.height) return;
+
+    constexpr sampler s(coord::pixel, filter::nearest, address::clamp_to_edge);
+    constexpr sampler ts(coord::pixel, filter::nearest, address::clamp_to_edge);
+
+    // Read structure tensor at this pixel
+    float4 J = tensor.sample(ts, float2(gid));
+    float Jxx = J.x, Jxy = J.y, Jyy = J.z;
+
+    // Eigenvalues of the 2×2 symmetric tensor
+    float trace   = Jxx + Jyy;
+    float det     = Jxx * Jyy - Jxy * Jxy;
+    float disc    = sqrt(max(0.0f, trace * trace * 0.25f - det));
+    float lambda1 = trace * 0.5f + disc;  // largest eigenvalue
+    float lambda2 = trace * 0.5f - disc;  // smallest eigenvalue
+
+    // Orientation: angle of the dominant eigenvector
+    float theta = 0.5f * atan2(2.0f * Jxy, Jxx - Jyy);
+
+    // Anisotropy ∈ [0, 1]: 0 = isotropic, 1 = fully anisotropic
+    float denom   = lambda1 + lambda2 + 1e-6f;
+    float A       = (lambda1 - lambda2) / denom;
+
+    // Ellipse axes scaled by anisotropy
+    float R       = float(p.radius);
+    float rx      = R * (1.0f + A);      // semi-axis along dominant direction
+    float ry      = R * (1.0f - A + 0.1f); // semi-axis perpendicular, keep >0
+
+    float cosT = cos(theta);
+    float sinT = sin(theta);
+
+    const int N = 8;   // number of sectors
+    const float sectorAngle = 2.0f * M_PI_F / float(N);
+
+    float3 bestMean  = float3(0.0f);
+    float  bestVar   = 1e20f;
+
+    for (int sec = 0; sec < N; sec++) {
+        // Mid-angle of this sector
+        float sAngle = float(sec) * sectorAngle;
+
+        float3 sumCol  = float3(0.0f);
+        float3 sumCol2 = float3(0.0f);
+        float  weight  = 0.0f;
+
+        // Sample pixels within the sector's elliptical patch
+        int iR = int(ceil(max(rx, ry)));
+        for (int dy = -iR; dy <= iR; dy++) {
+            for (int dx = -iR; dx <= iR; dx++) {
+                if (dx == 0 && dy == 0) {
+                    // Always include centre pixel in every sector
+                    float3 centreCol = src.sample(s, float2(gid)).rgb;
+                    sumCol  += centreCol;
+                    sumCol2 += centreCol * centreCol;
+                    weight  += 1.0f;
+                    continue;
+                }
+
+                // Rotate offset to tensor eigenvector frame
+                float u =  cosT * float(dx) + sinT * float(dy);
+                float v = -sinT * float(dx) + cosT * float(dy);
+
+                // Ellipse test
+                if ((u * u) / (rx * rx) + (v * v) / (ry * ry) > 1.0f) continue;
+
+                // Check this sample falls within the current sector
+                float pixAngle = atan2(v, u);
+                // Wrap difference into [-π, π]
+                float diff = pixAngle - sAngle;
+                diff = diff - 2.0f * M_PI_F * round(diff / (2.0f * M_PI_F));
+                if (abs(diff) > sectorAngle * 0.5f) continue;
+
+                // Gaussian weight based on distance
+                float dist2 = float(dx * dx + dy * dy);
+                float w     = exp(-dist2 / (2.0f * R * R));
+
+                float3 col = src.sample(s, float2(gid) + float2(dx, dy)).rgb;
+                sumCol  += w * col;
+                sumCol2 += w * col * col;
+                weight  += w;
+            }
+        }
+
+        if (weight < 1e-6f) continue;
+
+        float3 mean     = sumCol  / weight;
+        float3 variance = sumCol2 / weight - mean * mean;
+        float  totalVar = variance.x + variance.y + variance.z;
+
+        if (totalVar < bestVar) {
+            bestVar  = totalVar;
+            bestMean = mean;
+        }
+    }
+
+    dst.write(float4(bestMean, 1.0f), gid);
+}

@@ -26,8 +26,9 @@ class AppState: ObservableObject {
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
     @Published var simplifyEnabled: Bool    = false
-    /// Simplification strength 0–1. Maps to downscale factor 2–8.
+    /// Simplification strength 0–1. Maps to downscale factor 2–12.
     @Published var simplifyStrength: Double  = 0.5
+    @Published var simplificationMethod: SimplificationMethod = .realESRGAN
 
     // Simplified image (after upscale/denoise)
     @Published var simplifiedImage: UIImage? = nil
@@ -36,6 +37,33 @@ class AppState: ObservableObject {
     private let processor = ImageProcessor()
     /// Incremented on every triggerProcessing() call; lets each task know if it is still current.
     private var processingGeneration: Int = 0
+
+    private var simplifyTask: Task<Void, Never>? = nil
+    private var simplifyGeneration: Int = 0
+
+    var availableSimplificationMethods: [SimplificationMethod] {
+        SimplificationMethod.allCases.filter { method in
+            switch method.processingKind {
+            case .superResolution4x, .fullImageModel:
+                guard let name = method.modelBundleName else { return false }
+                return Bundle.main.url(forResource: name, withExtension: "mlmodelc") != nil
+                    || Bundle.main.url(forResource: name, withExtension: "mlpackage") != nil
+                    || Bundle.main.url(forResource: name, withExtension: "mlmodel") != nil
+            case .metalShader:
+                return MetalContext.shared != nil
+            }
+        }
+    }
+
+    init() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            ImageSimplifier.clearModelCache()
+        }
+    }
 
     var displayBaseImage: UIImage? { simplifiedImage ?? sourceImage }
 
@@ -130,15 +158,40 @@ class AppState: ObservableObject {
 
     func applySimplify() {
         guard let source = sourceImage else { return }
-        // Map strength 0–1 → downscale 2–12 for more aggressive simplification options
+
+        simplifyTask?.cancel()
+        simplifyGeneration += 1
+        let generation = simplifyGeneration
+
         let downscale = CGFloat(2.0 + simplifyStrength * 10.0)
-        Task {
-            await MainActor.run { self.isProcessing = true }
-            let simplified = await ImageSimplifier.simplify(image: source, downscale: downscale)
-            await MainActor.run {
-                self.simplifiedImage = simplified
-                self.isProcessing    = false
-                self.triggerProcessing()
+        let method = simplificationMethod
+
+        isProcessing = true
+        errorMessage = nil
+
+        simplifyTask = Task {
+            do {
+                let simplified = try await ImageSimplifier.simplify(
+                    image: source,
+                    downscale: downscale,
+                    method: method
+                )
+                try Task.checkCancellation()
+
+                await MainActor.run {
+                    guard self.simplifyGeneration == generation else { return }
+                    self.simplifiedImage = simplified
+                    self.isProcessing    = false
+                    self.triggerProcessing()
+                }
+            } catch is CancellationError {
+                // superseded by a newer request
+            } catch {
+                await MainActor.run {
+                    guard self.simplifyGeneration == generation else { return }
+                    self.isProcessing = false
+                    self.errorMessage = error.localizedDescription
+                }
             }
         }
     }

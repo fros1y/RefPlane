@@ -2,26 +2,49 @@ import UIKit
 import CoreML
 import CoreImage
 
-// MARK: - Image simplification using a 4× RealESRGAN CoreML model
+// MARK: - Simplification errors
+
+enum SimplificationError: LocalizedError {
+    case modelUnavailable(SimplificationMethod)
+    case unsupportedModelContract(SimplificationMethod)
+    case inferenceFailed(SimplificationMethod)
+
+    var errorDescription: String? {
+        switch self {
+        case .modelUnavailable(let m):
+            return "Model for \(m.label) is not available in this build."
+        case .unsupportedModelContract(let m):
+            return "Model for \(m.label) does not satisfy the required runtime contract."
+        case .inferenceFailed(let m):
+            return "Inference failed for \(m.label)."
+        }
+    }
+}
+
+// MARK: - Actor-backed model cache
+
+private actor SimplificationModelStore {
+    private var cachedModels: [SimplificationMethod: MLModel] = [:]
+
+    func model(for method: SimplificationMethod) -> MLModel? { cachedModels[method] }
+    func insert(_ model: MLModel, for method: SimplificationMethod) { cachedModels[method] = model }
+    func clear() { cachedModels.removeAll() }
+}
+
+// MARK: - Image simplification pipeline
 //
-// UltraSharp-style simplification pipeline:
-//   1. Box-downsample the input by `downscale` factor
-//   2. Tile the downsampled image into 256×256 patches with overlap padding
-//   3. Run each patch through the 4× super-resolution model
-//   4. Stitch tiles (trimming overlap) and scale back to original dimensions
+// Unified pipeline for all methods:
+//   source image (already capped to max 1600 px)
+//     -> downsample by strength factor (2x to 12x)
+//     -> method-specific processing
+//     -> resize back to original dimensions
 //
-// Tiling follows the upstream Real-ESRGAN approach:
+// Tiling follows the upstream Real-ESRGAN approach for 4× SR methods:
 //   - Each tile is extracted with `tilePad` pixels of overlap on every side
 //   - The whole image is pre-padded with `prePad` pixels (reflect) so edge
 //     tiles have real context instead of black/stretched fill
 //   - After inference, only the non-padded core of each output tile is kept
 //   - This eliminates visible seams between adjacent tiles
-//
-// The downsample→upscale cycle replaces fine texture with AI-hallucinated
-// detail, producing a simplified/smoothed version of the original image.
-//
-// Add RealESRGAN_x4.mlpackage (or a quantized variant) to the Xcode project.
-// Download from: https://huggingface.co/marshiyar/RealESRGAN_x4_CoreML
 
 enum ImageSimplifier {
 
@@ -30,95 +53,136 @@ enum ImageSimplifier {
     private static let upscaleFactor = 4
 
     /// Overlap padding per tile edge (pixels in input space).
-    /// Matches upstream Real-ESRGAN default of 10.
     private static let tilePad = 10
 
     /// Pre-padding applied to the entire image before tiling (reflect).
-    /// Ensures edge tiles have real context. Matches upstream default of 10.
     private static let prePad = 10
 
-    // MARK: - Model loading (lazy, cached)
+    // MARK: - Model cache
 
-    private static var cachedModel: MLModel?
+    private static let modelStore = SimplificationModelStore()
 
-    private static func loadModel() -> MLModel? {
-        if let cached = cachedModel { return cached }
+    /// Evict all loaded models. Call this on memory warning.
+    static func clearModelCache() {
+        Task { await modelStore.clear() }
+    }
+
+    // MARK: - Model loading
+
+    private static func loadModel(for method: SimplificationMethod) async throws -> MLModel {
+        if let cached = await modelStore.model(for: method) { return cached }
 
         let config = MLModelConfiguration()
         config.computeUnits = .all
 
-        let candidates = ["RealESRGAN_x4", "RealESRGAN_x4_Q-8", "RealESRGAN_x4_pal-4"]
+        // RealESRGAN supports quantized variants as fallbacks
+        let candidates: [String]
+        switch method {
+        case .realESRGAN:
+            candidates = ["RealESRGAN_x4", "RealESRGAN_x4_Q-8", "RealESRGAN_x4_pal-4"]
+        default:
+            guard let name = method.modelBundleName else {
+                throw SimplificationError.modelUnavailable(method)
+            }
+            candidates = [name]
+        }
+
         for name in candidates {
-            // Try 1: Xcode-compiled .mlmodelc in bundle
-            if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc") {
-                if let model = try? MLModel(contentsOf: url, configuration: config) {
-                    cachedModel = model
-                    print("[ImageSimplifier] Loaded compiled model: \(name).mlmodelc")
-                    return model
-                }
+            if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc"),
+               let model = try? MLModel(contentsOf: url, configuration: config) {
+                print("[ImageSimplifier] Loaded compiled model: \(name).mlmodelc")
+                await modelStore.insert(model, for: method)
+                return model
             }
 
-            // Try 2: .mlpackage in bundle — compile at runtime
             if let url = Bundle.main.url(forResource: name, withExtension: "mlpackage") {
-                if let compiledURL = try? MLModel.compileModel(at: url),
+                if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    cachedModel = model
                     print("[ImageSimplifier] Compiled and loaded: \(name).mlpackage")
+                    await modelStore.insert(model, for: method)
                     return model
                 }
             }
 
-            // Try 3: .mlmodel (single-file format) in bundle
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodel") {
-                if let compiledURL = try? MLModel.compileModel(at: url),
+                if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    cachedModel = model
                     print("[ImageSimplifier] Compiled and loaded: \(name).mlmodel")
+                    await modelStore.insert(model, for: method)
                     return model
                 }
             }
         }
 
-        print("[ImageSimplifier] No RealESRGAN CoreML model found in bundle")
-        print("[ImageSimplifier] Bundle path: \(Bundle.main.bundlePath)")
-        if let items = try? FileManager.default.contentsOfDirectory(atPath: Bundle.main.bundlePath) {
-            let mlItems = items.filter { $0.contains("ESRGAN") || $0.contains("mlmodel") || $0.contains("mlpackage") }
-            print("[ImageSimplifier] ML-related bundle items: \(mlItems)")
-        }
-        return nil
+        print("[ImageSimplifier] No model found for \(method.label)")
+        throw SimplificationError.modelUnavailable(method)
     }
 
     // MARK: - Public API
 
-    /// Simplify an image using the 4× RealESRGAN super-resolution model.
+    /// Simplify an image using the specified method.
     ///
     /// - Parameters:
-    ///   - image: The source image.
-    ///   - downscale: How aggressively to downsample before upscaling (2–12).
-    ///                Higher values produce a more abstract/simplified result.
+    ///   - image: The source image (already capped to max 1600 px).
+    ///   - downscale: Downsample factor before processing (2–12).
+    ///   - method: The simplification method to apply.
+    /// - Throws: `SimplificationError` if the model is unavailable or inference fails.
     /// - Returns: The simplified image at the original dimensions.
-    static func simplify(image: UIImage, downscale: CGFloat = 4.0) async -> UIImage {
-        return await Task.detached(priority: .userInitiated) {
-            guard let sourceCG = image.cgImage else { return image }
-            let origW = sourceCG.width
-            let origH = sourceCG.height
+    static func simplify(
+        image: UIImage,
+        downscale: CGFloat = 4.0,
+        method: SimplificationMethod = .realESRGAN
+    ) async throws -> UIImage {
+        guard let sourceCG = image.cgImage else {
+            throw SimplificationError.inferenceFailed(method)
+        }
+        let origW = sourceCG.width
+        let origH = sourceCG.height
 
-            guard let model = loadModel() else {
-                print("[ImageSimplifier] Model unavailable, returning original")
-                return image
-            }
+        // Load model (async) before entering the detached compute task
+        let loadedModel: MLModel?
+        switch method.processingKind {
+        case .superResolution4x, .fullImageModel:
+            loadedModel = try await loadModel(for: method)
+        case .metalShader:
+            loadedModel = nil
+        }
 
-            // Step 1: Downsample by the strength factor
+        let metalCtx = (method.processingKind == .metalShader) ? MetalContext.shared : nil
+        if method.processingKind == .metalShader && metalCtx == nil {
+            throw SimplificationError.inferenceFailed(method)
+        }
+
+        return try await Task.detached(priority: .userInitiated) {
             let smallW = max(1, Int(round(Double(origW) / Double(downscale))))
             let smallH = max(1, Int(round(Double(origH) / Double(downscale))))
             let small = resizeToPixels(image, width: smallW, height: smallH)
-            guard let smallCG = small.cgImage else { return image }
 
-            // Step 2: Process the downsampled image in 256×256 tiles through the model
-            guard let upscaled = processInTiles(smallCG, model: model) else { return image }
+            switch method.processingKind {
+            case .superResolution4x:
+                guard let model = loadedModel,
+                      let smallCG = small.cgImage,
+                      let upscaled = processInTiles(smallCG, model: model) else {
+                    throw SimplificationError.inferenceFailed(method)
+                }
+                return resizeToPixels(upscaled, width: origW, height: origH)
 
-            // Step 3: Resize back to original pixel dimensions
-            return resizeToPixels(upscaled, width: origW, height: origH)
+            case .fullImageModel:
+                guard let model = loadedModel,
+                      let smallCG = small.cgImage,
+                      let result = runModel(model, input: smallCG) else {
+                    throw SimplificationError.inferenceFailed(method)
+                }
+                return resizeToPixels(result, width: origW, height: origH)
+
+            case .metalShader:
+                guard let ctx = metalCtx,
+                      let smallCG = small.cgImage,
+                      let result = ctx.anisotropicKuwahara(smallCG) else {
+                    throw SimplificationError.inferenceFailed(method)
+                }
+                return resizeToPixels(result, width: origW, height: origH)
+            }
         }.value
     }
 

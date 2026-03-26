@@ -18,7 +18,7 @@ final class MetalContext {
         if ctx == nil {
             print("[MetalContext] ⚠️ MetalContext init failed (library or pipeline error)")
         } else {
-            print("[MetalContext] ✅ All 7 compute pipelines compiled successfully")
+            print("[MetalContext] ✅ All 9 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -35,6 +35,8 @@ final class MetalContext {
     let quantizePipeline: MTLComputePipelineState
     let remapByLabelPipeline: MTLComputePipelineState
     let valueRemapPipeline: MTLComputePipelineState
+    let kuwaharaStructureTensorPipeline: MTLComputePipelineState
+    let kuwaharaFilterPipeline: MTLComputePipelineState
 
     private init?(device: MTLDevice) {
         self.device = device
@@ -44,13 +46,15 @@ final class MetalContext {
         self.library = lib
 
         do {
-            grayscalePipeline    = try Self.makePipeline(device: device, library: lib, name: "grayscale")
-            rgbToOklabPipeline   = try Self.makePipeline(device: device, library: lib, name: "rgb_to_oklab")
-            bandAssignPipeline   = try Self.makePipeline(device: device, library: lib, name: "band_assign")
-            kmeansAssignPipeline = try Self.makePipeline(device: device, library: lib, name: "kmeans_assign")
-            quantizePipeline     = try Self.makePipeline(device: device, library: lib, name: "quantize")
-            remapByLabelPipeline = try Self.makePipeline(device: device, library: lib, name: "remap_by_label")
-            valueRemapPipeline   = try Self.makePipeline(device: device, library: lib, name: "value_remap")
+            grayscalePipeline              = try Self.makePipeline(device: device, library: lib, name: "grayscale")
+            rgbToOklabPipeline             = try Self.makePipeline(device: device, library: lib, name: "rgb_to_oklab")
+            bandAssignPipeline             = try Self.makePipeline(device: device, library: lib, name: "band_assign")
+            kmeansAssignPipeline           = try Self.makePipeline(device: device, library: lib, name: "kmeans_assign")
+            quantizePipeline               = try Self.makePipeline(device: device, library: lib, name: "quantize")
+            remapByLabelPipeline           = try Self.makePipeline(device: device, library: lib, name: "remap_by_label")
+            valueRemapPipeline             = try Self.makePipeline(device: device, library: lib, name: "value_remap")
+            kuwaharaStructureTensorPipeline = try Self.makePipeline(device: device, library: lib, name: "kuwahara_structure_tensor")
+            kuwaharaFilterPipeline          = try Self.makePipeline(device: device, library: lib, name: "kuwahara_filter")
         } catch {
             print("[MetalContext] Pipeline creation failed: \(error)")
             return nil
@@ -285,6 +289,150 @@ final class MetalContext {
 
         return readPixels(from: dstBuf, count: count)
     }
+
+    // MARK: - Anisotropic Kuwahara (texture-based)
+
+    /// Apply the anisotropic Kuwahara filter to a CGImage.
+    /// Uses two texture-based compute passes (structure tensor + filter).
+    /// - Parameters:
+    ///   - image: Source image (any size; typically the downsampled simplification input).
+    ///   - radius: Kuwahara neighbourhood radius (default 6).
+    /// - Returns: Filtered UIImage of the same pixel dimensions, or nil on failure.
+    func anisotropicKuwahara(_ image: CGImage, radius: Int = 6) -> UIImage? {
+        let width  = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return nil }
+
+        // Build a Metal texture descriptor for RGBA float textures (intermediate)
+        let floatDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba32Float,
+            width: width, height: height,
+            mipmapped: false
+        )
+        floatDesc.usage = [.shaderRead, .shaderWrite]
+        floatDesc.storageMode = .private
+
+        // BGRA unorm descriptor for source and output
+        let rgbaDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm,
+            width: width, height: height,
+            mipmapped: false
+        )
+        rgbaDesc.usage = [.shaderRead, .shaderWrite]
+        rgbaDesc.storageMode = .shared
+
+        guard let srcTex    = makeTextureFromCGImage(image),
+              let tensorTex = device.makeTexture(descriptor: floatDesc),
+              let dstTex    = device.makeTexture(descriptor: rgbaDesc) else { return nil }
+
+        // Build params buffer (shared for both passes)
+        var params = KuwaharaParamsSwift(
+            width: UInt32(width),
+            height: UInt32(height),
+            radius: Int32(radius)
+        )
+        guard let paramBuf = device.makeBuffer(bytes: &params,
+                                               length: MemoryLayout<KuwaharaParamsSwift>.stride,
+                                               options: .storageModeShared) else { return nil }
+
+        guard let cmdBuf = commandQueue.makeCommandBuffer() else { return nil }
+
+        // Pass 1: structure tensor
+        if let encoder = cmdBuf.makeComputeCommandEncoder() {
+            encoder.setComputePipelineState(kuwaharaStructureTensorPipeline)
+            encoder.setTexture(srcTex,    index: 0)
+            encoder.setTexture(tensorTex, index: 1)
+            encoder.setBuffer(paramBuf, offset: 0, index: 0)
+            let tgs = MTLSize(width: 8, height: 8, depth: 1)
+            let grd = MTLSize(
+                width:  (width  + 7) / 8,
+                height: (height + 7) / 8,
+                depth:  1
+            )
+            encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+            encoder.endEncoding()
+        }
+
+        // Pass 2: Kuwahara filter
+        if let encoder = cmdBuf.makeComputeCommandEncoder() {
+            encoder.setComputePipelineState(kuwaharaFilterPipeline)
+            encoder.setTexture(srcTex,    index: 0)
+            encoder.setTexture(tensorTex, index: 1)
+            encoder.setTexture(dstTex,    index: 2)
+            encoder.setBuffer(paramBuf, offset: 0, index: 0)
+            let tgs = MTLSize(width: 8, height: 8, depth: 1)
+            let grd = MTLSize(
+                width:  (width  + 7) / 8,
+                height: (height + 7) / 8,
+                depth:  1
+            )
+            encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+            encoder.endEncoding()
+        }
+
+        cmdBuf.commit()
+        cmdBuf.waitUntilCompleted()
+
+        return uiImageFromTexture(dstTex, width: width, height: height)
+    }
+
+    // MARK: - Texture helpers
+
+    private func makeTextureFromCGImage(_ cgImage: CGImage) -> MTLTexture? {
+        let width  = cgImage.width
+        let height = cgImage.height
+
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm,
+            width: width, height: height,
+            mipmapped: false
+        )
+        desc.usage = [.shaderRead]
+        desc.storageMode = .shared
+
+        guard let texture = device.makeTexture(descriptor: desc) else { return nil }
+
+        // Draw CGImage into a pixel buffer and upload
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else { return nil }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        texture.replace(
+            region: MTLRegionMake2D(0, 0, width, height),
+            mipmapLevel: 0,
+            withBytes: pixels,
+            bytesPerRow: width * 4
+        )
+        return texture
+    }
+
+    private func uiImageFromTexture(_ texture: MTLTexture, width: Int, height: Int) -> UIImage? {
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+        texture.getBytes(&pixels,
+                         bytesPerRow: bytesPerRow,
+                         from: MTLRegionMake2D(0, 0, width, height),
+                         mipmapLevel: 0)
+
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+              let cgImage = CGImage(
+                width: width, height: height,
+                bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                provider: provider,
+                decode: nil, shouldInterpolate: false,
+                intent: .defaultIntent
+              ) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
 }
 
 // MARK: - Swift-side param structs (must match Metal layout)
@@ -323,6 +471,12 @@ private struct RemapParamsSwift {
 private struct ValueRemapParamsSwift {
     var pixelCount: UInt32
     var totalLevels: UInt32
+}
+
+private struct KuwaharaParamsSwift {
+    var width:  UInt32
+    var height: UInt32
+    var radius: Int32
 }
 
 // MARK: - Errors

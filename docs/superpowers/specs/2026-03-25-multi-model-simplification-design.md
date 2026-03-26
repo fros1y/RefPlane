@@ -2,403 +2,456 @@
 
 ## Problem
 
-The current iOS simplification pipeline uses a single RealESRGAN_x4 model in a downsample-then-upscale cycle. The previous TypeScript version used APISR GRL_GAN and produced better results — preserving edges and large structural forms while smoothing away fine texture. RealESRGAN is trained to hallucinate realistic texture detail, which is nearly the opposite of what simplification needs.
+The current iOS simplification pipeline uses a single `RealESRGAN_x4` model in a downsample-then-upscale cycle. The previous TypeScript version used APISR `GRL_GAN` and produced better simplification for this product goal: preserve edges and large forms while removing fine texture.
 
-We want to explore multiple models and approaches to find the best simplification method, with a simple UI picker to switch between them at runtime.
+`RealESRGAN_x4` is a good super-resolution model, but it is biased toward restoring realistic detail. That is almost the opposite of the simplification aesthetic we want.
 
-## Candidate Models
+We want a small exploration framework inside the iOS app so we can compare multiple simplification methods on real images without rebuilding the whole pipeline for each experiment.
 
-Six approaches, spanning three paradigms:
+## Goals
 
-### Super-Resolution Upscalers (downsample → tile → 4x model → stitch → upscale)
+- Support multiple simplification methods behind one app-facing API.
+- Keep the existing user workflow intact: source image -> optional simplify -> tonal/value/color modes.
+- Make method switching cheap in the UI so visual comparison is fast.
+- Reuse the current tiling and resize infrastructure where that is actually valid.
+- Avoid baking model-specific preprocessing assumptions into random parts of the app.
 
-| Model | Source | Size | Conversion Path |
-|-------|--------|------|-----------------|
-| RealESRGAN_x4 | Already bundled | ~17 MB | None needed |
-| APISR GRL_GAN 4x | [Kiteretsu77/APISR](https://github.com/Kiteretsu77/APISR) | ~40 MB | spandrel → trace@256×256 → coremltools |
-| SwinIR-S Lightweight 4x | [JingyunLiang/SwinIR](https://github.com/JingyunLiang/SwinIR) | ~17 MB | spandrel → trace@256×256 → coremltools |
+## Non-Goals
 
-### Style Transfer (downsample → full-image model → upscale)
+- No side-by-side comparison UI in this phase.
+- No model download-on-demand.
+- No quantization or aggressive performance tuning.
+- No downstream processing changes in tonal/value/color modes.
+- No promise that every candidate method ships in the first implementation pass.
 
-| Model | Source | Size | Conversion Path |
-|-------|--------|------|-----------------|
-| White-box Cartoonization | [PINTO_model_zoo/019](https://github.com/PINTO0309/PINTO_model_zoo/tree/main/019_White-box-Cartoonization) | ~5 MB | ONNX → coremltools |
-| AnimeGANv3 | [TachibanaYoshino/AnimeGANv3](https://github.com/TachibanaYoshino/AnimeGANv3) | ~2.4 MB | ONNX → coremltools |
+## Delivery Strategy
 
-### GPU Shader (downsample → Metal compute → upscale)
+The original draft treated all six methods as one implementation unit. That is too much risk at once because the CoreML conversion, runtime contract, and visual quality risk are not evenly distributed.
 
-| Model | Source | Size | Conversion Path |
-|-------|--------|------|-----------------|
-| Anisotropic Kuwahara | Kyprianidis & Semmo 2010 | 0 MB | 2-pass Metal compute shader |
+Implementation should be phased:
 
-## Scope
+1. Phase 1: ship the method-switching infrastructure with the three 4x SR methods:
+   `RealESRGAN`, `APISR`, `SwinIR`
+2. Phase 2: add style-transfer methods only if conversion produces a stable image-to-image CoreML contract:
+   `White-box Cartoonization`, `AnimeGANv3`
+3. Phase 3: add the anisotropic Kuwahara shader after Phase 1 visual evaluation confirms we still want a non-ML baseline
 
-**What IS being built:** A model-switching infrastructure for the simplification pipeline, 4 new CoreML models, 1 Metal shader, a conversion script, and a minimal picker UI. This is an exploration tool for comparing approaches.
+The architecture should support all six methods from day one, but the app should only expose methods that are actually bundled and validated in the current build.
 
-**What is NOT being built:** Cross-model comparison UI, model download-on-demand, quantization, performance optimization, or any changes to the downstream mode processing (tonal/value/color).
+## Candidate Methods
 
-## Architecture
+| Method | Paradigm | Runtime Shape | Conversion Risk | Visual Risk | Phase |
+|---|---|---|---|---|---|
+| RealESRGAN_x4 | Super-resolution | tiled 256 -> 1024 | low | medium | 1 |
+| APISR GRL_GAN 4x | Super-resolution | tiled 256 -> 1024 | medium | low | 1 |
+| SwinIR-S Lightweight 4x | Super-resolution | tiled 256 -> 1024 | medium | medium | 1 |
+| White-box Cartoonization | Style transfer | full image -> full image | high | medium | 2 |
+| AnimeGANv3 | Style transfer | full image -> full image | high | high | 2 |
+| Anisotropic Kuwahara | Metal shader | full image -> full image | medium | medium | 3 |
 
-### Unified Pipeline
+## Unified Pipeline
 
-All six methods share the same outer pipeline shape:
+All methods share the same outer pipeline:
 
+```text
+source image (already capped to max 1600px)
+    -> downsample by strength factor (2x to 12x)
+    -> method-specific processing
+    -> resize back to original dimensions
 ```
-source image (max 1600px)
-    → downsample by strength factor (2–12x)
-    → process (method-specific)
-    → bilinear upscale to original dimensions
-```
 
-The strength slider always controls the downsample factor. More downsampling = more simplification regardless of method.
+The strength slider always maps to downsample factor. More downsampling means more simplification regardless of method.
 
-### Method-Specific Processing
+Method-specific processing:
 
-After downsampling, the pipeline branches based on method type:
+- Super-resolution methods:
+  reuse tile-based 4x inference and stitch back together
+- Style-transfer methods:
+  run on the full downsampled image with no tiling
+- Shader methods:
+  run on the full downsampled image through Metal
 
-**SR models (RealESRGAN, APISR, SwinIR):**
-Tile the downsampled image into 256×256 patches with overlap → run each tile through the 4x CoreML model → stitch tiles → result is 4x the downsampled size. This reuses the existing `processInTiles` infrastructure unchanged.
+## Critical Runtime Contract
 
-**Style transfer models (White-box Cartoonization, AnimeGANv3):**
-Run the CoreML model on the full downsampled image without tiling. These are fully convolutional generators that accept arbitrary input sizes. Tiling would create visible style-seam artifacts at tile boundaries.
+This is the most important design correction in the review.
 
-**Kuwahara shader:**
-Run the 2-pass anisotropic Kuwahara Metal compute shader directly on the downsampled image. No CoreML model involved.
+The iOS app should not depend on model-specific normalization details discovered late in conversion. Every bundled method must satisfy an explicit app-facing contract:
+
+### Super-Resolution Contract
+
+- Fixed input size: `256x256`
+- Fixed output size: `1024x1024`
+- RGB image-in / image-out preferred
+- If the exported model uses `MLMultiArray`, it must still conform to the existing `[1, 3, H, W]` float32 convention expected by the app helpers
+
+### Style-Transfer Contract
+
+- Flexible input shape within the app's actual range
+- Output spatial dimensions must match input spatial dimensions
+- RGB image-in / image-out strongly preferred
+- Any normalization such as `[0, 1] -> [-1, 1]` must be baked into the exported CoreML model or handled by an explicit per-method adapter, not assumed by the generic `runModel()` path
+
+### Shader Contract
+
+- Accept a downsampled `CGImage`
+- Return a `UIImage` of the same pixel size
+
+If a candidate model cannot be exported to one of these contracts cleanly, it should not be exposed in the picker yet.
 
 ## Data Model
 
-### SimplificationMethod Enum (AppModels.swift)
+### SimplificationMethod
+
+`AppModels.swift` gets a new enum with method metadata:
 
 ```swift
+enum SimplificationProcessingKind {
+    case superResolution4x
+    case fullImageModel
+    case metalShader
+}
+
 enum SimplificationMethod: String, CaseIterable, Identifiable {
-    case realESRGAN   = "RealESRGAN"
-    case apisr        = "APISR"
-    case swinIR       = "SwinIR"
-    case kuwahara     = "Kuwahara"
-    case whitebox     = "Cartoonize"
-    case animeGAN     = "AnimeGAN"
+    case realESRGAN = "RealESRGAN"
+    case apisr = "APISR"
+    case swinIR = "SwinIR"
+    case whitebox = "Cartoonize"
+    case animeGAN = "AnimeGAN"
+    case kuwahara = "Kuwahara"
 
     var id: String { rawValue }
     var label: String { rawValue }
 
-    var isMLModel: Bool {
+    var processingKind: SimplificationProcessingKind {
         switch self {
-        case .kuwahara: return false
-        default: return true
+        case .realESRGAN, .apisr, .swinIR:
+            return .superResolution4x
+        case .whitebox, .animeGAN:
+            return .fullImageModel
+        case .kuwahara:
+            return .metalShader
         }
     }
 
-    /// CoreML model bundle name (nil for shader-only methods)
     var modelBundleName: String? {
         switch self {
         case .realESRGAN: return "RealESRGAN_x4"
-        case .apisr:      return "APISR_GRL_x4"
-        case .swinIR:     return "SwinIR_Lightweight_x4"
-        case .whitebox:   return "WhiteBoxCartoonization"
-        case .animeGAN:   return "AnimeGANv3"
-        case .kuwahara:   return nil
-        }
-    }
-
-    /// Whether this method uses the tile-based 4x upscale pipeline
-    var isSuperResolution: Bool {
-        switch self {
-        case .realESRGAN, .apisr, .swinIR: return true
-        default: return false
+        case .apisr: return "APISR_GRL_x4"
+        case .swinIR: return "SwinIR_Lightweight_x4"
+        case .whitebox: return "WhiteBoxCartoonization"
+        case .animeGAN: return "AnimeGANv3"
+        case .kuwahara: return nil
         }
     }
 }
 ```
 
-### AppState Changes
+### AppState
 
-One new published property:
+Add:
 
 ```swift
 @Published var simplificationMethod: SimplificationMethod = .realESRGAN
+private var simplifyTask: Task<Void, Never>? = nil
+private var simplifyGeneration: Int = 0
 ```
 
-`applySimplify()` passes the method through:
+The current `applySimplify()` launches work without cancellation or generation tracking. That is already racy today, and a runtime picker will make it much easier for stale work to overwrite newer user choices.
+
+`applySimplify()` should cancel the previous simplification task and only apply the latest result:
 
 ```swift
 func applySimplify() {
     guard let source = sourceImage else { return }
+
+    simplifyTask?.cancel()
+    simplifyGeneration += 1
+    let generation = simplifyGeneration
+
     let downscale = CGFloat(2.0 + simplifyStrength * 10.0)
     let method = simplificationMethod
-    Task {
-        await MainActor.run { self.isProcessing = true }
-        let simplified = await ImageSimplifier.simplify(
-            image: source, downscale: downscale, method: method
-        )
-        await MainActor.run {
-            self.simplifiedImage = simplified
-            self.isProcessing = false
-            self.triggerProcessing()
+
+    isProcessing = true
+    errorMessage = nil
+
+    simplifyTask = Task {
+        do {
+            let simplified = try await ImageSimplifier.simplify(
+                image: source,
+                downscale: downscale,
+                method: method
+            )
+            try Task.checkCancellation()
+
+            await MainActor.run {
+                guard self.simplifyGeneration == generation else { return }
+                self.simplifiedImage = simplified
+                self.isProcessing = false
+                self.triggerProcessing()
+            }
+        } catch is CancellationError {
+        } catch {
+            await MainActor.run {
+                guard self.simplifyGeneration == generation else { return }
+                self.isProcessing = false
+                self.errorMessage = error.localizedDescription
+            }
         }
     }
 }
 ```
 
+This also means simplification failure does not silently replace the image with the unsimplified original.
+
 ## ImageSimplifier Refactor
 
-### Model Cache
-
-Replace the single cached model with a dictionary:
-
-```swift
-private static var cachedModels: [SimplificationMethod: MLModel] = [:]
-```
-
-### Model Loading
-
-Generalize `loadModel()` to take a method, look up its `modelBundleName`, and try the same 3-format cascade (`.mlmodelc`, `.mlpackage`, `.mlmodel`):
-
-```swift
-private static func loadModel(for method: SimplificationMethod) -> MLModel?
-```
-
 ### Public API
+
+Change the API to throw:
 
 ```swift
 static func simplify(
     image: UIImage,
     downscale: CGFloat = 4.0,
     method: SimplificationMethod = .realESRGAN
-) async -> UIImage
+) async throws -> UIImage
 ```
+
+Returning the original image on failure hides real errors and makes unsupported methods look like valid but weak simplifiers.
+
+### Model Cache
+
+Do not keep the cache as an unsynchronized static dictionary mutated from detached tasks. That will race as soon as the user changes methods quickly.
+
+Use an actor-backed store:
+
+```swift
+private actor SimplificationModelStore {
+    private var cachedModels: [SimplificationMethod: MLModel] = [:]
+    func model(for method: SimplificationMethod) -> MLModel? { cachedModels[method] }
+    func insert(_ model: MLModel, for method: SimplificationMethod) { cachedModels[method] = model }
+    func clear() { cachedModels.removeAll() }
+}
+```
+
+`ImageSimplifier` holds one static instance of that actor.
+
+### Memory Policy
+
+Lazy loading is still correct, but the original draft understated memory risk. Bundle size is not the same as runtime residency, and CoreML models can consume materially more memory once compiled and loaded.
+
+For this exploration phase:
+
+- keep lazy loading
+- clear the cache on memory warning
+- do not pre-load every model at launch
+- treat "all methods loaded simultaneously" as a stress case, not normal behavior
+
+### Model Loading
+
+Generalize model loading by method:
+
+```swift
+private static func loadModel(for method: SimplificationMethod) async throws -> MLModel
+```
+
+Loading order remains:
+
+1. bundled `.mlmodelc`
+2. bundled `.mlpackage`
+3. bundled `.mlmodel`
+
+If loading fails, throw `SimplificationError.modelUnavailable(method)`.
 
 ### Pipeline Routing
 
-After downsampling, the method determines the processing path:
+After downsampling, route by `processingKind`:
 
 ```swift
-// After downsampling to `small`:
-switch method {
-case .realESRGAN, .apisr, .swinIR:
-    // Tile-based 4x SR — existing processInTiles logic
-    guard let model = loadModel(for: method),
-          let smallCG = small.cgImage,
-          let upscaled = processInTiles(smallCG, model: model) else { return image }
+switch method.processingKind {
+case .superResolution4x:
+    let model = try await loadModel(for: method)
+    guard let smallCG = small.cgImage,
+          let upscaled = processInTiles(smallCG, model: model) else {
+        throw SimplificationError.inferenceFailed(method)
+    }
     return resizeToPixels(upscaled, width: origW, height: origH)
 
-case .whitebox, .animeGAN:
-    // Full-image style transfer — no tiling
-    guard let model = loadModel(for: method),
-          let smallCG = small.cgImage,
-          let result = runModel(model, input: smallCG) else { return image }
+case .fullImageModel:
+    let model = try await loadModel(for: method)
+    guard let smallCG = small.cgImage,
+          let result = runModel(model, input: smallCG) else {
+        throw SimplificationError.inferenceFailed(method)
+    }
     return resizeToPixels(result, width: origW, height: origH)
 
-case .kuwahara:
-    // Metal shader — no CoreML model
+case .metalShader:
     guard let smallCG = small.cgImage,
           let ctx = MetalContext.shared,
-          let result = ctx.anisotropicKuwahara(smallCG) else { return image }
+          let result = ctx.anisotropicKuwahara(smallCG) else {
+        throw SimplificationError.inferenceFailed(method)
+    }
     return resizeToPixels(result, width: origW, height: origH)
 }
 ```
 
-All existing helper methods (`reflectPad`, `runModel`, `resizeToPixels`, format converters) remain unchanged.
+### Generic Helpers
 
-The entire `simplify()` body remains wrapped in `Task.detached(priority: .userInitiated)` as it is today, keeping model loading and inference off the main actor.
+The existing helpers can stay mostly intact:
 
-### Model Cache and Memory
+- `processInTiles`
+- `reflectPad`
+- `resizeToPixels`
+- format converters
 
-Models are loaded lazily — only when first selected by the user. The dictionary cache avoids reloading on repeated switches. Under memory pressure, the cache should be cleared in response to `UIApplication.didReceiveMemoryWarningNotification`:
+But `runModel()` only remains generic if the exported models honor the runtime contract above. If a style-transfer export requires custom normalization or a different tensor layout, that logic belongs in a method-specific adapter layer, not in ad hoc call sites.
+
+### Error Type
+
+Add a small error enum:
 
 ```swift
-private static func registerMemoryWarning() {
-    NotificationCenter.default.addObserver(
-        forName: UIApplication.didReceiveMemoryWarningNotification,
-        object: nil, queue: nil
-    ) { _ in cachedModels.removeAll() }
+enum SimplificationError: LocalizedError {
+    case modelUnavailable(SimplificationMethod)
+    case unsupportedModelContract(SimplificationMethod)
+    case inferenceFailed(SimplificationMethod)
 }
 ```
 
-With all 5 models loaded (~81 MB of weights), memory pressure is possible on older devices. Lazy loading means typical usage (trying 1-2 models) keeps only 1-2 models resident.
+## Method Availability
 
-### Error Handling for Missing Models
+The original draft showed every method in the picker even when the model might not exist in the bundle. That creates a bad exploration UX because "selecting a method" can silently do nothing useful.
 
-If `loadModel(for:)` returns nil (model not bundled, corrupt, etc.), `simplify()` returns the original image unchanged. The UI does not disable picker options — all methods are always shown. A console log is printed identifying which model failed to load. This is sufficient for the exploration phase; a production version would surface errors to the user.
+The UI should expose only validated methods for the current build:
 
-## Anisotropic Kuwahara Metal Shader
+- always include shader-only methods that are compiled into the app
+- include CoreML methods only when their bundle resource exists and they pass a lightweight manifest check
 
-Two new compute kernels in `Shaders.metal`.
-
-### Pass 1: Structure Tensor (`kuwahara_structure_tensor`)
-
-- Input: source RGBA texture
-- Computes Sobel gradients (dx, dy) at each pixel
-- Builds structure tensor components: `(dx*dx, dx*dy, dy*dy)`
-- Applies small Gaussian blur (radius ~2) to smooth the tensor
-- Output: `float4` texture containing `(E, F, G, anisotropy)` — E=dx², F=dxdy, G=dy²
-
-### Pass 2: Anisotropic Kuwahara Filter (`kuwahara_filter`)
-
-- Inputs: source RGBA texture + structure tensor texture from Pass 1
-- For each pixel:
-  1. Read structure tensor → compute eigenvalues and dominant eigenvector (orientation angle)
-  2. Compute anisotropy `A = (λ₁ - λ₂) / (λ₁ + λ₂)` → controls ellipse eccentricity
-  3. Construct rotated elliptical coordinate transform
-  4. Evaluate 8 overlapping sectors with polynomial weights: `w(x,y) = [(x + ζ) - η·y²]²`
-  5. Per sector: accumulate weighted mean color and weighted variance
-  6. Output: weighted blend of sector means, weighted by inverse variance
-- Output: filtered RGBA texture
-
-### MetalContext Additions
-
-New method and two new pipeline states:
+The simplest implementation is a computed list:
 
 ```swift
-private let kuwaharaStructurePipeline: MTLComputePipelineState
-private let kuwaharaFilterPipeline: MTLComputePipelineState
-
-func anisotropicKuwahara(_ image: CGImage, radius: Int = 6) -> UIImage?
+var availableSimplificationMethods: [SimplificationMethod]
 ```
 
-The method:
-1. Creates input `MTLTexture` from CGImage pixels (`.rgba8Unorm`, `usage: [.shaderRead]`)
-2. Allocates structure tensor intermediate texture (`.rgba32Float`, `usage: [.shaderRead, .shaderWrite]`)
-3. Dispatches Pass 1 with 2D threadgroups: `MTLSize(width: ceil(w/16), height: ceil(h/16), depth: 1)`, threads per group `MTLSize(width: 16, height: 16, depth: 1)`
-4. Allocates output texture (`.rgba8Unorm`, `usage: [.shaderRead, .shaderWrite]`)
-5. Dispatches Pass 2 with same 2D threadgroup layout
-6. Reads result back via `getBytes()` into pixel array, constructs UIImage via `UIImage.fromPixelData()`
+This list can be built from bundle resource checks plus a small conversion manifest shipped with the models.
 
-This uses **texture-based dispatch** rather than the existing buffer-based 1D `dispatch()` helper. The `anisotropicKuwahara()` method manages its own command buffer and compute encoder directly, similar to how `CIContext` operates, rather than extending the existing `dispatch()` helper which is designed for flat buffer operations.
+## CoreML Conversion
 
-### Kuwahara Shader Parameters
+A Python script `scripts/convert_models.py` converts and validates candidate models, but its job is not just format conversion. It must enforce the app-facing contract.
 
-The following parameters are **hardcoded as constants in the shader** for the exploration phase:
-- Number of sectors: 8
-- Polynomial weight constants: ζ = 1.0, η = 1.0 (Kyprianidis defaults)
-- Structure tensor Gaussian blur radius: 2
-- Filter kernel radius: passed as a buffer constant, defaults to 6
+### Required Script Outputs
 
-Only the kernel radius is exposed to Swift via the `radius` parameter. Other parameters can be promoted to buffer constants later if tuning is needed.
+For each converted model:
 
-### Reference Implementations
+- `.mlpackage`
+- a small JSON manifest with:
+  - method id
+  - expected processing kind
+  - input type
+  - output type
+  - fixed or flexible shape metadata
+  - test inference status
 
-- Kyprianidis GPU Pro chapter: polynomial weighting formulation
-- Godot shader: [godotshaders.com/shader/anisotropic-kuwahara-filter/](https://godotshaders.com/shader/anisotropic-kuwahara-filter/)
-- LYGIA shader library: [lygia.xyz/filter/kuwahara](https://lygia.xyz/filter/kuwahara)
-- Nuke C++ implementation: [github.com/sharktacos/VFX-software-prefs](https://github.com/sharktacos/VFX-software-prefs/blob/main/Nuke/Kuwahara/df_kuwaharaAnisotropic.cpp)
+### Super-Resolution Validation
 
-## CoreML Model Conversion
+For `APISR` and `SwinIR`, validate:
 
-A Python script `scripts/convert_models.py` handles conversion for all models.
+- input shape is exactly `1x3x256x256` or `ImageType 256x256`
+- output shape is exactly 4x larger in both axes
+- a test inference succeeds on a synthetic `256x256` input
 
-### Per-Model Conversion
+### Style-Transfer Validation
 
-**APISR GRL_GAN 4x:**
-- Load PyTorch weights via spandrel
-- `torch.jit.trace` at fixed 256×256 input
-- `coremltools.convert()` → `.mlpackage`
-- Input: `[1, 3, 256, 256]` → Output: `[1, 3, 1024, 1024]`
+For `White-box Cartoonization` and `AnimeGANv3`, validate:
 
-**SwinIR-S Lightweight 4x:**
-- Load via spandrel (handles architecture reconstruction automatically)
-- `torch.jit.trace` at fixed 256×256 (critical — window attention uses `torch.roll` which breaks on dynamic shapes)
-- `coremltools.convert()` → `.mlpackage`
-- Input: `[1, 3, 256, 256]` → Output: `[1, 3, 1024, 1024]`
-- Reference: [spandrel-to-CoreML guide](https://rockyshikoku.medium.com/converting-models-such-as-super-resolution-and-brightness-correction-from-spandrel-to-coreml-8bcfbb04a8fc)
+- full-image inference succeeds at `256x256`
+- full-image inference also succeeds at one non-square size such as `320x192`
+- output spatial dimensions equal input spatial dimensions
+- input/output preprocessing is either embedded in the model or described in the manifest for an explicit adapter
 
-**White-box Cartoonization:**
-- Download ONNX from [PINTO_model_zoo/019](https://github.com/PINTO0309/PINTO_model_zoo/tree/main/019_White-box-Cartoonization) (pre-converted available)
-- `coremltools.convert()` from ONNX → `.mlpackage`
-- Input shape must use `ct.RangeDim` for H and W to allow arbitrary sizes at runtime:
-  ```python
-  ct.convert(model, inputs=[ct.ImageType(shape=(1, 3, ct.RangeDim(64, 1024), ct.RangeDim(64, 1024)))])
-  ```
-- If flexible shapes cause conversion issues, fall back to a fixed size matching the downsampled image's typical dimensions (e.g., 256×256) and resize before/after inference
-- Output type: image (RGB pixel buffer) — the existing `runModel()` handles this via its `.image` branch
+If flexible-shape conversion is unstable, do not ship that method yet. Do not degrade the architecture by pretending a fixed-size export is equivalent to a true full-image model.
 
-**AnimeGANv3:**
-- Download ONNX from repo (e.g., `AnimeGANv3_Hayao_36.onnx`)
-- `coremltools.convert()` from ONNX → `.mlpackage`
-- Same flexible shape approach as White-box Cartoonization above
-- Start with a style that produces the flattest output (USA cartoon or Shinkai)
-- Output type: image (RGB pixel buffer)
+### Conversion Notes
 
-### Script Interface
+- `APISR GRL_GAN 4x`:
+  `spandrel -> trace at 256 -> coremltools`
+- `SwinIR-S Lightweight 4x`:
+  same path, fixed-size trace remains appropriate
+- `White-box Cartoonization`:
+  ONNX to CoreML only if the result preserves an image-to-image contract cleanly
+- `AnimeGANv3`:
+  same requirement as White-box; this model is exploratory and lower confidence
 
-```
-python scripts/convert_models.py --model apisr
-python scripts/convert_models.py --model swinir
-python scripts/convert_models.py --model whitebox
-python scripts/convert_models.py --model animegan
-python scripts/convert_models.py --all
-```
+The conversion script does not modify the Xcode project. Adding new bundled models still requires project file changes.
 
-Each invocation downloads weights if not cached, converts, validates with a 256×256 test inference, and outputs `.mlpackage` to `ios/RefPlane/` (alongside the existing `RealESRGAN_x4.mlpackage`).
+## Anisotropic Kuwahara Shader
 
-All models use `compute_units=ALL` and float32 precision (no quantization during exploration).
+The shader approach is still worthwhile, but it should be treated as its own phase because it adds a second execution stack with separate validation needs.
 
-Adding the `.mlpackage` files to the Xcode project's bundle resources is a manual step after conversion — drag into Xcode and ensure "Copy items if needed" and target membership are set. The conversion script does not modify the `.xcodeproj`.
+Implementation remains:
+
+- `Shaders.metal` adds `kuwahara_structure_tensor`
+- `Shaders.metal` adds `kuwahara_filter`
+- `MetalContext.swift` adds:
+  - two new pipeline states
+  - `anisotropicKuwahara(_ image: CGImage, radius: Int = 6) -> UIImage?`
+
+This path should use texture-based dispatch and manage its own command buffer rather than trying to force-fit the existing 1D buffer helper.
 
 ## UI Changes
 
-### ControlPanelView.swift
+`ControlPanelView.swift` gets a method picker inside the Simplify section.
 
-A `Picker` is added to the Simplify panel section, between the toggle and the strength slider:
+Two changes from the original draft:
+
+- keep the picker bound to `state.simplificationMethod`
+- populate it from `state.availableSimplificationMethods`, not `SimplificationMethod.allCases`
+
+Example:
 
 ```swift
-PanelSection(title: "Simplify") {
-    Toggle("Enabled", isOn: /* existing binding */)
-
-    if state.simplifyEnabled {
-        // Model picker
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Method")
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.8))
-            Picker("Method", selection: Binding(
-                get: { state.simplificationMethod },
-                set: { method in
-                    state.simplificationMethod = method
-                    state.applySimplify()
-                }
-            )) {
-                ForEach(SimplificationMethod.allCases) { method in
-                    Text(method.label).tag(method)
-                }
-            }
-            .pickerStyle(.menu)
-            .tint(.blue)
+Picker("Method", selection: Binding(
+    get: { state.simplificationMethod },
+    set: { method in
+        state.simplificationMethod = method
+        if state.simplifyEnabled {
+            state.applySimplify()
         }
-
-        // Existing strength slider (unchanged)
+    }
+)) {
+    ForEach(state.availableSimplificationMethods) { method in
+        Text(method.label).tag(method)
     }
 }
+.pickerStyle(.menu)
 ```
 
-The toggle label changes from "UltraSharp" to "Enabled" since the method name is now shown in the picker.
-
-No other UI changes. Compare view, export, mode processing all work unchanged on top of whatever the selected method produces.
+The toggle label should change from `UltraSharp` to something method-agnostic such as `Enable Simplification`.
 
 ## File Changes Summary
 
 | File | Change |
-|------|--------|
-| `AppModels.swift` | Add `SimplificationMethod` enum |
-| `AppState.swift` | Add `simplificationMethod` property, update `applySimplify()` |
-| `ImageSimplifier.swift` | Dictionary model cache, generic `loadModel(for:)`, pipeline routing by method type |
-| `Shaders.metal` | Add `kuwahara_structure_tensor` and `kuwahara_filter` compute kernels |
-| `MetalContext.swift` | Add `anisotropicKuwahara()` method, compile 2 new pipeline states |
-| `ControlPanelView.swift` | Add method picker, rename toggle label |
-| `scripts/convert_models.py` | New — model download and CoreML conversion script |
-| Bundle | Add 4 new `.mlpackage` files (APISR, SwinIR, WhiteBox, AnimeGAN) |
+|---|---|
+| `ios/RefPlane/Models/AppModels.swift` | add `SimplificationMethod` and `SimplificationProcessingKind` |
+| `ios/RefPlane/Models/AppState.swift` | add selected method, available methods list, simplification task cancellation, error handling |
+| `ios/RefPlane/Processing/ImageSimplifier.swift` | route by method, throw errors, actor-backed model cache |
+| `ios/RefPlane/Processing/MetalContext.swift` | add Kuwahara pipelines and texture-based execution method |
+| `ios/RefPlane/Processing/Shaders.metal` | add `kuwahara_structure_tensor` and `kuwahara_filter` kernels |
+| `ios/RefPlane/Views/ControlPanelView.swift` | add method picker and rename toggle label |
+| `scripts/convert_models.py` | convert plus validate models and emit manifests |
+| `ios/RefPlane.xcodeproj/project.pbxproj` | register new bundled `.mlpackage` resources |
 
 ## Housekeeping
 
-Fix the stale doc comment in `AppState.swift` line 29: change "downscale factor 2–8" to "downscale factor 2–12" to match the actual implementation (`2.0 + simplifyStrength * 10.0`).
-
-Update the MetalContext pipeline count log message from "7 compute pipelines" to "9 compute pipelines" after adding the two Kuwahara kernels.
+- fix the stale `AppState.swift` comment that still says simplify strength maps to downscale `2-8`; the code already maps to `2-12`
+- update the MetalContext startup log from `7` pipelines to `9` once the Kuwahara kernels are added
 
 ## Verification
 
-This is an exploration project — success is subjective (visual quality of simplification). Verification:
-
-1. **Smoke test each method:** Load a test image, select each method in the picker, confirm simplification runs without crash and produces a visibly different result.
-2. **Visual comparison:** For each method at strength 50%, check that edges/large structures are preserved while fine texture is reduced compared to the original.
-3. **Strength slider:** Confirm that increasing strength produces more aggressive simplification for all methods.
-4. **Mode stacking:** Confirm that tonal/value/color modes work correctly on top of each simplification method's output.
-5. **Memory:** Switch between all 6 methods repeatedly, confirm no crash from memory pressure on a physical device.
+1. Smoke test each bundled method on device: no crash, image changes, processing completes.
+2. Rapidly switch methods and move the strength slider: only the latest requested result should win.
+3. Remove one bundled model intentionally: the method should disappear from the picker or fail with a visible error, not silently return the original image.
+4. For each shipped method at 50% strength, verify large forms remain readable while fine texture is reduced.
+5. Verify tonal, value, and color modes still work on top of each simplification result.
+6. For any style-transfer method, verify at least one non-square image path.
+7. Repeatedly cycle through all bundled methods on a physical device and watch for memory regressions.

@@ -78,3 +78,45 @@ func defaultThresholds(for levels: Int) -> [Double] {
     guard levels > 1 else { return [] }
     return (1..<levels).map { Double($0) / Double(levels) }
 }
+
+// MARK: - Simplification method model
+
+enum SimplificationProcessingKind {
+    case superResolution4x
+    case fullImageModel
+    case metalShader
+}
+
+enum SimplificationMethod: String, CaseIterable, Identifiable {
+    case realESRGAN = "RealESRGAN"
+    case apisr      = "APISR"
+    case swinIR     = "SwinIR"
+    case whitebox   = "Cartoonize"
+    case animeGAN   = "AnimeGAN"
+    case kuwahara   = "Kuwahara"
+
+    var id: String { rawValue }
+    var label: String { rawValue }
+
+    var processingKind: SimplificationProcessingKind {
+        switch self {
+        case .realESRGAN, .apisr, .swinIR:
+            return .superResolution4x
+        case .whitebox, .animeGAN:
+            return .fullImageModel
+        case .kuwahara:
+            return .metalShader
+        }
+    }
+
+    var modelBundleName: String? {
+        switch self {
+        case .realESRGAN: return "RealESRGAN_x4"
+        case .apisr:      return "APISR_GRL_x4"
+        case .swinIR:     return "SwinIR_Lightweight_x4"
+        case .whitebox:   return "WhiteBoxCartoonization"
+        case .animeGAN:   return "AnimeGANv3"
+        case .kuwahara:   return nil
+        }
+    }
+}
