@@ -22,6 +22,7 @@ class AppState: ObservableObject {
     @Published var compareMode: Bool        = false
     @Published var isolatedBand: Int?       = nil
     @Published var errorMessage: String?    = nil
+    @Published var panelCollapsed: Bool     = false
 
     // Configs
     @Published var gridConfig: GridConfig   = GridConfig()
@@ -187,7 +188,17 @@ class AppState: ObservableObject {
         simplifyGeneration += 1
         let generation = simplifyGeneration
 
-        let downscale = CGFloat(2.0 + simplifyStrength * 10.0)
+        // Normalize the downscale factor to the image resolution so that the
+        // absolute intermediate pixel size — what determines the visual degree of
+        // simplification — stays consistent regardless of the input dimensions.
+        // At the reference resolution (1600 px) the mapping is the full 2–12×
+        // range; for smaller images the factor scales down proportionally so that
+        // lower-resolution photos are not over-simplified at the same slider value.
+        let referenceResolution: CGFloat = 1600.0
+        let maxDimension = max(source.size.width, source.size.height)
+        let resolutionScale = maxDimension / referenceResolution
+        let rawDownscale = 2.0 + simplifyStrength * 10.0
+        let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
         let method = simplificationMethod
 
         isProcessing = true

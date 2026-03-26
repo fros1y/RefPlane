@@ -5,6 +5,21 @@ struct ControlPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Collapse handle
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    state.panelCollapsed = true
+                }
+            } label: {
+                Capsule()
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: 36, height: 4)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             // Action bar always at top
             ActionBarView()
                 .padding(.horizontal, 12)
