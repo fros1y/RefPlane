@@ -1,128 +1,374 @@
-# HIG Compliance & Light Mode — Design
+# Underpaint Rebrand & HIG Compliance Plan
 
 **Date:** 2026-03-26
-**Goal:** Make RefPlane look and feel like a native, professional iOS app by adopting Apple Human Interface Guidelines across color, typography, components, materials, spacing, and accessibility. Add full light/dark mode support.
+**Status:** Canonical plan
+**Canonical Path:** `docs/plans/2026-03-26-hig-compliance-design.md`
 
-## 1. Color System
+This document replaces the earlier split between a product-level HIG design note and a separate implementation plan. It is the single source of truth for the `Underpaint` rebrand and the iOS polish pass.
 
-Replace all hardcoded colors with iOS semantic colors. Remove `.preferredColorScheme(.dark)` from `RefPlaneApp`.
+## 1. Overview
 
-| Current | Replacement | Purpose |
-|---------|-------------|---------|
-| `Color(white: 0.10)` | `Color(.systemGroupedBackground)` | Panel background |
-| `Color.black` (canvas) | `Color(.systemBackground)` | Canvas background |
-| `Color(white: 0.12)` | `Color(.secondarySystemGroupedBackground)` | Subtle surfaces |
-| `.foregroundColor(.white)` | `.foregroundStyle(.primary)` | Primary text |
-| `.foregroundColor(.white.opacity(0.8))` | `.foregroundStyle(.secondary)` | Secondary text |
-| `.foregroundColor(.white.opacity(0.55))` | `.foregroundStyle(.tertiary)` | Tertiary text |
-| `.foregroundColor(.white.opacity(0.4))` | `.foregroundStyle(.quaternary)` | Hints |
-| `Color.white.opacity(0.07)` | `Color(.tertiarySystemFill)` | Fill backgrounds |
-| `Color.white.opacity(0.1)` | `Color(.secondarySystemFill)` | Button backgrounds |
-| `Color.white.opacity(0.15)` | `Color(.secondarySystemGroupedBackground)` | Overlay backgrounds |
-| Divider `.background(Color.white.opacity(0.12))` | Plain `Divider()` | System dividers |
+The current app works, but it still presents itself like an internal image-processing utility:
 
-**Exception:** Image canvas and compare views keep `Color.black` background regardless of appearance — standard for photo/media apps.
+- the app shell is a custom panel-first layout instead of a native iOS editor
+- the UI is globally forced into dark mode
+- several labels expose implementation details instead of painter-facing language
+- custom chrome, section headers, and button styles create a "developer UI" feel
 
-## 2. Typography
+The goal of this pass is to reposition `RefPlane` as `Underpaint`, a polished iOS reference-prep tool for painters and illustrators.
 
-Replace hardcoded font sizes with Dynamic Type semantic styles.
+## 2. Goals
 
-| Current | Replacement | Where |
-|---------|-------------|-------|
-| `.system(size: 15, weight: .bold, design: .rounded)` | `.headline` | Header |
-| `.system(size: 17, weight: .semibold)` | `.body.weight(.semibold)` | Back button |
-| `.system(size: 18)` | `.body` | Action bar icons |
-| `.system(size: 14, weight: .semibold)` | `.subheadline.weight(.semibold)` | Mode icons |
-| `.system(size: 13, weight: .medium)` | `.subheadline` | "Show Panel" |
-| `.system(size: 12, weight: .semibold)` | `.caption.weight(.semibold)` | Chevrons |
-| `.system(size: 10)` | `.caption2` | Mode labels, band labels |
-| Section headers `.caption` | `.footnote.weight(.semibold)` | PanelSection titles |
-| `.system(size: 60)` | Keep fixed | Decorative empty-state icon |
+- Rename the app to `Underpaint` everywhere the user sees it.
+- Make the app feel native on iPhone and iPad.
+- Reduce the "developer UI" feel through simpler layout, calmer surfaces, and better copy.
+- Keep the image-first workflow fast: open, study, adjust, compare, export.
+- Adopt Apple HIG conventions for color, typography, controls, feedback, spacing, and accessibility.
 
-Drop `.design(.rounded)` on the header. Keep `.monospacedDigit()` on numeric readouts.
+## 3. Non-Goals
 
-## 3. Control Panel Structure
+- Do not change the image-processing algorithms as part of this pass.
+- Do not rename internal Swift types, target names, or folders unless needed for user-facing behavior.
+- Do not lighten the image canvas itself; media surfaces should remain dark and content-first.
 
-Replace custom `PanelSection` + `ScrollView` + `VStack` with native `Form(.grouped)`.
+## 4. Current UX Findings
 
-**Before:**
-```
-VStack → Capsule handle → ActionBar → Divider → ScrollView → VStack → PanelSection(s)
-```
+Grounded in the current SwiftUI implementation:
 
-**After:**
-```
-VStack → Collapse handle (44pt target) → ActionBar → Form(.grouped) → Section(s)
-```
+- `ContentView` uses a custom bottom panel in portrait and a custom collapsible inspector rail in landscape.
+- `ControlPanelView` uses a hand-built stack of collapsible sections, hardcoded spacing, and utility-style headers.
+- `ActionBarView` and `ModeBarView` reimplement common system controls instead of using native patterns.
+- `RefPlaneApp` forces dark mode globally even though only the media canvas needs it.
+- Simplification UI exposes technical implementation detail.
+- Error feedback is handled through a custom toast rather than the default iOS presentation patterns.
 
-- Remove `PanelSection` entirely. Native `Section` provides grouped-inset styling, headers, spacing, dividers, and light/dark adaptation for free.
-- Per-section collapse is removed. The whole panel already collapses; iOS 17+ `Section(isExpanded:)` available later if needed.
-- "RefPlane" + mode label header moves into the action bar area.
-- `Form` provides standard 20pt insets, proper row heights, grouped backgrounds, accessible row sizing, and correct separator insets.
+## 5. Product Direction
 
-## 4. Components
+`Underpaint` should feel like a focused studio tool, not a technical console.
 
-**Mode Bar:** Replace custom `ModeBarView` with native `Picker(.segmented)`:
-```swift
-Picker("Mode", selection: $state.activeMode) {
-    ForEach(RefPlaneMode.allCases) { mode in
-        Label(mode.label, systemImage: mode.iconName).tag(mode)
-    }
-}
-.pickerStyle(.segmented)
-```
+The UI should emphasize:
 
-**Action Bar:** Keep HStack layout, use `.buttonStyle(.bordered)` / `.buttonStyle(.borderedProminent)` for active state.
+- the reference image first
+- a small number of clear study modes
+- progressive disclosure for advanced controls
+- native iOS controls and grouped surfaces
+- plain-language copy that supports art-making rather than implementation detail
 
-**Notan button:** `.buttonStyle(.bordered)` — standard tinted capsule.
+## 6. Rebrand Scope
 
-**Collapse handle:** Keep 36x5pt visual capsule, expand `contentShape` to 44pt minimum.
+### Required user-facing rename
 
-**Back/load button:** `.ultraThinMaterial` background instead of `Color.black.opacity(0.5)`.
+The following should change from `RefPlane` to `Underpaint`:
 
-**LabeledPicker:** Remove `.colorMultiply(.init(white: 0.8))` hack.
+- app display name
+- visible in-app title
+- photo-library permission copy
+- README and product-facing docs
+- any future user-visible export/share labels or metadata
 
-## 5. Materials & Overlays
+### Internal rename policy
 
-| Element | Current | Proposed |
-|---------|---------|----------|
-| Processing overlay | `Color.black.opacity(0.45)` | `.ultraThinMaterial` |
-| Error toast bg | `Color(white: 0.15).opacity(0.95)` | `.regularMaterial` |
-| Compare labels bg | `Color.black.opacity(0.6)` | `.ultraThinMaterial` + clipShape |
-| "Show Panel" capsule | `Color(white: 0.15).opacity(0.95)` | `.regularMaterial` |
-| Back button bg | `Color.black.opacity(0.5)` | `.ultraThinMaterial` |
+For this pass, internal names may remain `RefPlane` where changing them would add risk without improving the shipped product:
 
-Rule: semi-transparent over media → `.ultraThinMaterial`; floating UI → `.regularMaterial`.
+- Xcode target name
+- scheme name
+- Swift types such as `RefPlaneApp` and `RefPlaneMode`
+- repo folder names
 
-## 6. Spacing & Touch Targets
+### Optional follow-up
 
-**8pt grid normalization:**
+If distribution strategy allows it, a later cleanup pass may rename:
 
-| Current | Becomes |
-|---------|---------|
-| 3pt | 4pt (tight groupings only) |
-| 6pt, 7pt | 8pt |
-| 10pt | 8pt or 12pt |
-| 14pt horizontal padding | Removed (Form handles insets) |
-| 16pt | 16pt (standard iOS margin) |
+- target and scheme
+- product name
+- bundle identifier
+- top-level iOS folder names
 
-**44pt minimum touch targets:**
+That should be a separate decision because it affects app identity and continuity.
 
-| Element | Current | Fix |
-|---------|---------|-----|
-| Collapse handle | ~20pt | `contentShape(Rectangle())` at 44pt |
-| Palette band rows | Variable | `.frame(minHeight: 44)` |
-| Error toast dismiss | ~22pt | `.frame(minWidth: 44, minHeight: 44)` |
+## 7. UX And Visual Direction
 
-## 7. Accessibility
+### 7.1 App shell
 
-**Labels:**
-- Back button: `.accessibilityLabel("Load new image")`
-- Collapse handle: `.accessibilityLabel("Collapse panel")` + hint
-- Palette swatches: `.accessibilityLabel("Band N, color M")` + `.isSelected` trait
-- Compare slider: `.accessibilityLabel("Comparison divider")` + `.accessibilityValue`
-- Processing overlay: `.accessibilityLabel(state.processingLabel)`
+The app should remain a single-scene editor, but the shell should feel native.
 
-**Dynamic Type:** Comes free from semantic text styles + `Form` rows.
+**iPhone portrait**
 
-**Reduce Motion:** Spring animations fall back to `.linear(duration: 0.2)` or no animation when `AccessibilityReduceMotion` is enabled.
+- keep the canvas as the primary surface
+- move controls into a bottom sheet with medium and large detents
+- use a top toolbar for import, compare, export, and inspector actions
+
+This replaces the custom half-height bottom panel.
+
+**iPad and wide landscape**
+
+- keep the canvas and inspector visible together
+- use a clean trailing inspector surface around 320-360pt wide
+- show or hide the inspector from a normal toolbar action, not a thin chevron strip
+
+### 7.2 Information architecture
+
+The inspector should be organized in this order:
+
+1. `Mode`
+2. `Simplify`
+3. `Adjustments`
+4. `Palette`
+5. `Grid`
+
+Rules:
+
+- show only sections relevant to the selected mode
+- keep common controls near the top
+- avoid nested custom collapsible subsections
+- hide low-value technical detail unless there is a clear user-facing need
+
+### 7.3 Mode labels
+
+Recommended user-facing labels:
+
+- `Original`
+- `Tonal`
+- `Value`
+- `Color`
+
+`Source` is acceptable if the team prefers it, but the language should stay art-study oriented.
+
+### 7.4 Simplify section
+
+The simplify UI should present user intent first:
+
+- `Simplify Image` toggle
+- `Strength` slider
+
+Only surface a method picker when there is more than one shippable option. If multiple methods are exposed later, do not show raw model identifiers such as `APISR`; use user-facing names.
+
+### 7.5 Visual system
+
+Outside of media surfaces, use semantic system colors and materials.
+
+| Current pattern | New direction |
+|------|------|
+| hardcoded grayscale backgrounds | `systemBackground`, `secondarySystemGroupedBackground`, `systemGroupedBackground` |
+| hardcoded white text opacity stacks | `.primary`, `.secondary`, `.tertiary`, `.quaternary` |
+| custom translucent fills | `secondarySystemFill`, `tertiarySystemFill`, system materials |
+| custom divider colors | native `Divider` and `Section` separators |
+
+The canvas and compare surfaces remain black or near-black regardless of appearance mode.
+
+### 7.6 Typography
+
+Use semantic text styles and Dynamic Type:
+
+- titles: `title3` or `headline`
+- section headers: standard `Section` headers or `footnote.weight(.semibold)`
+- values: `subheadline.monospacedDigit()`
+- helper text: `footnote` or `caption`
+
+Avoid all-caps utility styling unless it adds meaningful hierarchy.
+
+### 7.7 Feedback
+
+- empty states should use one clear primary action and supportive text
+- processing states should use `ProgressView` with plain-language labels
+- blocking processing and loading failures should default to `alert`
+- banner-style surfaces are only appropriate for transient, non-blocking notices
+
+### 7.8 Accessibility
+
+- all controls meet the 44pt minimum touch target
+- all labels use semantic text styles
+- compare slider exposes value and adjustability
+- palette selection exposes selected state
+- reduce-motion mode disables spring-heavy transitions
+- both light and dark appearance preserve contrast on non-canvas surfaces
+
+## 8. Copy And Terminology
+
+The app should sound like a creative tool, not a pipeline debugger.
+
+Recommended copy changes:
+
+- `RefPlane` -> `Underpaint`
+- `Show Panel` -> `Adjustments`
+- `Enable Simplification` -> `Simplify Image`
+- raw method names such as `APISR` -> hidden or replaced with user-facing names
+- `Tap to open an image` -> `Choose a reference image`
+
+Recommended photo-library permission copy:
+
+`Underpaint needs access to your photo library so you can choose reference images for study and painting.`
+
+## 9. File Map
+
+All work stays within existing files.
+
+| File | Responsibility in this plan |
+|------|------|
+| `ios/RefPlane/RefPlaneApp.swift` | remove forced global dark mode |
+| `ios/RefPlane/Views/ContentView.swift` | native app-shell behavior, inspector presentation, error presentation |
+| `ios/RefPlane/Views/ControlPanelView.swift` | convert custom panel chrome into native grouped inspector content |
+| `ios/RefPlane/Views/ActionBarView.swift` | move toward toolbar-native controls and title treatment |
+| `ios/RefPlane/Views/ModeBarView.swift` | replace custom segmented control with native segmented picker |
+| `ios/RefPlane/Views/ThresholdSliderView.swift` | semantic colors and control polish for reusable setting rows |
+| `ios/RefPlane/Views/GridSettingsView.swift` | adapt settings to native `Form` usage |
+| `ios/RefPlane/Views/ValueSettingsView.swift` | adapt settings to native `Form` usage and simplify copy |
+| `ios/RefPlane/Views/ColorSettingsView.swift` | adapt settings to native `Form` usage |
+| `ios/RefPlane/Views/PaletteView.swift` | improve selection clarity, touch targets, and semantic styling |
+| `ios/RefPlane/Views/ImageCanvasView.swift` | keep dark media surface, upgrade overlays, improve empty state |
+| `ios/RefPlane/Views/CompareView.swift` | polish compare labels and handle while keeping dark media surface |
+| `ios/RefPlane/Views/ErrorToastView.swift` | either restyle for non-blocking use or retire in favor of alerts |
+| `ios/RefPlane.xcodeproj/project.pbxproj` | update display name and permission string |
+| `README.md` | update product-facing naming and terminology |
+
+## 10. Execution Plan
+
+This should ship in phases rather than as one monolithic rewrite.
+
+### Phase 1: Foundation And Rebrand
+
+**Primary files**
+
+- `ios/RefPlane/RefPlaneApp.swift`
+- `ios/RefPlane/Views/ImageCanvasView.swift`
+- `ios/RefPlane/Views/CompareView.swift`
+- `ios/RefPlane.xcodeproj/project.pbxproj`
+- `README.md`
+
+**Work**
+
+- remove `.preferredColorScheme(.dark)` from the app entry point
+- keep the image canvas and compare views pinned to dark appearance
+- set `CFBundleDisplayName` to `Underpaint`
+- update the photo-library permission copy to the new user-facing wording
+- rename visible product references in docs and UI copy
+
+**Result**
+
+- the app can participate in system light and dark mode correctly
+- only media surfaces stay dark by design
+- users see `Underpaint` consistently
+
+### Phase 2: App Shell Modernization
+
+**Primary files**
+
+- `ios/RefPlane/Views/ContentView.swift`
+- `ios/RefPlane/Views/ControlPanelView.swift`
+- `ios/RefPlane/Views/ActionBarView.swift`
+
+**Work**
+
+- replace the portrait custom panel with a bottom inspector sheet using detents
+- replace the wide-layout chevron rail with a cleaner inspector show-hide affordance
+- use a normal toolbar/title treatment rather than embedding identity into a custom dark header
+- preserve compare and export actions, but present them using native button and toolbar patterns
+
+**Result**
+
+- the app stops feeling like a desktop tool wrapped in SwiftUI
+- iPhone portrait becomes substantially more native
+
+### Phase 3: Inspector And Controls Cleanup
+
+**Primary files**
+
+- `ios/RefPlane/Views/ControlPanelView.swift`
+- `ios/RefPlane/Views/ModeBarView.swift`
+- `ios/RefPlane/Views/ThresholdSliderView.swift`
+- `ios/RefPlane/Views/GridSettingsView.swift`
+- `ios/RefPlane/Views/ValueSettingsView.swift`
+- `ios/RefPlane/Views/ColorSettingsView.swift`
+- `ios/RefPlane/Views/PaletteView.swift`
+
+**Work**
+
+- replace custom panel sections with `Form` and `Section`
+- replace the custom mode bar with a native segmented picker
+- switch reusable controls to semantic colors and typography
+- remove manual tint hacks and hardcoded white-on-dark styling from settings views
+- make palette rows large enough to read as selectable, not incidental
+- simplify copy so the inspector reads like a creative tool
+
+**Result**
+
+- the inspector uses native grouped patterns
+- settings read clearly in both light and dark appearance
+- control density and terminology improve substantially
+
+### Phase 4: Feedback, Overlays, And Accessibility
+
+**Primary files**
+
+- `ios/RefPlane/Views/ContentView.swift`
+- `ios/RefPlane/Views/ImageCanvasView.swift`
+- `ios/RefPlane/Views/CompareView.swift`
+- `ios/RefPlane/Views/ErrorToastView.swift`
+
+**Work**
+
+- update processing overlays to use materials and clearer progress copy
+- replace toast-first error handling with alerts for blocking failures
+- add VoiceOver labels, values, traits, and hints where missing
+- enforce 44pt touch targets for collapse, palette, and dismiss interactions
+- respect Reduce Motion when transitioning inspector surfaces
+
+**Result**
+
+- the app feels more native under load and in failure states
+- accessibility is built into the surface rather than patched later
+
+### Phase 5: Verification And Cleanup
+
+**Work**
+
+- build the app after each phase with `xcodebuild`
+- verify portrait and landscape on iPhone plus wide layout on iPad
+- verify light mode and dark mode separately
+- verify compare flow, export flow, empty state, and image reload flow
+- scan for remaining hardcoded dark-only styling in view code
+- confirm no user-visible `RefPlane` strings remain in the shipped app surface
+
+## 11. Implementation Checklist
+
+This checklist replaces the old long-form task script.
+
+- [ ] Remove forced dark mode from `RefPlaneApp.swift`
+- [ ] Keep `ImageCanvasView` and compare views dark regardless of system appearance
+- [ ] Update `project.pbxproj` with `Underpaint` display name and revised photo permission string
+- [ ] Update product-facing copy in `README.md`
+- [ ] Rework `ContentView` so portrait uses a native inspector sheet
+- [ ] Rework wide layouts so inspector visibility is controlled with normal app chrome
+- [ ] Convert `ControlPanelView` to a native grouped inspector structure
+- [ ] Replace `ModeBarView` with a native segmented picker
+- [ ] Update `ThresholdSliderView` and other reusable controls to use semantic colors
+- [ ] Adapt `GridSettingsView`, `ValueSettingsView`, and `ColorSettingsView` to `Form` rows
+- [ ] Improve `PaletteView` touch targets and selection feedback
+- [ ] Update canvas and compare overlays to use material-backed surfaces where appropriate
+- [ ] Replace blocking error toast behavior with alerts
+- [ ] Add accessibility labels, values, traits, and reduce-motion behavior
+- [ ] Verify the app in light mode, dark mode, portrait, landscape, and compare workflows
+
+## 12. Acceptance Criteria
+
+The work is complete when all of the following are true:
+
+- the shipped app is called `Underpaint` everywhere the user sees it
+- the app no longer looks broken or improvised in light mode
+- iPhone portrait no longer relies on a custom half-height control drawer
+- the control surface reads as an inspector for artists rather than a developer tool panel
+- no raw model identifiers are exposed in the default user flow
+- non-media UI uses semantic colors, Dynamic Type, and native control styling
+- errors and progress feedback follow standard iOS patterns
+
+## 13. Notes On Scope
+
+The earlier implementation plan optimized for incremental edits inside the current structure. This merged plan keeps its useful file map and execution breakdown, but changes the target where necessary:
+
+- portrait should move to a sheet-based inspector instead of preserving the current custom panel
+- rebranding is broader than the app icon label
+- error handling should move closer to standard iOS patterns rather than just restyling the existing toast
+
+## 14. Summary Decision
+
+The correct path is not to merely restyle the current dark utility panel. `Underpaint` should keep the existing fast single-screen workflow, but the shell, copy, and inspector behavior need to shift toward native iOS patterns. This plan defines both the product direction and the concrete file-by-file work needed to get there.
