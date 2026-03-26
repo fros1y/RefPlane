@@ -2,8 +2,7 @@ import SwiftUI
 
 struct ActionBarView: View {
     @EnvironmentObject private var state: AppState
-    @State private var showShareSheet = false
-    @State private var exportImage: UIImage?
+    @State private var exportItem: ExportItem?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -13,17 +12,21 @@ struct ActionBarView: View {
             .disabled(state.displayBaseImage == nil)
 
             ActionButton(icon: "square.and.arrow.up", label: "Export") {
-                exportImage = state.exportCurrentImage()
-                if exportImage != nil { showShareSheet = true }
+                if let img = state.exportCurrentImage() {
+                    exportItem = ExportItem(image: img)
+                }
             }
             .disabled(state.currentDisplayImage == nil)
         }
-        .sheet(isPresented: $showShareSheet) {
-            if let img = exportImage {
-                ShareSheet(items: [img])
-            }
+        .sheet(item: $exportItem) { item in
+            ShareSheet(items: [item.image])
         }
     }
+}
+
+private struct ExportItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
 }
 
 private struct ActionButton: View {

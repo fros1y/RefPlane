@@ -16,6 +16,7 @@ class AppState: ObservableObject {
     @Published var activeMode: RefPlaneMode = .original
     @Published var isProcessing: Bool       = false
     @Published var processingProgress: Double = 0
+    @Published var processingLabel: String  = "Processing…"
     @Published var showCompare: Bool        = false
     @Published var compareMode: Bool        = false
     @Published var isolatedBand: Int?       = nil
@@ -167,6 +168,8 @@ class AppState: ObservableObject {
         let method = simplificationMethod
 
         isProcessing = true
+        processingProgress = 0
+        processingLabel = "Simplifying…"
         errorMessage = nil
 
         simplifyTask = Task {
@@ -174,7 +177,10 @@ class AppState: ObservableObject {
                 let simplified = try await ImageSimplifier.simplify(
                     image: source,
                     downscale: downscale,
-                    method: method
+                    method: method,
+                    onProgress: { [weak self] p in
+                        Task { @MainActor [weak self] in self?.processingProgress = p }
+                    }
                 )
                 try Task.checkCancellation()
 
@@ -182,6 +188,7 @@ class AppState: ObservableObject {
                     guard self.simplifyGeneration == generation else { return }
                     self.simplifiedImage = simplified
                     self.isProcessing    = false
+                    self.processingLabel = "Processing…"
                     self.triggerProcessing()
                 }
             } catch is CancellationError {
@@ -190,6 +197,7 @@ class AppState: ObservableObject {
                 await MainActor.run {
                     guard self.simplifyGeneration == generation else { return }
                     self.isProcessing = false
+                    self.processingLabel = "Processing…"
                     self.errorMessage = error.localizedDescription
                 }
             }

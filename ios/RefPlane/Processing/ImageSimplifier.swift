@@ -119,12 +119,15 @@ enum ImageSimplifier {
     ///   - image: The source image (already capped to max 1600 px).
     ///   - downscale: Downsample factor before processing (2–12).
     ///   - method: The simplification method to apply.
+    ///   - onProgress: Optional closure called with a 0–1 progress fraction as tiles complete.
+    ///                 Called from a background thread; hop to main actor if needed.
     /// - Throws: `SimplificationError` if the model is unavailable or inference fails.
     /// - Returns: The simplified image at the original dimensions.
     static func simplify(
         image: UIImage,
         downscale: CGFloat = 4.0,
-        method: SimplificationMethod = .apisr
+        method: SimplificationMethod = .apisr,
+        onProgress: ((Double) -> Void)? = nil
     ) async throws -> UIImage {
         guard let sourceCG = image.cgImage else {
             throw SimplificationError.inferenceFailed(method)
@@ -155,7 +158,7 @@ enum ImageSimplifier {
             case .superResolution4x:
                 guard let model = loadedModel,
                       let smallCG = small.cgImage,
-                      let upscaled = processInTiles(smallCG, model: model) else {
+                      let upscaled = processInTiles(smallCG, model: model, onProgress: onProgress) else {
                     throw SimplificationError.inferenceFailed(method)
                 }
                 return resizeToPixels(upscaled, width: origW, height: origH)
@@ -190,7 +193,7 @@ enum ImageSimplifier {
     ///   4. Trim the padded overlap from each output tile
     ///   5. Place only the valid (non-overlapping) core into the output canvas
     ///   6. Remove the pre-pad region from the final output
-    private static func processInTiles(_ input: CGImage, model: MLModel) -> UIImage? {
+    private static func processInTiles(_ input: CGImage, model: MLModel, onProgress: ((Double) -> Void)? = nil) -> UIImage? {
         let srcW = input.width
         let srcH = input.height
         let scale = upscaleFactor
@@ -315,6 +318,10 @@ enum ImageSimplifier {
                         outputPixels[dstIdx + 3] = 255
                     }
                 }
+
+                // Report tile-based progress
+                let completedTiles = ty * tilesX + tx + 1
+                onProgress?(Double(completedTiles) / Double(tilesX * tilesY))
             }
         }
 

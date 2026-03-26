@@ -90,7 +90,7 @@ struct ImageCanvasView: View {
                                 ProgressView(value: state.processingProgress)
                                     .tint(.white)
                                     .frame(width: 160)
-                                Text("Processing\u{2026}")
+                                Text(state.processingLabel)
                                     .font(.caption)
                                     .foregroundColor(.white.opacity(0.8))
                             }
