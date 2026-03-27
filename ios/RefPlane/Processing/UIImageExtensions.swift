@@ -43,7 +43,7 @@ extension UIImage {
     }
 
     /// Decode image to raw RGBA bytes. Returns nil on failure.
-    func toPixelData() -> (data: [UInt8], width: Int, height: Int)? {
+    public func toPixelData() -> (data: [UInt8], width: Int, height: Int)? {
         // Normalize orientation first
         let normalised = normalizedOrientation()
         guard let cgImg = normalised.cgImage else { return nil }
@@ -71,7 +71,7 @@ extension UIImage {
     }
 
     /// Build a UIImage from raw RGBA bytes.
-    static func fromPixelData(_ data: [UInt8], width: Int, height: Int) -> UIImage? {
+    public static func fromPixelData(_ data: [UInt8], width: Int, height: Int) -> UIImage? {
         // Use CGDataProvider to avoid the two 30MB copies that the old
         // CGContext-based approach required (var copy + makeImage copy).
         guard let provider = CGDataProvider(data: Data(data) as CFData) else { return nil }

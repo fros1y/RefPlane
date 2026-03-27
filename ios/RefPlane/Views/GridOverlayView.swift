@@ -23,10 +23,10 @@ struct GridOverlayView: View {
                 let originX = (size.width  - imgSize.width)  / 2
                 let originY = (size.height - imgSize.height) / 2
 
-                let lineColor = resolveLineColor(config: config,
-                                                 ctx: ctx,
-                                                 origin: CGPoint(x: originX, y: originY),
-                                                 size: imgSize)
+                let lineColor = resolveLineColor(
+                    config: config,
+                    image: image ?? state.currentDisplayImage
+                )
 
                 let cellW: CGFloat
                 let cellH: CGFloat
@@ -100,15 +100,7 @@ struct GridOverlayView: View {
         .allowsHitTesting(false)
     }
 
-    private func resolveLineColor(config: GridConfig,
-                                  ctx: GraphicsContext,
-                                  origin: CGPoint,
-                                  size: CGSize) -> Color {
-        switch config.lineStyle {
-        case .black:        return .black
-        case .white:        return .white
-        case .custom:       return config.customColor
-        case .autoContrast: return .white  // default; ideally sample background brightness
-        }
+    private func resolveLineColor(config: GridConfig, image: UIImage?) -> Color {
+        GridLineColorResolver.resolvedColor(config: config, image: image)
     }
 }

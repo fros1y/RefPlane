@@ -196,15 +196,7 @@ struct ThresholdSliderView: View {
     }
 
     private func sanitizedThresholds(expectedHandles: Int) -> [Double] {
-        var safe = thresholds.filter { $0 >= 0 && $0 <= 1 }.sorted()
-        while safe.count < expectedHandles {
-            safe.append(Double(safe.count + 1) / Double(expectedHandles + 1))
-        }
-        safe.sort()
-        if safe.count > expectedHandles {
-            safe = Array(safe.prefix(expectedHandles))
-        }
-        return safe
+        ThresholdUtilities.sanitized(thresholds, levels: expectedHandles + 1)
     }
 }
 

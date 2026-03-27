@@ -25,6 +25,7 @@ enum ColorRegionsProcessor {
         /// Palette colors grouped by family index.
         let palette: [Color]
         let paletteBands: [Int]
+        let pixelBands: [Int]
     }
 
     static func process(image: UIImage, config: ColorConfig) -> Result? {
@@ -202,7 +203,12 @@ enum ColorRegionsProcessor {
         }
         print("[ColorStudy][GPU] remap_by_label: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        return Result(image: image, palette: quantized.palette, paletteBands: quantized.paletteBands)
+        return Result(
+            image: image,
+            palette: quantized.palette,
+            paletteBands: quantized.paletteBands,
+            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily)
+        )
     }
 
     // MARK: - CPU path
@@ -298,7 +304,12 @@ enum ColorRegionsProcessor {
             return nil
         }
 
-        return Result(image: image, palette: quantized.palette, paletteBands: quantized.paletteBands)
+        return Result(
+            image: image,
+            palette: quantized.palette,
+            paletteBands: quantized.paletteBands,
+            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily)
+        )
     }
 
     // MARK: - Shared helpers
@@ -1043,22 +1054,7 @@ enum ColorRegionsProcessor {
     }
 
     private static func normalizedThresholds(_ thresholds: [Double], levels: Int) -> [Float] {
-        let expectedCount = max(0, levels - 1)
-        guard expectedCount > 0 else { return [] }
-
-        var normalized = thresholds
-            .filter { $0 > 0 && $0 < 1 }
-            .sorted()
-
-        while normalized.count < expectedCount {
-            normalized.append(Double(normalized.count + 1) / Double(expectedCount + 1))
-        }
-
-        if normalized.count > expectedCount {
-            normalized = Array(normalized.prefix(expectedCount))
-        }
-
-        return normalized.sorted().map(Float.init)
+        ThresholdUtilities.normalizedFloats(thresholds, levels: levels)
     }
 
     private static func valueBucket(for luminance: Float, thresholds: [Float]) -> Int {
@@ -1073,5 +1069,12 @@ enum ColorRegionsProcessor {
         let lower = valueIndex == 0 ? 0 : thresholds[valueIndex - 1]
         let upper = valueIndex < thresholds.count ? thresholds[valueIndex] : 1
         return (lower + upper) * 0.5
+    }
+
+    private static func pixelBands(from labels: [Int32], valuesPerFamily: Int) -> [Int] {
+        labels.map { label in
+            let value = max(0, Int(label))
+            return valuesPerFamily > 0 ? value / valuesPerFamily : 0
+        }
     }
 }

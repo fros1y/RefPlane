@@ -3,7 +3,23 @@ import Combine
 
 @MainActor
 class AppState: ObservableObject {
+    typealias ProcessOperation = @Sendable (
+        UIImage,
+        RefPlaneMode,
+        ValueConfig,
+        ColorConfig,
+        @escaping @Sendable (Double) -> Void
+    ) async throws -> ProcessingResult
+
+    typealias SimplifyOperation = @Sendable (
+        UIImage,
+        CGFloat,
+        SimplificationMethod,
+        @escaping @Sendable (Double) -> Void
+    ) async throws -> UIImage
+
     // Source images
+    @Published var fullResolutionOriginalImage: UIImage? = nil
     @Published var originalImage: UIImage?  = nil
     @Published var sourceImage: UIImage?    = nil
 
@@ -22,6 +38,7 @@ class AppState: ObservableObject {
     @Published var isolatedBand: Int?       = nil
     @Published var errorMessage: String?    = nil
     @Published var panelCollapsed: Bool     = false
+    @Published private(set) var isolatedProcessedImage: UIImage? = nil
 
     // Configs
     @Published var gridConfig: GridConfig   = GridConfig()
@@ -36,14 +53,16 @@ class AppState: ObservableObject {
     @Published var simplifiedImage: UIImage? = nil
 
     private var processingTask: Task<Void, Never>? = nil
-    private let processor = ImageProcessor()
+    private let processOperation: ProcessOperation
     /// Incremented on every triggerProcessing() call; lets each task know if it is still current.
     private var processingGeneration: Int = 0
 
+    private let simplifyOperation: SimplifyOperation
     private var simplifyTask: Task<Void, Never>? = nil
     private var simplifyGeneration: Int = 0
 
     private var loadingTask: Task<Void, Never>? = nil
+    private var processedPixelBands: [Int] = []
 
     var availableSimplificationMethods: [SimplificationMethod] {
         SimplificationMethod.allCases.filter { method in
@@ -59,7 +78,29 @@ class AppState: ObservableObject {
         }
     }
 
-    init() {
+    init(
+        processOperation: ProcessOperation? = nil,
+        simplifyOperation: SimplifyOperation? = nil
+    ) {
+        let processor = ImageProcessor()
+        self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, onProgress in
+            try await processor.process(
+                image: image,
+                mode: mode,
+                valueConfig: valueConfig,
+                colorConfig: colorConfig,
+                onProgress: onProgress
+            )
+        }
+        self.simplifyOperation = simplifyOperation ?? { image, downscale, method, onProgress in
+            try await ImageSimplifier.simplify(
+                image: image,
+                downscale: downscale,
+                method: method,
+                onProgress: onProgress
+            )
+        }
+
         NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
@@ -72,7 +113,7 @@ class AppState: ObservableObject {
     var displayBaseImage: UIImage? { simplifiedImage ?? sourceImage }
 
     var currentDisplayImage: UIImage? {
-        activeMode == .original ? displayBaseImage : (processedImage ?? displayBaseImage)
+        activeMode == .original ? displayBaseImage : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
     }
 
     func loadImage(_ image: UIImage) {
@@ -83,10 +124,13 @@ class AppState: ObservableObject {
 
         // Show the picked image immediately, then swap in the scaled version
         // once preprocessing finishes so the canvas never blanks out.
+        fullResolutionOriginalImage   = image
         originalImage             = image
         sourceImage               = image
         simplifiedImage           = nil
         processedImage            = nil
+        isolatedProcessedImage    = nil
+        processedPixelBands       = []
         paletteColors             = []
         paletteBands              = []
         isolatedBand              = nil
@@ -123,6 +167,8 @@ class AppState: ObservableObject {
         }
         guard activeMode != .original else {
             processedImage = nil
+            isolatedProcessedImage = nil
+            processedPixelBands = []
             isProcessing = false
             processingProgress = 0
             return
@@ -138,21 +184,23 @@ class AppState: ObservableObject {
 
         processingTask = Task {
             do {
-                let result = try await processor.process(
-                    image: source,
-                    mode: activeMode,
-                    valueConfig: valueConfig,
-                    colorConfig: colorConfig,
-                    onProgress: { [weak self] p in
+                let result = try await processOperation(
+                    source,
+                    activeMode,
+                    valueConfig,
+                    colorConfig,
+                    { [weak self] p in
                         Task { @MainActor [weak self] in self?.processingProgress = p }
                     }
                 )
                 try Task.checkCancellation()
                 await MainActor.run {
                     self.processedImage  = result.image
+                    self.processedPixelBands = result.pixelBands
                     self.paletteColors   = result.palette
                     self.paletteBands    = result.paletteBands
                     self.processingProgress = 1
+                    self.refreshIsolatedProcessedImage()
                 }
             } catch is CancellationError {
                 // Mode switched or new image loaded — new task will update state
@@ -177,13 +225,18 @@ class AppState: ObservableObject {
         activeMode = mode
         isolatedBand = nil
         processedImage = nil
+        isolatedProcessedImage = nil
+        processedPixelBands = []
         paletteColors = []
         paletteBands = []
         triggerProcessing()
     }
 
     func exportCurrentImage() -> UIImage? {
-        currentDisplayImage
+        if activeMode == .original, let fullResolutionOriginalImage {
+            return fullResolutionOriginalImage
+        }
+        return currentDisplayImage
     }
 
     func applySimplify() {
@@ -214,11 +267,11 @@ class AppState: ObservableObject {
 
         simplifyTask = Task {
             do {
-                let simplified = try await ImageSimplifier.simplify(
-                    image: source,
-                    downscale: downscale,
-                    method: method,
-                    onProgress: { [weak self] p in
+                let simplified = try await simplifyOperation(
+                    source,
+                    downscale,
+                    method,
+                    { [weak self] p in
                         Task { @MainActor [weak self] in self?.processingProgress = p }
                     }
                 )
@@ -245,7 +298,33 @@ class AppState: ObservableObject {
     }
 
     func resetSimplify() {
+        simplifyTask?.cancel()
+        simplifyGeneration += 1
         simplifiedImage = nil
+        isolatedProcessedImage = nil
+        processedPixelBands = []
+        processingLabel = "Processing…"
+        processingIsIndeterminate = false
         triggerProcessing()
+    }
+
+    func toggleIsolatedBand(_ band: Int) {
+        isolatedBand = isolatedBand == band ? nil : band
+        refreshIsolatedProcessedImage()
+    }
+
+    private func refreshIsolatedProcessedImage() {
+        guard activeMode == .value || activeMode == .color,
+              let isolatedBand,
+              let processedImage else {
+            isolatedProcessedImage = nil
+            return
+        }
+
+        isolatedProcessedImage = BandIsolationRenderer.isolate(
+            image: processedImage,
+            pixelBands: processedPixelBands,
+            selectedBand: isolatedBand
+        )
     }
 }

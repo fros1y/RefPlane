@@ -7,8 +7,9 @@ struct ProcessingResult {
     let image: UIImage
     let palette: [Color]
     let paletteBands: [Int]
+    let pixelBands: [Int]
 
-    static let empty = ProcessingResult(image: UIImage(), palette: [], paletteBands: [])
+    static let empty = ProcessingResult(image: UIImage(), palette: [], paletteBands: [], pixelBands: [])
 }
 
 // MARK: - Main image processor coordinator
@@ -30,7 +31,7 @@ actor ImageProcessor {
 
         switch mode {
         case .original:
-            return ProcessingResult(image: image, palette: [], paletteBands: [])
+            return ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
 
         case .tonal:
             onProgress(0.3)
@@ -41,7 +42,7 @@ actor ImageProcessor {
             let tonalMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
             print("[ImageProcessor] Tonal total: \(String(format: "%.1f", tonalMs)) ms")
             onProgress(1.0)
-            return ProcessingResult(image: gray, palette: [], paletteBands: [])
+            return ProcessingResult(image: gray, palette: [], paletteBands: [], pixelBands: [])
 
         case .value:
             onProgress(0.2)
@@ -54,7 +55,12 @@ actor ImageProcessor {
             onProgress(1.0)
             let palette = result.levelColors.map { uiColor -> Color in Color(uiColor) }
             let bands   = (0..<palette.count).map { $0 }
-            return ProcessingResult(image: result.image, palette: palette, paletteBands: bands)
+            return ProcessingResult(
+                image: result.image,
+                palette: palette,
+                paletteBands: bands,
+                pixelBands: result.pixelBands
+            )
 
         case .color:
             onProgress(0.2)
@@ -65,8 +71,12 @@ actor ImageProcessor {
             let colorMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
             print("[ImageProcessor] Color total: \(String(format: "%.1f", colorMs)) ms")
             onProgress(1.0)
-            return ProcessingResult(image: result.image, palette: result.palette,
-                                    paletteBands: result.paletteBands)
+            return ProcessingResult(
+                image: result.image,
+                palette: result.palette,
+                paletteBands: result.paletteBands,
+                pixelBands: result.pixelBands
+            )
         }
     }
 }

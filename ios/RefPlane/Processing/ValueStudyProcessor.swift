@@ -8,6 +8,7 @@ enum ValueStudyProcessor {
         let image: UIImage
         /// Grayscale swatch for each level (0 = darkest)
         let levelColors: [UIColor]
+        let pixelBands: [Int]
     }
 
     static func process(image: UIImage, config: ValueConfig) -> Result? {
@@ -96,7 +97,7 @@ enum ValueStudyProcessor {
         stepStart = CFAbsoluteTimeGetCurrent()
         guard let img = UIImage.fromPixelData(out, width: width, height: height) else { return nil }
         print("[ValueStudy]   fromPixelData: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-        return Result(image: img, levelColors: levelColors)
+        return Result(image: img, levelColors: levelColors, pixelBands: labels.map(Int.init))
     }
 
     // MARK: - CPU fallback
@@ -169,6 +170,6 @@ enum ValueStudyProcessor {
         }
 
         guard let img = UIImage.fromPixelData(out, width: width, height: height) else { return nil }
-        return Result(image: img, levelColors: levelColors)
+        return Result(image: img, levelColors: levelColors, pixelBands: labelMap.map(Int.init))
     }
 }
