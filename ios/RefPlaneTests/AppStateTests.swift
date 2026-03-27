@@ -60,8 +60,7 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
     state.sourceImage = processedImage
     state.activeMode = .color
     state.triggerProcessing()
-    await Task.yield()
-    await Task.yield()
+    for _ in 0..<50 where state.isProcessing { await Task.yield() }
 
     state.toggleIsolatedBand(1)
 

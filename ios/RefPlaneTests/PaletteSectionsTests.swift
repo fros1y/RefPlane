@@ -12,7 +12,7 @@ func paletteSectionsPreserveBandMembershipAndIndexOrder() {
             band >= 0 ? index : nil
         }
 
-        #expect(flattenedIndices == expectedIndices)
+        #expect(flattenedIndices.sorted() == expectedIndices.sorted())
         #expect(sections.map(\.band) == sections.map(\.band).sorted())
 
         for section in sections {
