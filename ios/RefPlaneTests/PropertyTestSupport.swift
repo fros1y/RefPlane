@@ -21,4 +21,13 @@ struct SeededGenerator {
         let itemCount = int(in: count)
         return (0..<itemCount).map { _ in int(in: values) }
     }
+
+    mutating func double(in range: ClosedRange<Double>) -> Double {
+        let raw = Double(next()) / Double(UInt64.max)
+        return range.lowerBound + raw * (range.upperBound - range.lowerBound)
+    }
+
+    mutating func uint8() -> UInt8 {
+        UInt8(next() % 256)
+    }
 }

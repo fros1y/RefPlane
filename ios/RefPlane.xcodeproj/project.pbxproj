@@ -19,6 +19,12 @@
 		0A11B22C33D44E55F667710B /* TestImageFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667710C /* TestImageFactory.swift */; };
 		0A11B22C33D44E55F667710E /* PropertyTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */; };
 		0A11B22C33D44E55F6677110 /* BandIsolationRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677111 /* BandIsolationRendererTests.swift */; };
+		0A11B22C33D44E55F6677112 /* OklabColorSpaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677113 /* OklabColorSpaceTests.swift */; };
+		0A11B22C33D44E55F6677114 /* AppModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677115 /* AppModelsTests.swift */; };
+		0A11B22C33D44E55F6677116 /* RegionCleanerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677117 /* RegionCleanerTests.swift */; };
+		0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */; };
+		0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */; };
+		0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */; };
 		0A11B22C33D44E55F6677201 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677202 /* XCTest.framework */; };
 		097184F56F1D4B69A34C551B /* ValueSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */; };
 		18900E3DD6FA4EBFB2BCC1A3 /* ImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */; };
@@ -76,6 +82,12 @@
 		0A11B22C33D44E55F667710C /* TestImageFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestImageFactory.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertyTestSupport.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677111 /* BandIsolationRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandIsolationRendererTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677113 /* OklabColorSpaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OklabColorSpaceTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677115 /* AppModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelsTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677117 /* RegionCleanerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegionCleanerTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KMeansClustererTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrayscaleProcessorTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValueStudyProcessorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677202 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		0A11B22C33D44E55F6677401 /* RefPlaneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RefPlaneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0340E78F278D45F5B04ACA95 /* ColorRegionsProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorRegionsProcessor.swift; path = Processing/ColorRegionsProcessor.swift; sourceTree = "<group>"; };
@@ -145,14 +157,20 @@
 		0A11B22C33D44E55F667710D /* RefPlaneTests */ = {
 			isa = PBXGroup;
 			children = (
+				0A11B22C33D44E55F6677115 /* AppModelsTests.swift */,
 				0A11B22C33D44E55F6677108 /* AppStateTests.swift */,
 				0A11B22C33D44E55F6677111 /* BandIsolationRendererTests.swift */,
 				0A11B22C33D44E55F667710A /* ExportContractTests.swift */,
+				0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */,
 				0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */,
+				0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */,
+				0A11B22C33D44E55F6677113 /* OklabColorSpaceTests.swift */,
 				0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */,
 				0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */,
+				0A11B22C33D44E55F6677117 /* RegionCleanerTests.swift */,
 				0A11B22C33D44E55F667710C /* TestImageFactory.swift */,
 				0A11B22C33D44E55F6677102 /* ThresholdUtilitiesTests.swift */,
+				0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */,
 			);
 			path = RefPlaneTests;
 			sourceTree = "<group>";
@@ -337,14 +355,20 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A11B22C33D44E55F6677114 /* AppModelsTests.swift in Sources */,
 				0A11B22C33D44E55F6677107 /* AppStateTests.swift in Sources */,
 				0A11B22C33D44E55F6677110 /* BandIsolationRendererTests.swift in Sources */,
 				0A11B22C33D44E55F6677109 /* ExportContractTests.swift in Sources */,
+				0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */,
 				0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */,
+				0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */,
+				0A11B22C33D44E55F6677112 /* OklabColorSpaceTests.swift in Sources */,
 				0A11B22C33D44E55F6677103 /* PaletteSectionsTests.swift in Sources */,
 				0A11B22C33D44E55F667710E /* PropertyTestSupport.swift in Sources */,
+				0A11B22C33D44E55F6677116 /* RegionCleanerTests.swift in Sources */,
 				0A11B22C33D44E55F667710B /* TestImageFactory.swift in Sources */,
 				0A11B22C33D44E55F6677101 /* ThresholdUtilitiesTests.swift in Sources */,
+				0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
