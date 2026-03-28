@@ -56,7 +56,7 @@ struct ContentView: View {
                     Button {
                         showImagePicker = true
                     } label: {
-                        Image(systemName: "chevron.left")
+                        Image(systemName: "photo")
                     }
                     .accessibilityLabel("Open photo")
 

@@ -49,8 +49,9 @@ struct PaletteView: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Palette band \(section.band + 1)")
-                    .accessibilityValue(state.isolatedBand == section.band ? "Selected" : "Not selected")
+                    .accessibilityLabel("Palette band \(section.band + 1), \(section.indices.count) color\(section.indices.count == 1 ? "" : "s")")
+                    .accessibilityValue(state.isolatedBand == section.band ? "Isolated" : "")
+                    .accessibilityHint(state.isolatedBand == section.band ? "Tap to show all bands" : "Tap to isolate this band")
                 }
             }
         }

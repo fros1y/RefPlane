@@ -3,13 +3,25 @@ import SwiftUI
 struct AboutPrivacyView: View {
     @Environment(\.dismiss) private var dismiss
 
+    private var appVersionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "v\(version) (\(build))"
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 Section("About") {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Underpaint")
-                            .font(.headline)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Underpaint")
+                                .font(.headline)
+                            Spacer()
+                            Text(appVersionString)
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                        }
 
                         Text("Reference preparation for painting and drawing on iPhone and iPad.")
                             .font(.subheadline)

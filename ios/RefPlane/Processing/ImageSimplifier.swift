@@ -11,12 +11,12 @@ enum SimplificationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .modelUnavailable(let m):
-            return "Model for \(m.label) is not available in this build."
-        case .unsupportedModelContract(let m):
-            return "Model for \(m.label) does not satisfy the required runtime contract."
-        case .inferenceFailed(let m):
-            return "Inference failed for \(m.label)."
+        case .modelUnavailable:
+            return "Couldn't load the image simplifier. Please try again."
+        case .unsupportedModelContract:
+            return "The image simplifier isn't supported on this device."
+        case .inferenceFailed:
+            return "The image simplifier encountered an error. Please try a different image."
         }
     }
 }
