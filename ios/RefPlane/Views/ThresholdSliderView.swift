@@ -8,6 +8,10 @@ struct ThresholdSliderView: View {
     let colorForLevel: (Int, Int) -> Color
 
     @State private var selectedHandleIndex: Int? = nil
+    // Captures the threshold value at the moment each drag begins, preventing
+    // cumulative drift that occurs when startValue + totalTranslation compounds
+    // across re-renders mid-gesture.
+    @State private var dragStartValues: [Int: Double] = [:]
 
     private let minimumGap: Double = 0.02
     private let trackHeight: CGFloat = 10
@@ -92,15 +96,22 @@ struct ThresholdSliderView: View {
             DragGesture(minimumDistance: 0)
                 .onChanged { drag in
                     selectedHandleIndex = index
+                    if dragStartValues[index] == nil {
+                        dragStartValues[index] = value
+                    }
                     updateThreshold(
                         at: index,
-                        startValue: value,
+                        startValue: dragStartValues[index]!,
                         translationWidth: drag.translation.width,
                         trackWidth: trackWidth,
                         expectedHandles: expectedHandles
                     )
                 }
+                .onEnded { _ in
+                    dragStartValues.removeValue(forKey: index)
+                }
         )
+        .selectionFeedback(trigger: thresholds)
         .accessibilityElement()
         .accessibilityLabel("Threshold \(index + 1)")
         .accessibilityValue("\(Int((value * 100).rounded())) percent")
@@ -197,6 +208,17 @@ struct ThresholdSliderView: View {
 
     private func sanitizedThresholds(expectedHandles: Int) -> [Double] {
         ThresholdUtilities.sanitized(thresholds, levels: expectedHandles + 1)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func selectionFeedback<T: Equatable>(trigger: T) -> some View {
+        if #available(iOS 17.0, *) {
+            self.sensoryFeedback(.selection, trigger: trigger)
+        } else {
+            self
+        }
     }
 }
 

@@ -30,6 +30,7 @@ struct ContentView: View {
             }
             .navigationTitle("Underpaint")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -82,6 +83,14 @@ struct ContentView: View {
                 state.loadImage(image)
             }
         }
+        .sheet(item: $exportItem) { item in
+            ShareSheet(items: [item.image])
+        }
+        .sheet(isPresented: $showAbout) {
+            AboutPrivacyView()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showInspector) {
             NavigationStack {
                 ControlPanelView(
@@ -92,12 +101,6 @@ struct ContentView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $exportItem) { item in
-            ShareSheet(items: [item.image])
-        }
-        .sheet(isPresented: $showAbout) {
-            AboutPrivacyView()
         }
         .alert("Unable to Continue", isPresented: Binding(
             get: { state.errorMessage != nil },
