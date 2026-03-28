@@ -24,6 +24,16 @@ struct ImageCanvasView: View {
                         .blur(radius: state.isProcessing ? 8 : 0)
                         .opacity(state.isProcessing ? 0.6 : 1.0)
                         .animation(.easeInOut(duration: 0.2), value: state.isProcessing)
+                        .onChange(of: geo.size) { _ in
+                            // Reset zoom when the canvas is resized (rotation, panel open/close)
+                            // so the image doesn't end up in an unexpected position.
+                            if currentScale > 1.0 {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    currentScale = 1.0
+                                    currentOffset = .zero
+                                }
+                            }
+                        }
                 } else {
                     emptyState
                 }

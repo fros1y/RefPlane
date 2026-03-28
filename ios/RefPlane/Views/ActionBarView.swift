@@ -4,6 +4,7 @@ struct ActionBarView: View {
     @EnvironmentObject private var state: AppState
 
     var showsDismissButton: Bool = false
+    var dismissIcon: String = "sidebar.trailing"
     var onDismiss: (() -> Void)? = nil
 
     var body: some View {
@@ -22,7 +23,7 @@ struct ActionBarView: View {
 
             if showsDismissButton, let onDismiss {
                 Button(action: onDismiss) {
-                    Image(systemName: "sidebar.trailing")
+                    Image(systemName: dismissIcon)
                         .font(.body.weight(.semibold))
                 }
                 .buttonStyle(.bordered)

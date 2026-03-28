@@ -4,6 +4,7 @@ struct ControlPanelView: View {
     enum Presentation {
         case sheet
         case sidebar
+        case bottomPanel
     }
 
     @EnvironmentObject private var state: AppState
@@ -28,20 +29,19 @@ struct ControlPanelView: View {
                     }
             case .sidebar:
                 VStack(spacing: 0) {
-                    ActionBarView(showsDismissButton: true, onDismiss: closeSidebar)
+                    ActionBarView(showsDismissButton: true, dismissIcon: "sidebar.trailing", onDismiss: closeSidebar)
                     inspectorForm
                 }
                 .background(Color(.systemGroupedBackground))
+            case .bottomPanel:
+                // The handle strip in ContentView acts as the header/dismiss affordance.
+                inspectorForm
             }
         }
     }
 
     private var inspectorForm: some View {
         Form {
-            Section("Mode") {
-                ModeBarView()
-            }
-
             Section("Simplify") {
                 Toggle("Simplify Image", isOn: Binding(
                     get: { state.simplifyEnabled },
@@ -96,6 +96,10 @@ struct ControlPanelView: View {
                         }
                     }
                 }
+            }
+
+            Section("Mode") {
+                ModeBarView()
             }
 
             if state.activeMode == .value {
