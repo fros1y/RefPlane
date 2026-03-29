@@ -27,6 +27,7 @@ class AppState: ObservableObject {
     @Published var processedImage: UIImage? = nil
     @Published var paletteColors: [Color]   = []
     @Published var paletteBands: [Int]      = []
+    @Published var pigmentRecipes: [PigmentRecipe]? = nil
 
     // UI state
     @Published var activeMode: RefPlaneMode = .original
@@ -202,11 +203,12 @@ class AppState: ObservableObject {
 
                 try Task.checkCancellation()
                 await MainActor.run {
-                    self.processedImage  = result.image
+                    self.processedImage      = result.image
                     self.processedPixelBands = result.pixelBands
-                    self.paletteColors   = result.palette
-                    self.paletteBands    = result.paletteBands
-                    self.processingProgress = 1
+                    self.paletteColors       = result.palette
+                    self.paletteBands        = result.paletteBands
+                    self.pigmentRecipes      = result.pigmentRecipes
+                    self.processingProgress  = 1
                     self.refreshIsolatedProcessedImage()
                 }
             } catch is CancellationError {
@@ -236,6 +238,7 @@ class AppState: ObservableObject {
         processedPixelBands = []
         paletteColors = []
         paletteBands = []
+        pigmentRecipes = nil
         triggerProcessing()
     }
 

@@ -57,6 +57,13 @@
 		F2E3D4C5B6A74839D8C9E001 /* APISR_GRL_x4.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */; };
 		AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD667789 /* MetalContext.swift */; };
 		AA11BB22CC334455DD66778A /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD66778B /* Shaders.metal */; };
+		B1C2D3E4F5A6B7C8D9E0F201 /* SpectralData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F202 /* SpectralDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F203 /* KubelkaMunkMixer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F204 /* GoldenAcrylicsKS.json in Resources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */; };
+		B1C2D3E4F5A6B7C8D9E0F205 /* KubelkaMunkMixerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -122,6 +129,13 @@
 		A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = APISR_GRL_x4.mlpackage; sourceTree = "<group>"; };
 		AA11BB22CC334455DD667789 /* MetalContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetalContext.swift; path = Processing/MetalContext.swift; sourceTree = "<group>"; };
 		AA11BB22CC334455DD66778B /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; name = Shaders.metal; path = Processing/Shaders.metal; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpectralData.swift; path = Models/SpectralData.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpectralDataStore.swift; path = Processing/SpectralDataStore.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KubelkaMunkMixer.swift; path = Processing/KubelkaMunkMixer.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = GoldenAcrylicsKS.json; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KubelkaMunkMixerTests.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PigmentDecomposer.swift; path = Processing/PigmentDecomposer.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecipeView.swift; path = Views/RecipeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -164,6 +178,7 @@
 				0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */,
 				0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */,
 				0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */,
+				B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */,
 				0A11B22C33D44E55F6677113 /* OklabColorSpaceTests.swift */,
 				0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */,
 				0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */,
@@ -180,6 +195,7 @@
 			children = (
 				9A5CCCFD76564CEA842044F7 /* AppModels.swift */,
 				523EB845BCBA42B4BBDC7E12 /* AppState.swift */,
+				B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */,
 			);
 			name = Models;
 			sourceTree = "<group>";
@@ -198,6 +214,7 @@
 				84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */,
 				CC8D69363CDB4E37AB598F8A /* CompareView.swift */,
 				CA3EA40383874CE288B53828 /* PaletteView.swift */,
+			B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */,
 				AA8F46FC114F41C5BDDA822F /* ActionBarView.swift */,
 				8AAC218192354565AEBABE44 /* ImagePickerView.swift */,
 				0493CA914D0B4273902F650E /* ErrorToastView.swift */,
@@ -220,6 +237,9 @@
 					D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */,
 				AA11BB22CC334455DD667789 /* MetalContext.swift */,
 				AA11BB22CC334455DD66778B /* Shaders.metal */,
+				B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */,
+				B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */,
+				B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */,
 			);
 			name = Processing;
 			sourceTree = "<group>";
@@ -251,6 +271,7 @@
 				37937B61A6B54EDB80118D8C /* Views */,
 				F160D00F80954B0C9211E7F6 /* Assets.xcassets */,
 				A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */,
+				B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */,
 				8B62BEE22E8D4E52A4A9828D /* Products */,
 			);
 			path = RefPlane;
@@ -345,6 +366,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				54865C4DBC864140A2C83A6E /* Assets.xcassets in Resources */,
+				B1C2D3E4F5A6B7C8D9E0F204 /* GoldenAcrylicsKS.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -362,6 +384,7 @@
 				0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */,
 				0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */,
 				0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */,
+				B1C2D3E4F5A6B7C8D9E0F205 /* KubelkaMunkMixerTests.swift in Sources */,
 				0A11B22C33D44E55F6677112 /* OklabColorSpaceTests.swift in Sources */,
 				0A11B22C33D44E55F6677103 /* PaletteSectionsTests.swift in Sources */,
 				0A11B22C33D44E55F667710E /* PropertyTestSupport.swift in Sources */,
@@ -410,6 +433,11 @@
 				0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */,
 				0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */,
 				0A11B22C33D44E55F6677010 /* BandIsolationRenderer.swift in Sources */,
+				B1C2D3E4F5A6B7C8D9E0F201 /* SpectralData.swift in Sources */,
+				B1C2D3E4F5A6B7C8D9E0F202 /* SpectralDataStore.swift in Sources */,
+				B1C2D3E4F5A6B7C8D9E0F203 /* KubelkaMunkMixer.swift in Sources */,
+				B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */,
+				B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

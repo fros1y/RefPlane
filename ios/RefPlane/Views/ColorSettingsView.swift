@@ -83,6 +83,30 @@ struct ColorSettingsView: View {
                     }
                 )
             }
+
+            Divider()
+
+            Toggle("Paint Mixing", isOn: Binding(
+                get: { state.colorConfig.paintMixEnabled },
+                set: { state.colorConfig.paintMixEnabled = $0; state.triggerProcessing() }
+            ))
+            .font(.footnote.weight(.medium))
+
+            if state.colorConfig.paintMixEnabled {
+                LabeledSlider(
+                    label: "Max Pigments",
+                    value: Binding(
+                        get: { Double(state.colorConfig.maxPigmentsPerMix) },
+                        set: { state.colorConfig.maxPigmentsPerMix = Int($0.rounded()) }
+                    ),
+                    range: 1...3,
+                    step: 1,
+                    displayFormat: { "\(Int($0))" },
+                    onEditingChanged: { editing in
+                        if !editing { state.triggerProcessing() }
+                    }
+                )
+            }
         }
     }
 }

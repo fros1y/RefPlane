@@ -26,6 +26,10 @@ enum ColorRegionsProcessor {
         let palette: [Color]
         let paletteBands: [Int]
         let pixelBands: [Int]
+        /// Oklab centroids for each quantized region (one per palette entry).
+        let quantizedCentroids: [OklabColor]
+        /// Per-pixel label index into quantizedCentroids.
+        let pixelLabels: [Int32]
     }
 
     static func process(image: UIImage, config: ColorConfig, minRegionSize: MinRegionSize = .off) -> Result? {
@@ -205,7 +209,9 @@ enum ColorRegionsProcessor {
             image: image,
             palette: quantized.palette,
             paletteBands: quantized.paletteBands,
-            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily)
+            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily),
+            quantizedCentroids: quantized.centroids,
+            pixelLabels: globalLabels
         )
     }
 
@@ -303,7 +309,9 @@ enum ColorRegionsProcessor {
             image: image,
             palette: quantized.palette,
             paletteBands: quantized.paletteBands,
-            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily)
+            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily),
+            quantizedCentroids: quantized.centroids,
+            pixelLabels: globalLabels
         )
     }
 

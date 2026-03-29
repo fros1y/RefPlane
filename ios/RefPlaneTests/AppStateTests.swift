@@ -8,7 +8,7 @@ func resetAbstractionCancelsInflightAbstractionTask() async throws {
     let abstractor = AbstractionOperationProbe()
     let state = AppState(
         processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil)
         },
         abstractionOperation: { image, downscale, method, onProgress in
             try await abstractor.abstract(
@@ -51,7 +51,8 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
                 image: processedImage,
                 palette: [],
                 paletteBands: [0, 1],
-                pixelBands: [0, 1]
+                pixelBands: [0, 1],
+                pigmentRecipes: nil
             )
         }
     )
@@ -80,7 +81,7 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
 func setModeClearsProcessedState() {
     let state = AppState(
         processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil)
         }
     )
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
@@ -104,7 +105,7 @@ func setModeClearsProcessedState() {
 func setModeToSameModeIsNoOp() {
     let state = AppState(
         processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil)
         }
     )
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
