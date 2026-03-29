@@ -270,25 +270,15 @@ class AppState: ObservableObject {
     private func renderGridOnto(_ image: UIImage) -> UIImage {
         let size = image.size
         let config = gridConfig
-
-        let lineColor = UIColor(GridLineColorResolver.resolvedColor(config: config, image: image))
-
-        let div = CGFloat(config.divisions)
-        let cellW: CGFloat
-        let cellH: CGFloat
-        switch config.cellAspect {
-        case .square:
-            let shortEdge = min(size.width, size.height)
-            cellW = shortEdge / div
-            cellH = cellW
-        case .matchImage:
-            cellW = size.width  / div
-            cellH = size.height / div
-        }
-
-        let cols = Int((size.width  / cellW).rounded(.up))
-        let rows = Int((size.height / cellH).rounded(.up))
         let lineWidth = max(1.0, min(size.width, size.height) / 1000.0)
+        let segments = GridLineColorResolver.resolvedSegments(
+            config: config,
+            image: image,
+            segments: GridLineColorResolver.normalizedSegments(
+                config: config,
+                imageSize: size
+            )
+        )
 
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1.0
@@ -297,46 +287,20 @@ class AppState: ObservableObject {
             image.draw(in: CGRect(origin: .zero, size: size))
 
             let cg = ctx.cgContext
-            cg.setStrokeColor(lineColor.withAlphaComponent(config.opacity).cgColor)
             cg.setLineWidth(lineWidth)
+            cg.setLineCap(.square)
             cg.clip(to: CGRect(origin: .zero, size: size))
 
-            for col in 0...cols {
-                let x = CGFloat(col) * cellW
-                cg.move(to: CGPoint(x: x, y: 0))
-                cg.addLine(to: CGPoint(x: x, y: size.height))
+            for resolvedSegment in segments {
+                let mappedSegment = resolvedSegment.segment.mapped(
+                    to: CGRect(origin: .zero, size: size)
+                )
+                let color = UIColor(resolvedSegment.color).withAlphaComponent(config.opacity)
+                cg.setStrokeColor(color.cgColor)
+                cg.move(to: mappedSegment.start)
+                cg.addLine(to: mappedSegment.end)
+                cg.strokePath()
             }
-            for row in 0...rows {
-                let y = CGFloat(row) * cellH
-                cg.move(to: CGPoint(x: 0, y: y))
-                cg.addLine(to: CGPoint(x: size.width, y: y))
-            }
-
-            if config.showDiagonals || config.showCenterLines {
-                for col in 0..<cols {
-                    for row in 0..<rows {
-                        let cx = CGFloat(col) * cellW
-                        let cy = CGFloat(row) * cellH
-                        let cw = min(cellW, size.width  - cx)
-                        let ch = min(cellH, size.height - cy)
-
-                        if config.showDiagonals {
-                            cg.move(to:    CGPoint(x: cx,      y: cy))
-                            cg.addLine(to: CGPoint(x: cx + cw, y: cy + ch))
-                            cg.move(to:    CGPoint(x: cx + cw, y: cy))
-                            cg.addLine(to: CGPoint(x: cx,      y: cy + ch))
-                        }
-                        if config.showCenterLines {
-                            cg.move(to:    CGPoint(x: cx + cw / 2, y: cy))
-                            cg.addLine(to: CGPoint(x: cx + cw / 2, y: cy + ch))
-                            cg.move(to:    CGPoint(x: cx,           y: cy + ch / 2))
-                            cg.addLine(to: CGPoint(x: cx + cw,      y: cy + ch / 2))
-                        }
-                    }
-                }
-            }
-
-            cg.strokePath()
         }
     }
 

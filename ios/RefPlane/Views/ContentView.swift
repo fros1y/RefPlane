@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -9,6 +10,8 @@ struct ContentView: View {
     @State private var showInspector = false
     @State private var showAbout = false
     @State private var exportItem: ExportItem?
+    @State private var exportDocument: ExportImageDocument?
+    @State private var showExportFileExporter = false
     @State private var usesSidebarLayout = false  // device landscape: horizontal sidebar
     @State private var usesBottomPanel = false    // device portrait + landscape image: vertical split
 
@@ -62,7 +65,12 @@ struct ContentView: View {
 
                     Button {
                         if let image = state.exportCurrentImage() {
-                            exportItem = ExportItem(image: image)
+                            if prefersDesktopFileExport {
+                                exportDocument = ExportImageDocument(image: image)
+                                showExportFileExporter = true
+                            } else {
+                                exportItem = ExportItem(image: image)
+                            }
                         }
                     } label: {
                         Image(systemName: "square.and.arrow.up")
@@ -106,6 +114,17 @@ struct ContentView: View {
         }
         .sheet(item: $exportItem) { item in
             ShareSheet(items: [item.image])
+        }
+        .fileExporter(
+            isPresented: $showExportFileExporter,
+            document: exportDocument,
+            contentType: .png,
+            defaultFilename: exportFilename
+        ) { result in
+            if case .failure(let error) = result {
+                state.errorMessage = error.localizedDescription
+            }
+            exportDocument = nil
         }
         .sheet(isPresented: $showAbout) {
             AboutPrivacyView()
@@ -267,11 +286,51 @@ struct ContentView: View {
         }
         return showInspector ? "Hide adjustments" : "Show adjustments"
     }
+
+    private var exportFilename: String {
+        let modeName = state.activeMode.label
+            .replacingOccurrences(of: " ", with: "-")
+            .lowercased()
+        return "underpaint-\(modeName)"
+    }
+
+    private var prefersDesktopFileExport: Bool {
+#if targetEnvironment(macCatalyst)
+        true
+#else
+        if #available(iOS 14.0, *) {
+            ProcessInfo.processInfo.isiOSAppOnMac
+        } else {
+            false
+        }
+#endif
+    }
 }
 
 private struct ExportItem: Identifiable {
     let id = UUID()
     let image: UIImage
+}
+
+private struct ExportImageDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.png] }
+
+    let imageData: Data
+
+    init(image: UIImage) {
+        self.imageData = image.pngData() ?? Data()
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.imageData = data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: imageData)
+    }
 }
 
 /// A grab-handle strip that sits between the image canvas and the bottom panel.

@@ -3,15 +3,17 @@ import SwiftUI
 struct GridOverlayView: View {
     @EnvironmentObject private var state: AppState
     var image: UIImage? = nil
+    private let lineWidth: CGFloat = 0.5
 
     var body: some View {
-        GeometryReader { geo in
+        GeometryReader { _ in
             Canvas { ctx, size in
                 let config = state.gridConfig
                 guard config.enabled else { return }
+                let sourceImage = image ?? state.currentDisplayImage
 
                 let imgSize: CGSize
-                if let img = image ?? state.currentDisplayImage {
+                if let img = sourceImage {
                     let aspect = img.size.width / img.size.height
                     let fitW   = min(size.width, size.height * aspect)
                     let fitH   = fitW / aspect
@@ -23,84 +25,36 @@ struct GridOverlayView: View {
                 let originX = (size.width  - imgSize.width)  / 2
                 let originY = (size.height - imgSize.height) / 2
 
-                let lineColor = resolveLineColor(
-                    config: config,
-                    image: image ?? state.currentDisplayImage
-                )
-
-                let cellW: CGFloat
-                let cellH: CGFloat
-                let div = CGFloat(config.divisions)
-
-                switch config.cellAspect {
-                case .square:
-                    let shortEdge = min(imgSize.width, imgSize.height)
-                    cellW = shortEdge / div
-                    cellH = cellW
-                case .matchImage:
-                    cellW = imgSize.width  / div
-                    cellH = imgSize.height / div
-                }
-
-                let cols = Int((imgSize.width  / cellW).rounded(.up))
-                let rows = Int((imgSize.height / cellH).rounded(.up))
-
-                var path = Path()
-
                 // Clip all drawing to the fitted image rect so lines don't
                 // bleed into letterbox areas.
                 let imageRect = CGRect(x: originX, y: originY,
                                        width: imgSize.width, height: imgSize.height)
                 ctx.clip(to: Path(imageRect))
 
-                // Vertical lines
-                for col in 0...cols {
-                    let x = originX + CGFloat(col) * cellW
-                    path.move(to:    CGPoint(x: x, y: originY))
-                    path.addLine(to: CGPoint(x: x, y: originY + imgSize.height))
+                let layoutSize = sourceImage?.size ?? imgSize
+                let segments = GridLineColorResolver.resolvedSegments(
+                    config: config,
+                    image: sourceImage,
+                    segments: GridLineColorResolver.normalizedSegments(
+                        config: config,
+                        imageSize: layoutSize
+                    )
+                )
+                let strokeStyle = StrokeStyle(lineWidth: lineWidth, lineCap: .square)
+
+                for resolvedSegment in segments {
+                    let mappedSegment = resolvedSegment.segment.mapped(to: imageRect)
+                    var path = Path()
+                    path.move(to: mappedSegment.start)
+                    path.addLine(to: mappedSegment.end)
+                    ctx.stroke(
+                        path,
+                        with: .color(resolvedSegment.color.opacity(config.opacity)),
+                        style: strokeStyle
+                    )
                 }
-
-                // Horizontal lines
-                for row in 0...rows {
-                    let y = originY + CGFloat(row) * cellH
-                    path.move(to:    CGPoint(x: originX,                  y: y))
-                    path.addLine(to: CGPoint(x: originX + imgSize.width,  y: y))
-                }
-
-                // Cell diagonals and center lines
-                if config.showDiagonals || config.showCenterLines {
-                    for col in 0..<cols {
-                        for row in 0..<rows {
-                            let cx = originX + CGFloat(col) * cellW
-                            let cy = originY + CGFloat(row) * cellH
-                            let cw = min(cellW, imgSize.width  - cx + originX)
-                            let ch = min(cellH, imgSize.height - cy + originY)
-
-                            if config.showDiagonals {
-                                path.move(to:    CGPoint(x: cx,      y: cy))
-                                path.addLine(to: CGPoint(x: cx + cw, y: cy + ch))
-                                path.move(to:    CGPoint(x: cx + cw, y: cy))
-                                path.addLine(to: CGPoint(x: cx,      y: cy + ch))
-                            }
-                            if config.showCenterLines {
-                                path.move(to:    CGPoint(x: cx + cw / 2, y: cy))
-                                path.addLine(to: CGPoint(x: cx + cw / 2, y: cy + ch))
-                                path.move(to:    CGPoint(x: cx,           y: cy + ch / 2))
-                                path.addLine(to: CGPoint(x: cx + cw,      y: cy + ch / 2))
-                            }
-                        }
-                    }
-                }
-
-                ctx.stroke(path,
-                           with: .color(lineColor.opacity(config.opacity)),
-                           lineWidth: 0.5)
             }
         }
         .allowsHitTesting(false)
-    }
-
-    private func resolveLineColor(config: GridConfig, image: UIImage?) -> Color {
-        GridLineColorResolver.resolvedColor(config: config, image: image)
     }
 }
