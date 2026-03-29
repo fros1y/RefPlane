@@ -42,55 +42,55 @@ struct ControlPanelView: View {
 
     private var inspectorForm: some View {
         Form {
-            Section("Simplify") {
-                Toggle("Simplify Image", isOn: Binding(
-                    get: { state.simplifyEnabled },
+            Section("Abstraction") {
+                Toggle("Abstract Image", isOn: Binding(
+                    get: { state.abstractionEnabled },
                     set: { isEnabled in
-                        state.simplifyEnabled = isEnabled
+                        state.abstractionEnabled = isEnabled
                         if isEnabled {
-                            state.applySimplify()
+                            state.applyAbstraction()
                         } else {
-                            state.resetSimplify()
+                            state.resetAbstraction()
                         }
                     }
                 ))
 
-                if state.simplifyEnabled {
+                if state.abstractionEnabled {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Strength")
                                 .font(.subheadline)
                                 .foregroundStyle(.primary)
                             Spacer()
-                            Text("\(Int(state.simplifyStrength * 100))%")
+                            Text("\(Int(state.abstractionStrength * 100))%")
                                 .font(.subheadline.monospacedDigit())
                                 .foregroundStyle(.primary)
                         }
 
                         Slider(
-                            value: $state.simplifyStrength,
+                            value: $state.abstractionStrength,
                             in: 0...1,
                             step: 0.05
                         ) {
                             Text("Strength")
                         } onEditingChanged: { editing in
                             if !editing {
-                                state.applySimplify()
+                                state.applyAbstraction()
                             }
                         }
                     }
 
-                    if state.availableSimplificationMethods.count > 1 {
+                    if state.availableAbstractionMethods.count > 1 {
                         Picker("Style", selection: Binding(
-                            get: { state.simplificationMethod },
+                            get: { state.abstractionMethod },
                             set: { method in
-                                state.simplificationMethod = method
-                                if state.simplifyEnabled {
-                                    state.applySimplify()
+                                state.abstractionMethod = method
+                                if state.abstractionEnabled {
+                                    state.applyAbstraction()
                                 }
                             }
                         )) {
-                            ForEach(state.availableSimplificationMethods) { method in
+                            ForEach(state.availableAbstractionMethods) { method in
                                 Text(method.label).tag(method)
                             }
                         }
@@ -109,6 +109,12 @@ struct ControlPanelView: View {
             } else if state.activeMode == .color {
                 Section("Adjustments") {
                     ColorSettingsView()
+                }
+            }
+
+            if state.activeMode == .value || state.activeMode == .color {
+                Section("Simplification") {
+                    SimplificationSettingsView()
                 }
             }
 

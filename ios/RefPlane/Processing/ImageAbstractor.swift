@@ -2,36 +2,36 @@ import UIKit
 import CoreML
 import CoreImage
 
-// MARK: - Simplification errors
+// MARK: - Abstraction errors
 
-enum SimplificationError: LocalizedError {
-    case modelUnavailable(SimplificationMethod)
-    case unsupportedModelContract(SimplificationMethod)
-    case inferenceFailed(SimplificationMethod)
+enum AbstractionError: LocalizedError {
+    case modelUnavailable(AbstractionMethod)
+    case unsupportedModelContract(AbstractionMethod)
+    case inferenceFailed(AbstractionMethod)
 
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            return "Couldn't load the image simplifier. Please try again."
+            return "Couldn't load the image abstractor. Please try again."
         case .unsupportedModelContract:
-            return "The image simplifier isn't supported on this device."
+            return "The image abstractor isn't supported on this device."
         case .inferenceFailed:
-            return "The image simplifier encountered an error. Please try a different image."
+            return "The image abstractor encountered an error. Please try a different image."
         }
     }
 }
 
 // MARK: - Actor-backed model cache
 
-private actor SimplificationModelStore {
-    private var cachedModels: [SimplificationMethod: MLModel] = [:]
+private actor AbstractionModelStore {
+    private var cachedModels: [AbstractionMethod: MLModel] = [:]
 
-    func model(for method: SimplificationMethod) -> MLModel? { cachedModels[method] }
-    func insert(_ model: MLModel, for method: SimplificationMethod) { cachedModels[method] = model }
+    func model(for method: AbstractionMethod) -> MLModel? { cachedModels[method] }
+    func insert(_ model: MLModel, for method: AbstractionMethod) { cachedModels[method] = model }
     func clear() { cachedModels.removeAll() }
 }
 
-// MARK: - Image simplification pipeline
+// MARK: - Image abstraction pipeline
 //
 // Unified pipeline for all methods:
 //   source image (already capped to max 1600 px)
@@ -46,7 +46,7 @@ private actor SimplificationModelStore {
 //   - After inference, only the non-padded core of each output tile is kept
 //   - This eliminates visible seams between adjacent tiles
 
-enum ImageSimplifier {
+enum ImageAbstractor {
 
     private static let modelInputSize = 256
     private static let modelOutputSize = 1024  // 4× input
@@ -60,7 +60,7 @@ enum ImageSimplifier {
 
     // MARK: - Model cache
 
-    private static let modelStore = SimplificationModelStore()
+    private static let modelStore = AbstractionModelStore()
 
     /// Evict all loaded models. Call this on memory warning.
     static func clearModelCache() {
@@ -69,21 +69,21 @@ enum ImageSimplifier {
 
     // MARK: - Model loading
 
-    private static func loadModel(for method: SimplificationMethod) async throws -> MLModel {
+    private static func loadModel(for method: AbstractionMethod) async throws -> MLModel {
         if let cached = await modelStore.model(for: method) { return cached }
 
         let config = MLModelConfiguration()
         config.computeUnits = .all
 
         guard let name = method.modelBundleName else {
-            throw SimplificationError.modelUnavailable(method)
+            throw AbstractionError.modelUnavailable(method)
         }
         let candidates = [name]
 
         for name in candidates {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc"),
                let model = try? MLModel(contentsOf: url, configuration: config) {
-                print("[ImageSimplifier] Loaded compiled model: \(name).mlmodelc")
+                print("[ImageAbstractor] Loaded compiled model: \(name).mlmodelc")
                 await modelStore.insert(model, for: method)
                 return model
             }
@@ -91,7 +91,7 @@ enum ImageSimplifier {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlpackage") {
                 if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    print("[ImageSimplifier] Compiled and loaded: \(name).mlpackage")
+                    print("[ImageAbstractor] Compiled and loaded: \(name).mlpackage")
                     await modelStore.insert(model, for: method)
                     return model
                 }
@@ -100,37 +100,37 @@ enum ImageSimplifier {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodel") {
                 if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    print("[ImageSimplifier] Compiled and loaded: \(name).mlmodel")
+                    print("[ImageAbstractor] Compiled and loaded: \(name).mlmodel")
                     await modelStore.insert(model, for: method)
                     return model
                 }
             }
         }
 
-        print("[ImageSimplifier] No model found for \(method.label)")
-        throw SimplificationError.modelUnavailable(method)
+        print("[ImageAbstractor] No model found for \(method.label)")
+        throw AbstractionError.modelUnavailable(method)
     }
 
     // MARK: - Public API
 
-    /// Simplify an image using the specified method.
+    /// Abstract an image using the specified method.
     ///
     /// - Parameters:
     ///   - image: The source image (already capped to max 1600 px).
     ///   - downscale: Downsample factor before processing (2–12).
-    ///   - method: The simplification method to apply.
+    ///   - method: The abstraction method to apply.
     ///   - onProgress: Optional closure called with a 0–1 progress fraction as tiles complete.
     ///                 Called from a background thread; hop to main actor if needed.
-    /// - Throws: `SimplificationError` if the model is unavailable or inference fails.
-    /// - Returns: The simplified image at the original dimensions.
-    static func simplify(
+    /// - Throws: `AbstractionError` if the model is unavailable or inference fails.
+    /// - Returns: The abstracted image at the original dimensions.
+    static func abstract(
         image: UIImage,
         downscale: CGFloat = 4.0,
-        method: SimplificationMethod = .apisr,
+        method: AbstractionMethod = .apisr,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> UIImage {
         guard let sourceCG = image.cgImage else {
-            throw SimplificationError.inferenceFailed(method)
+            throw AbstractionError.inferenceFailed(method)
         }
         let origW = sourceCG.width
         let origH = sourceCG.height
@@ -146,7 +146,7 @@ enum ImageSimplifier {
 
         let metalCtx = (method.processingKind == .metalShader) ? MetalContext.shared : nil
         if method.processingKind == .metalShader && metalCtx == nil {
-            throw SimplificationError.inferenceFailed(method)
+            throw AbstractionError.inferenceFailed(method)
         }
 
         return try await Task.detached(priority: .userInitiated) {
@@ -159,7 +159,7 @@ enum ImageSimplifier {
                 guard let model = loadedModel,
                       let smallCG = small.cgImage,
                       let upscaled = processInTiles(smallCG, model: model, onProgress: onProgress) else {
-                    throw SimplificationError.inferenceFailed(method)
+                    throw AbstractionError.inferenceFailed(method)
                 }
                 return resizeToPixels(upscaled, width: origW, height: origH)
 
@@ -167,7 +167,7 @@ enum ImageSimplifier {
                 guard let model = loadedModel,
                       let smallCG = small.cgImage,
                       let result = runModel(model, input: smallCG) else {
-                    throw SimplificationError.inferenceFailed(method)
+                    throw AbstractionError.inferenceFailed(method)
                 }
                 return resizeToPixels(result, width: origW, height: origH)
 
@@ -175,7 +175,7 @@ enum ImageSimplifier {
                 guard let ctx = metalCtx,
                       let smallCG = small.cgImage,
                       let result = ctx.anisotropicKuwahara(smallCG) else {
-                    throw SimplificationError.inferenceFailed(method)
+                    throw AbstractionError.inferenceFailed(method)
                 }
                 return resizeToPixels(result, width: origW, height: origH)
             }
@@ -225,7 +225,7 @@ enum ImageSimplifier {
         let outH = alignedCoreH * scale
         let paddedTileSize = tileSize + tilePad * 2
 
-        print("[ImageSimplifier] Tiling \(alignedCoreW)×\(alignedCoreH) (aligned from \(srcW)×\(srcH)) → \(tilesX)×\(tilesY) tiles, tilePad=\(tilePad)")
+        print("[ImageAbstractor] Tiling \(alignedCoreW)×\(alignedCoreH) (aligned from \(srcW)×\(srcH)) → \(tilesX)×\(tilesY) tiles, tilePad=\(tilePad)")
 
         // Allocate output pixel buffer (RGBA)
         var outputPixels = [UInt8](repeating: 0, count: outW * outH * 4)

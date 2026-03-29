@@ -28,18 +28,31 @@ enum ColorRegionsProcessor {
         let pixelBands: [Int]
     }
 
-    static func process(image: UIImage, config: ColorConfig) -> Result? {
+    static func process(image: UIImage, config: ColorConfig, minRegionSize: MinRegionSize = .off) -> Result? {
         let t0 = CFAbsoluteTimeGetCurrent()
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
 
         if let gpu = MetalContext.shared,
-           let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height, config: config) {
+           let result = processGPU(
+               gpu: gpu,
+               pixels: pixels,
+               width: width,
+               height: height,
+               config: config,
+               minRegionSize: minRegionSize
+           ) {
             let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
             print("[ColorStudy] GPU path in \(String(format: "%.1f", totalMs)) ms")
             return result
         }
 
-        let result = processCPU(pixels: pixels, width: width, height: height, config: config)
+        let result = processCPU(
+            pixels: pixels,
+            width: width,
+            height: height,
+            config: config,
+            minRegionSize: minRegionSize
+        )
         let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
         print("[ColorStudy] CPU path in \(String(format: "%.1f", totalMs)) ms")
         return result
@@ -52,7 +65,8 @@ enum ColorRegionsProcessor {
         pixels: [UInt8],
         width: Int,
         height: Int,
-        config: ColorConfig
+        config: ColorConfig,
+        minRegionSize: MinRegionSize
     ) -> Result? {
         let total = width * height
         let colorFamilies = max(2, min(6, config.colorFamilies))
@@ -87,22 +101,6 @@ enum ColorRegionsProcessor {
             print("[ColorStudy][CPU] choose_families_fallback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         }
 
-        if config.warmCoolEmphasis != 0 {
-            let adjustedCentroids = applyWarmCoolEmphasis(to: familyCentroids, amount: config.warmCoolEmphasis)
-            return processGPUWithCentroids(
-                gpu: gpu,
-                labArray: labArray,
-                srcBuffer: srcBuffer,
-                labBuffer: labBuffer,
-                width: width,
-                height: height,
-                valuesPerFamily: valuesPerFamily,
-                thresholds: thresholds,
-                familyCentroids: adjustedCentroids,
-                minRegionFactor: config.minRegionSize.factor
-            )
-        }
-
         return processGPUWithCentroids(
             gpu: gpu,
             labArray: labArray,
@@ -113,7 +111,7 @@ enum ColorRegionsProcessor {
             valuesPerFamily: valuesPerFamily,
             thresholds: thresholds,
             familyCentroids: familyCentroids,
-            minRegionFactor: config.minRegionSize.factor
+            minRegionFactor: minRegionSize.factor
         )
     }
 
@@ -217,7 +215,8 @@ enum ColorRegionsProcessor {
         pixels: [UInt8],
         width: Int,
         height: Int,
-        config: ColorConfig
+        config: ColorConfig,
+        minRegionSize: MinRegionSize
     ) -> Result? {
         let total = width * height
         let colorFamilies = max(2, min(6, config.colorFamilies))
@@ -233,17 +232,13 @@ enum ColorRegionsProcessor {
         print("[ColorStudy][CPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        var familyCentroids = selectFamilyCentroids(
+        let familyCentroids = selectFamilyCentroids(
             points: points,
             k: colorFamilies,
             lWeight: familyLWeight,
             spreadBias: Float(config.paletteSpread)
         )
         print("[ColorStudy][CPU] choose_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-        if config.warmCoolEmphasis != 0 {
-            familyCentroids = applyWarmCoolEmphasis(to: familyCentroids, amount: config.warmCoolEmphasis)
-        }
-
         guard !familyCentroids.isEmpty else { return nil }
 
         stepStart = CFAbsoluteTimeGetCurrent()
@@ -260,7 +255,7 @@ enum ColorRegionsProcessor {
         )
         print("[ColorStudy][CPU] build_labels: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        if let factor = config.minRegionSize.factor {
+        if let factor = minRegionSize.factor {
             stepStart = CFAbsoluteTimeGetCurrent()
             RegionCleaner.clean(
                 labels: &globalLabels,
@@ -1038,19 +1033,6 @@ enum ColorRegionsProcessor {
         }
 
         return (centroids, palette, paletteBands)
-    }
-
-    private static func applyWarmCoolEmphasis(to centroids: [OklabColor], amount: Double) -> [OklabColor] {
-        let angle = Float(amount) * Float.pi / 4
-        return centroids.map { centroid in
-            let radius = sqrtf(centroid.a * centroid.a + centroid.b * centroid.b)
-            let theta = atan2f(centroid.b, centroid.a) + angle
-            return OklabColor(
-                L: centroid.L,
-                a: radius * cosf(theta),
-                b: radius * sinf(theta)
-            )
-        }
     }
 
     private static func normalizedThresholds(_ thresholds: [Double], levels: Int) -> [Float] {

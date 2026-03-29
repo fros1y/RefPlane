@@ -7,8 +7,8 @@ import Testing
 // Both the GPU and CPU paths implement the same quantization formula, so the
 // same invariants hold for either execution path.
 
-private func makeConfig(levels: Int, thresholds: [Double], minRegionSize: MinRegionSize = .off) -> ValueConfig {
-    ValueConfig(levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
+private func makeConfig(levels: Int, thresholds: [Double]) -> ValueConfig {
+    ValueConfig(levels: levels, thresholds: thresholds)
 }
 
 @Test
@@ -98,8 +98,8 @@ func valueStudyRegionCleanupMergesIsolatedPixel() {
     var pixels = [(UInt8, UInt8, UInt8)](repeating: (0, 0, 0), count: 200)
     pixels[199] = (255, 255, 255)
     let image = TestImageFactory.makeSplitColors(pixels: pixels, width: 200, height: 1)
-    let config = makeConfig(levels: 2, thresholds: [0.5], minRegionSize: .large)
-    guard let result = ValueStudyProcessor.process(image: image, config: config) else {
+    let config = makeConfig(levels: 2, thresholds: [0.5])
+    guard let result = ValueStudyProcessor.process(image: image, config: config, minRegionSize: .large) else {
         Issue.record("ValueStudyProcessor.process returned nil")
         return
     }

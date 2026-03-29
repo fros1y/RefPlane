@@ -21,6 +21,7 @@ actor ImageProcessor {
         mode: RefPlaneMode,
         valueConfig: ValueConfig,
         colorConfig: ColorConfig,
+        simplificationConfig: SimplificationConfig,
         onProgress: @escaping (Double) -> Void
     ) async throws -> ProcessingResult {
         onProgress(0.1)
@@ -28,6 +29,9 @@ actor ImageProcessor {
 
         let start = CFAbsoluteTimeGetCurrent()
         print("[ImageProcessor] Processing mode=\(mode) image=\(image.size.width)×\(image.size.height)")
+
+        let minRegion: MinRegionSize = simplificationConfig.enabled && simplificationConfig.method == .regionCompaction
+            ? simplificationConfig.minRegionSize : .off
 
         switch mode {
         case .original:
@@ -47,7 +51,7 @@ actor ImageProcessor {
         case .value:
             onProgress(0.2)
             try Task.checkCancellation()
-            guard let result = ValueStudyProcessor.process(image: image, config: valueConfig) else {
+            guard let result = ValueStudyProcessor.process(image: image, config: valueConfig, minRegionSize: minRegion) else {
                 throw ProcessingError.conversionFailed
             }
             let valueMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
@@ -65,7 +69,7 @@ actor ImageProcessor {
         case .color:
             onProgress(0.2)
             try Task.checkCancellation()
-            guard let result = ColorRegionsProcessor.process(image: image, config: colorConfig) else {
+            guard let result = ColorRegionsProcessor.process(image: image, config: colorConfig, minRegionSize: minRegion) else {
                 throw ProcessingError.conversionFailed
             }
             let colorMs = (CFAbsoluteTimeGetCurrent() - start) * 1000

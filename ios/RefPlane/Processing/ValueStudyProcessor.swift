@@ -11,7 +11,7 @@ enum ValueStudyProcessor {
         let pixelBands: [Int]
     }
 
-    static func process(image: UIImage, config: ValueConfig) -> Result? {
+    static func process(image: UIImage, config: ValueConfig, minRegionSize: MinRegionSize = .off) -> Result? {
         let t0 = CFAbsoluteTimeGetCurrent()
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
         let levels = max(2, min(8, config.levels))
@@ -23,7 +23,7 @@ enum ValueStudyProcessor {
         // GPU path
         if let gpu = MetalContext.shared {
             let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height,
-                              levels: levels, thresholds: thresholds, config: config)
+                              levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
             let t2 = CFAbsoluteTimeGetCurrent()
             print("[ValueStudy] ✅ GPU path — \(total) px, \(levels) levels in \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
             return result
@@ -32,7 +32,7 @@ enum ValueStudyProcessor {
         // CPU fallback
         print("[ValueStudy] ⚠️ CPU fallback (MetalContext.shared = nil)")
         let result = processCPU(pixels: pixels, width: width, height: height,
-                          levels: levels, thresholds: thresholds, config: config)
+                          levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
         let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
         print("[ValueStudy] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
         return result
@@ -42,7 +42,7 @@ enum ValueStudyProcessor {
 
     private static func processGPU(
         gpu: MetalContext, pixels: [UInt8], width: Int, height: Int,
-        levels: Int, thresholds: [Double], config: ValueConfig
+        levels: Int, thresholds: [Double], minRegionSize: MinRegionSize
     ) -> Result? {
         let total = width * height
         let thresholdFloats = thresholds.map { Float($0) }
@@ -55,7 +55,7 @@ enum ValueStudyProcessor {
         ) else {
             print("[ValueStudy] ⚠️ GPU quantize failed, falling back to CPU")
             return processCPU(pixels: pixels, width: width, height: height,
-                              levels: levels, thresholds: thresholds, config: config)
+                              levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
         }
         print("[ValueStudy]   quantize: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
@@ -63,7 +63,7 @@ enum ValueStudyProcessor {
 
         // Region cleanup stays on CPU (BFS flood-fill with branching logic)
         stepStart = CFAbsoluteTimeGetCurrent()
-        if let factor = config.minRegionSize.factor {
+        if let factor = minRegionSize.factor {
             RegionCleaner.clean(
                 labels: &labels,
                 width: width,
@@ -104,7 +104,7 @@ enum ValueStudyProcessor {
 
     private static func processCPU(
         pixels: [UInt8], width: Int, height: Int,
-        levels: Int, thresholds: [Double], config: ValueConfig
+        levels: Int, thresholds: [Double], minRegionSize: MinRegionSize
     ) -> Result? {
         let total = width * height
 
@@ -131,7 +131,7 @@ enum ValueStudyProcessor {
             labelMap[i] = Int32(level)
         }
 
-        if let factor = config.minRegionSize.factor {
+        if let factor = minRegionSize.factor {
             RegionCleaner.clean(
                 labels: &labelMap,
                 width: width,

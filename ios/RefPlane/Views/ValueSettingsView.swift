@@ -43,16 +43,6 @@ struct ValueSettingsView: View {
                     }
                 )
             }
-
-            LabeledPicker(
-                title: "Minimum Region",
-                selection: Binding(
-                    get: { state.valueConfig.minRegionSize },
-                    set: { state.valueConfig.minRegionSize = $0; state.triggerProcessing() }
-                ),
-                options: MinRegionSize.allCases,
-                label: { $0.rawValue }
-            )
         }
     }
 

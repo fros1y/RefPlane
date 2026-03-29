@@ -50,17 +50,6 @@ struct ColorSettingsView: View {
                 }
             )
 
-            LabeledSlider(
-                label: "Warm/Cool",
-                value: Binding(
-                    get: { state.colorConfig.warmCoolEmphasis },
-                    set: { state.colorConfig.warmCoolEmphasis = $0; state.triggerProcessing() }
-                ),
-                range: -1...1,
-                step: 0.01,
-                displayFormat: { String(format: "%.2f", $0) }
-            )
-
             VStack(alignment: .leading, spacing: 8) {
                 Text("Value Thresholds")
                     .font(.footnote.weight(.medium))
@@ -78,16 +67,6 @@ struct ColorSettingsView: View {
                     }
                 )
             }
-
-            LabeledPicker(
-                title: "Minimum Region",
-                selection: Binding(
-                    get: { state.colorConfig.minRegionSize },
-                    set: { state.colorConfig.minRegionSize = $0; state.triggerProcessing() }
-                ),
-                options: MinRegionSize.allCases,
-                label: { $0.rawValue }
-            )
         }
     }
 }

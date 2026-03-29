@@ -63,16 +63,13 @@ struct GridConfig {
 struct ValueConfig {
     var levels: Int              = 3
     var thresholds: [Double]     = defaultThresholds(for: 3)
-    var minRegionSize: MinRegionSize = .small
 }
 
 struct ColorConfig {
     var colorFamilies: Int       = 3
     var valuesPerFamily: Int     = 2
     var paletteSpread: Double    = 0
-    var warmCoolEmphasis: Double = 0
     var valueThresholds: [Double] = defaultThresholds(for: 2)
-    var minRegionSize: MinRegionSize = .small
 }
 
 func defaultThresholds(for levels: Int) -> [Double] {
@@ -80,15 +77,15 @@ func defaultThresholds(for levels: Int) -> [Double] {
     return (1..<levels).map { Double($0) / Double(levels) }
 }
 
-// MARK: - Simplification method model
+// MARK: - Abstraction method model
 
-enum SimplificationProcessingKind {
+enum AbstractionProcessingKind {
     case superResolution4x
     case fullImageModel
     case metalShader
 }
 
-enum SimplificationMethod: String, CaseIterable, Identifiable {
+enum AbstractionMethod: String, CaseIterable, Identifiable {
     case apisr = "APISR"
 
     var id: String { rawValue }
@@ -99,11 +96,25 @@ enum SimplificationMethod: String, CaseIterable, Identifiable {
         }
     }
 
-    var processingKind: SimplificationProcessingKind {
+    var processingKind: AbstractionProcessingKind {
         return .superResolution4x
     }
 
     var modelBundleName: String? {
         return "APISR_GRL_x4"
     }
+}
+
+// MARK: - Simplification (post-processing) model
+
+enum SimplificationMethod: String, CaseIterable {
+    case regionCompaction = "Region Compaction"
+    case kuwahara = "Kuwahara"
+}
+
+struct SimplificationConfig {
+    var enabled: Bool = false
+    var method: SimplificationMethod = .regionCompaction
+    var minRegionSize: MinRegionSize = .small
+    var kuwaharaRadius: Int = 6
 }

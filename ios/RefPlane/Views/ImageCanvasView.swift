@@ -193,8 +193,8 @@ struct ImageCanvasView: View {
         switch state.processingLabel {
         case "Loading…":
             return "Preparing image"
-        case "Simplifying…":
-            return "Simplifying image"
+        case "Abstracting…":
+            return "Abstracting image"
         case "Processing…":
             switch state.activeMode {
             case .original:

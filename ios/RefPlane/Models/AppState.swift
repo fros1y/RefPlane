@@ -8,13 +8,14 @@ class AppState: ObservableObject {
         RefPlaneMode,
         ValueConfig,
         ColorConfig,
+        SimplificationConfig,
         @escaping @Sendable (Double) -> Void
     ) async throws -> ProcessingResult
 
-    typealias SimplifyOperation = @Sendable (
+    typealias AbstractionOperation = @Sendable (
         UIImage,
         CGFloat,
-        SimplificationMethod,
+        AbstractionMethod,
         @escaping @Sendable (Double) -> Void
     ) async throws -> UIImage
 
@@ -44,28 +45,29 @@ class AppState: ObservableObject {
     @Published var gridConfig: GridConfig   = GridConfig()
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
-    @Published var simplifyEnabled: Bool    = true
-    /// Simplification strength 0–1. Maps to downscale factor 2–12.
-    @Published var simplifyStrength: Double  = 0.5
-    @Published var simplificationMethod: SimplificationMethod = .apisr
+    @Published var abstractionEnabled: Bool    = true
+    /// Abstraction strength 0–1. Maps to downscale factor 2–12.
+    @Published var abstractionStrength: Double  = 0.5
+    @Published var abstractionMethod: AbstractionMethod = .apisr
+    @Published var simplificationConfig: SimplificationConfig = SimplificationConfig()
 
-    // Simplified image (after upscale/denoise)
-    @Published var simplifiedImage: UIImage? = nil
+    // Abstracted image (after upscale/denoise)
+    @Published var abstractedImage: UIImage? = nil
 
     private var processingTask: Task<Void, Never>? = nil
     private let processOperation: ProcessOperation
     /// Incremented on every triggerProcessing() call; lets each task know if it is still current.
     private var processingGeneration: Int = 0
 
-    private let simplifyOperation: SimplifyOperation
-    private var simplifyTask: Task<Void, Never>? = nil
-    private var simplifyGeneration: Int = 0
+    private let abstractionOperation: AbstractionOperation
+    private var abstractionTask: Task<Void, Never>? = nil
+    private var abstractionGeneration: Int = 0
 
     private var loadingTask: Task<Void, Never>? = nil
     private var processedPixelBands: [Int] = []
 
-    var availableSimplificationMethods: [SimplificationMethod] {
-        SimplificationMethod.allCases.filter { method in
+    var availableAbstractionMethods: [AbstractionMethod] {
+        AbstractionMethod.allCases.filter { method in
             switch method.processingKind {
             case .superResolution4x, .fullImageModel:
                 guard let name = method.modelBundleName else { return false }
@@ -80,20 +82,21 @@ class AppState: ObservableObject {
 
     init(
         processOperation: ProcessOperation? = nil,
-        simplifyOperation: SimplifyOperation? = nil
+        abstractionOperation: AbstractionOperation? = nil
     ) {
         let processor = ImageProcessor()
-        self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, onProgress in
+        self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, simplificationConfig, onProgress in
             try await processor.process(
                 image: image,
                 mode: mode,
                 valueConfig: valueConfig,
                 colorConfig: colorConfig,
+                simplificationConfig: simplificationConfig,
                 onProgress: onProgress
             )
         }
-        self.simplifyOperation = simplifyOperation ?? { image, downscale, method, onProgress in
-            try await ImageSimplifier.simplify(
+        self.abstractionOperation = abstractionOperation ?? { image, downscale, method, onProgress in
+            try await ImageAbstractor.abstract(
                 image: image,
                 downscale: downscale,
                 method: method,
@@ -106,11 +109,11 @@ class AppState: ObservableObject {
             object: nil,
             queue: .main
         ) { _ in
-            ImageSimplifier.clearModelCache()
+            ImageAbstractor.clearModelCache()
         }
     }
 
-    var displayBaseImage: UIImage? { simplifiedImage ?? sourceImage }
+    var displayBaseImage: UIImage? { abstractedImage ?? sourceImage }
 
     var currentDisplayImage: UIImage? {
         activeMode == .original ? displayBaseImage : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
@@ -120,14 +123,14 @@ class AppState: ObservableObject {
         // Cancel any in-flight work before starting fresh.
         loadingTask?.cancel()
         processingTask?.cancel()
-        simplifyTask?.cancel()
+        abstractionTask?.cancel()
 
         // Show the picked image immediately, then swap in the scaled version
         // once preprocessing finishes so the canvas never blanks out.
         fullResolutionOriginalImage   = image
         originalImage             = image
         sourceImage               = image
-        simplifiedImage           = nil
+        abstractedImage           = nil
         processedImage            = nil
         isolatedProcessedImage    = nil
         processedPixelBands       = []
@@ -146,8 +149,8 @@ class AppState: ObservableObject {
             guard !Task.isCancelled else { return }
             originalImage             = scaled
             sourceImage               = scaled
-            if simplifyEnabled {
-                applySimplify()
+            if abstractionEnabled {
+                applyAbstraction()
             } else {
                 processingLabel           = "Processing…"
                 processingIsIndeterminate = false
@@ -181,18 +184,38 @@ class AppState: ObservableObject {
 
         processingGeneration += 1
         let myGeneration = processingGeneration
+        let simpConfig = simplificationConfig
+        let mode = activeMode
 
         processingTask = Task {
             do {
-                let result = try await processOperation(
+                var result = try await processOperation(
                     source,
-                    activeMode,
+                    mode,
                     valueConfig,
                     colorConfig,
+                    simpConfig,
                     { [weak self] p in
                         Task { @MainActor [weak self] in self?.processingProgress = p }
                     }
                 )
+                try Task.checkCancellation()
+
+                // Apply Kuwahara post-processing if enabled
+                if (mode == .value || mode == .color),
+                   simpConfig.enabled,
+                   simpConfig.method == .kuwahara,
+                   let cgImage = result.image.cgImage,
+                   let ctx = MetalContext.shared,
+                   let smoothed = ctx.anisotropicKuwahara(cgImage, radius: simpConfig.kuwaharaRadius) {
+                    result = ProcessingResult(
+                        image: smoothed,
+                        palette: result.palette,
+                        paletteBands: result.paletteBands,
+                        pixelBands: result.pixelBands
+                    )
+                }
+
                 try Task.checkCancellation()
                 await MainActor.run {
                     self.processedImage  = result.image
@@ -233,41 +256,119 @@ class AppState: ObservableObject {
     }
 
     func exportCurrentImage() -> UIImage? {
+        let base: UIImage?
         if activeMode == .original, let fullResolutionOriginalImage {
-            return fullResolutionOriginalImage
+            base = fullResolutionOriginalImage
+        } else {
+            base = currentDisplayImage
         }
-        return currentDisplayImage
+        guard let image = base else { return nil }
+        guard gridConfig.enabled else { return image }
+        return renderGridOnto(image)
     }
 
-    func applySimplify() {
+    private func renderGridOnto(_ image: UIImage) -> UIImage {
+        let size = image.size
+        let config = gridConfig
+
+        let lineColor = UIColor(GridLineColorResolver.resolvedColor(config: config, image: image))
+
+        let div = CGFloat(config.divisions)
+        let cellW: CGFloat
+        let cellH: CGFloat
+        switch config.cellAspect {
+        case .square:
+            let shortEdge = min(size.width, size.height)
+            cellW = shortEdge / div
+            cellH = cellW
+        case .matchImage:
+            cellW = size.width  / div
+            cellH = size.height / div
+        }
+
+        let cols = Int((size.width  / cellW).rounded(.up))
+        let rows = Int((size.height / cellH).rounded(.up))
+        let lineWidth = max(1.0, min(size.width, size.height) / 1000.0)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { ctx in
+            image.draw(in: CGRect(origin: .zero, size: size))
+
+            let cg = ctx.cgContext
+            cg.setStrokeColor(lineColor.withAlphaComponent(config.opacity).cgColor)
+            cg.setLineWidth(lineWidth)
+            cg.clip(to: CGRect(origin: .zero, size: size))
+
+            for col in 0...cols {
+                let x = CGFloat(col) * cellW
+                cg.move(to: CGPoint(x: x, y: 0))
+                cg.addLine(to: CGPoint(x: x, y: size.height))
+            }
+            for row in 0...rows {
+                let y = CGFloat(row) * cellH
+                cg.move(to: CGPoint(x: 0, y: y))
+                cg.addLine(to: CGPoint(x: size.width, y: y))
+            }
+
+            if config.showDiagonals || config.showCenterLines {
+                for col in 0..<cols {
+                    for row in 0..<rows {
+                        let cx = CGFloat(col) * cellW
+                        let cy = CGFloat(row) * cellH
+                        let cw = min(cellW, size.width  - cx)
+                        let ch = min(cellH, size.height - cy)
+
+                        if config.showDiagonals {
+                            cg.move(to:    CGPoint(x: cx,      y: cy))
+                            cg.addLine(to: CGPoint(x: cx + cw, y: cy + ch))
+                            cg.move(to:    CGPoint(x: cx + cw, y: cy))
+                            cg.addLine(to: CGPoint(x: cx,      y: cy + ch))
+                        }
+                        if config.showCenterLines {
+                            cg.move(to:    CGPoint(x: cx + cw / 2, y: cy))
+                            cg.addLine(to: CGPoint(x: cx + cw / 2, y: cy + ch))
+                            cg.move(to:    CGPoint(x: cx,           y: cy + ch / 2))
+                            cg.addLine(to: CGPoint(x: cx + cw,      y: cy + ch / 2))
+                        }
+                    }
+                }
+            }
+
+            cg.strokePath()
+        }
+    }
+
+    func applyAbstraction() {
         guard let source = sourceImage else { return }
 
-        simplifyTask?.cancel()
-        simplifyGeneration += 1
-        let generation = simplifyGeneration
+        abstractionTask?.cancel()
+        abstractionGeneration += 1
+        let generation = abstractionGeneration
 
         // Normalize the downscale factor to the image resolution so that the
         // absolute intermediate pixel size — what determines the visual degree of
-        // simplification — stays consistent regardless of the input dimensions.
+        // abstraction — stays consistent regardless of the input dimensions.
         // At the reference resolution (1600 px) the mapping is the full 2–12×
         // range; for smaller images the factor scales down proportionally so that
-        // lower-resolution photos are not over-simplified at the same slider value.
+        // lower-resolution photos are not over-abstracted at the same slider value.
         let referenceResolution: CGFloat = 1600.0
         let maxDimension = max(source.size.width, source.size.height)
         let resolutionScale = maxDimension / referenceResolution
-        let rawDownscale = 2.0 + simplifyStrength * 10.0
+        let rawDownscale = 2.0 + abstractionStrength * 10.0
         let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
-        let method = simplificationMethod
+        let method = abstractionMethod
 
         isProcessing = true
         processingProgress = 0
-        processingLabel = "Simplifying…"
+        processingLabel = "Abstracting…"
         processingIsIndeterminate = false
         errorMessage = nil
 
-        simplifyTask = Task {
+        abstractionTask = Task {
             do {
-                let simplified = try await simplifyOperation(
+                let abstracted = try await abstractionOperation(
                     source,
                     downscale,
                     method,
@@ -278,8 +379,8 @@ class AppState: ObservableObject {
                 try Task.checkCancellation()
 
                 await MainActor.run {
-                    guard self.simplifyGeneration == generation else { return }
-                    self.simplifiedImage = simplified
+                    guard self.abstractionGeneration == generation else { return }
+                    self.abstractedImage = abstracted
                     self.isProcessing    = false
                     self.processingLabel = "Processing…"
                     self.triggerProcessing()
@@ -288,7 +389,7 @@ class AppState: ObservableObject {
                 // superseded by a newer request
             } catch {
                 await MainActor.run {
-                    guard self.simplifyGeneration == generation else { return }
+                    guard self.abstractionGeneration == generation else { return }
                     self.isProcessing = false
                     self.processingLabel = "Processing…"
                     self.errorMessage = error.localizedDescription
@@ -297,10 +398,10 @@ class AppState: ObservableObject {
         }
     }
 
-    func resetSimplify() {
-        simplifyTask?.cancel()
-        simplifyGeneration += 1
-        simplifiedImage = nil
+    func resetAbstraction() {
+        abstractionTask?.cancel()
+        abstractionGeneration += 1
+        abstractedImage = nil
         isolatedProcessedImage = nil
         processedPixelBands = []
         processingLabel = "Processing…"

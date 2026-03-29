@@ -4,14 +4,14 @@ import Testing
 
 @MainActor
 @Test
-func resetSimplifyCancelsInflightSimplifyTask() async throws {
-    let simplifier = SimplifyOperationProbe()
+func resetAbstractionCancelsInflightAbstractionTask() async throws {
+    let abstractor = AbstractionOperationProbe()
     let state = AppState(
-        processOperation: { image, _, _, _, _ in
+        processOperation: { image, _, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
         },
-        simplifyOperation: { image, downscale, method, onProgress in
-            try await simplifier.simplify(
+        abstractionOperation: { image, downscale, method, onProgress in
+            try await abstractor.abstract(
                 image: image,
                 downscale: downscale,
                 method: method,
@@ -21,16 +21,16 @@ func resetSimplifyCancelsInflightSimplifyTask() async throws {
     )
 
     state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.simplifyEnabled = true
+    state.abstractionEnabled = true
 
-    state.applySimplify()
-    state.resetSimplify()
+    state.applyAbstraction()
+    state.resetAbstraction()
 
-    await simplifier.resume(with: TestImageFactory.makeSolid(width: 20, height: 20, color: .blue))
+    await abstractor.resume(with: TestImageFactory.makeSolid(width: 20, height: 20, color: .blue))
     await Task.yield()
     await Task.yield()
 
-    #expect(state.simplifiedImage == nil)
+    #expect(state.abstractedImage == nil)
     #expect(state.processingLabel == "Processing…")
 }
 
@@ -47,7 +47,7 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
     )
 
     let state = AppState(
-        processOperation: { _, _, _, _, _ in
+        processOperation: { _, _, _, _, _, _ in
             ProcessingResult(
                 image: processedImage,
                 palette: [],
@@ -80,7 +80,7 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
 @Test
 func setModeClearsProcessedState() {
     let state = AppState(
-        processOperation: { image, _, _, _, _ in
+        processOperation: { image, _, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
         }
     )
@@ -104,7 +104,7 @@ func setModeClearsProcessedState() {
 @Test
 func setModeToSameModeIsNoOp() {
     let state = AppState(
-        processOperation: { image, _, _, _, _ in
+        processOperation: { image, _, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
         }
     )
@@ -121,25 +121,25 @@ func setModeToSameModeIsNoOp() {
 
 @MainActor
 @Test
-func displayBaseImagePrefersSimplifiedOverSource() {
+func displayBaseImagePrefersAbstractedOverSource() {
     let state = AppState()
     let source     = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
-    let simplified = TestImageFactory.makeSolid(width: 10, height: 10, color: .blue)
+    let abstracted = TestImageFactory.makeSolid(width: 10, height: 10, color: .blue)
 
     state.sourceImage    = source
-    state.simplifiedImage = simplified
+    state.abstractedImage = abstracted
 
-    #expect(state.displayBaseImage === simplified)
+    #expect(state.displayBaseImage === abstracted)
 }
 
 @MainActor
 @Test
-func displayBaseImageFallsBackToSourceWhenNoSimplified() {
+func displayBaseImageFallsBackToSourceWhenNoAbstracted() {
     let state = AppState()
     let source = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
 
     state.sourceImage    = source
-    state.simplifiedImage = nil
+    state.abstractedImage = nil
 
     #expect(state.displayBaseImage === source)
 }
@@ -160,13 +160,13 @@ func currentDisplayImageShowsBaseImageInOriginalMode() {
 
 // MARK: -
 
-private actor SimplifyOperationProbe {
+private actor AbstractionOperationProbe {
     private var continuation: CheckedContinuation<UIImage, Error>?
 
-    func simplify(
+    func abstract(
         image: UIImage,
         downscale: CGFloat,
-        method: SimplificationMethod,
+        method: AbstractionMethod,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> UIImage {
         try await withCheckedThrowingContinuation { continuation in
