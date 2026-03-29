@@ -28,11 +28,6 @@ enum LineStyle: String, CaseIterable {
     case custom       = "Custom"
 }
 
-enum CellAspect: String, CaseIterable {
-    case square     = "Square"
-    case matchImage = "Image"
-}
-
 enum MinRegionSize: String, CaseIterable {
     case off    = "Off"
     case small  = "Small"
@@ -52,9 +47,7 @@ enum MinRegionSize: String, CaseIterable {
 struct GridConfig {
     var enabled: Bool       = false
     var divisions: Int      = 4
-    var cellAspect: CellAspect = .square
     var showDiagonals: Bool    = false
-    var showCenterLines: Bool  = false
     var lineStyle: LineStyle   = .autoContrast
     var customColor: Color     = .white
     var opacity: Double        = 0.7
@@ -103,18 +96,4 @@ enum AbstractionMethod: String, CaseIterable, Identifiable {
     var modelBundleName: String? {
         return "APISR_GRL_x4"
     }
-}
-
-// MARK: - Simplification (post-processing) model
-
-enum SimplificationMethod: String, CaseIterable {
-    case regionCompaction = "Region Compaction"
-    case kuwahara = "Kuwahara"
-}
-
-struct SimplificationConfig {
-    var enabled: Bool = false
-    var method: SimplificationMethod = .regionCompaction
-    var minRegionSize: MinRegionSize = .small
-    var kuwaharaRadius: Int = 6
 }

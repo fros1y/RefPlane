@@ -11,12 +11,16 @@ struct ColorSettingsView: View {
                     get: { Double(state.colorConfig.colorFamilies) },
                     set: { newVal in
                         state.colorConfig.colorFamilies = Int(newVal.rounded())
-                        state.triggerProcessing()
                     }
                 ),
                 range: 2...6,
                 step: 1,
-                displayFormat: { "\(Int($0))" }
+                displayFormat: { "\(Int($0))" },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.triggerProcessing()
+                    }
+                }
             )
 
             LabeledSlider(
@@ -27,19 +31,23 @@ struct ColorSettingsView: View {
                         let values = Int(newVal.rounded())
                         state.colorConfig.valuesPerFamily = values
                         state.colorConfig.valueThresholds = defaultThresholds(for: values)
-                        state.triggerProcessing()
                     }
                 ),
                 range: 1...4,
                 step: 1,
-                displayFormat: { "\(Int($0))" }
+                displayFormat: { "\(Int($0))" },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.triggerProcessing()
+                    }
+                }
             )
 
             LabeledSlider(
                 label: "Palette Spread",
                 value: Binding(
                     get: { state.colorConfig.paletteSpread },
-                    set: { state.colorConfig.paletteSpread = $0; state.triggerProcessing() }
+                    set: { state.colorConfig.paletteSpread = $0 }
                 ),
                 range: 0...1,
                 step: 0.01,
@@ -47,6 +55,11 @@ struct ColorSettingsView: View {
                     if value <= 0.01 { return "Mass" }
                     if value >= 0.99 { return "Hue" }
                     return String(format: "%.2f", value)
+                },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.triggerProcessing()
+                    }
                 }
             )
 
@@ -58,12 +71,15 @@ struct ColorSettingsView: View {
                 ThresholdSliderView(
                     thresholds: Binding(
                         get: { state.colorConfig.valueThresholds },
-                        set: { state.colorConfig.valueThresholds = $0; state.triggerProcessing() }
+                        set: { state.colorConfig.valueThresholds = $0 }
                     ),
                     levels: state.colorConfig.valuesPerFamily,
                     colorForLevel: { level, total in
                         let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
                         return Color(white: t)
+                    },
+                    onEditingEnded: {
+                        state.triggerProcessing()
                     }
                 )
             }

@@ -5,9 +5,7 @@ import Testing
 private let autoContrastConfig = GridConfig(
     enabled: true,
     divisions: 4,
-    cellAspect: .matchImage,
     showDiagonals: false,
-    showCenterLines: false,
     lineStyle: .autoContrast,
     customColor: .white,
     opacity: 0.7
@@ -69,9 +67,7 @@ func normalizedSegmentsIncludeTrailingBorderForSquareCells() {
     let config = GridConfig(
         enabled: true,
         divisions: 4,
-        cellAspect: .square,
         showDiagonals: false,
-        showCenterLines: false,
         lineStyle: .autoContrast,
         customColor: .white,
         opacity: 0.7

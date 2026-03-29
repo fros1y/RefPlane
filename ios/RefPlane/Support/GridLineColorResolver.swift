@@ -76,18 +76,9 @@ enum GridLineColorResolver {
         guard config.divisions > 0, imageSize.width > 0, imageSize.height > 0 else { return [] }
 
         let div = CGFloat(config.divisions)
-        let cellW: CGFloat
-        let cellH: CGFloat
-
-        switch config.cellAspect {
-        case .square:
-            let shortEdge = min(imageSize.width, imageSize.height)
-            cellW = shortEdge / div
-            cellH = cellW
-        case .matchImage:
-            cellW = imageSize.width / div
-            cellH = imageSize.height / div
-        }
+        let shortEdge = min(imageSize.width, imageSize.height)
+        let cellW = shortEdge / div
+        let cellH = cellW
 
         let cols = Int((imageSize.width / cellW).rounded(.up))
         let rows = Int((imageSize.height / cellH).rounded(.up))
@@ -109,7 +100,7 @@ enum GridLineColorResolver {
             ))
         }
 
-        if config.showDiagonals || config.showCenterLines {
+        if config.showDiagonals {
             for col in 0..<cols {
                 for row in 0..<rows {
                     let originX = CGFloat(col) * cellW / imageSize.width
@@ -126,17 +117,6 @@ enum GridLineColorResolver {
                         segments.append(GridLineSegment(
                             start: CGPoint(x: originX + width, y: originY),
                             end: CGPoint(x: originX, y: originY + height)
-                        ))
-                    }
-
-                    if config.showCenterLines {
-                        segments.append(GridLineSegment(
-                            start: CGPoint(x: originX + width / 2, y: originY),
-                            end: CGPoint(x: originX + width / 2, y: originY + height)
-                        ))
-                        segments.append(GridLineSegment(
-                            start: CGPoint(x: originX, y: originY + height / 2),
-                            end: CGPoint(x: originX + width, y: originY + height / 2)
                         ))
                     }
                 }

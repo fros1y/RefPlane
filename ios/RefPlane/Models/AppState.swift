@@ -8,7 +8,6 @@ class AppState: ObservableObject {
         RefPlaneMode,
         ValueConfig,
         ColorConfig,
-        SimplificationConfig,
         @escaping @Sendable (Double) -> Void
     ) async throws -> ProcessingResult
 
@@ -45,11 +44,10 @@ class AppState: ObservableObject {
     @Published var gridConfig: GridConfig   = GridConfig()
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
-    @Published var abstractionEnabled: Bool    = true
-    /// Abstraction strength 0–1. Maps to downscale factor 2–12.
+    /// Abstraction strength 0–1. `0` disables abstraction; positive values map
+    /// to the existing downscale-based abstraction range.
     @Published var abstractionStrength: Double  = 0.5
     @Published var abstractionMethod: AbstractionMethod = .apisr
-    @Published var simplificationConfig: SimplificationConfig = SimplificationConfig()
 
     // Abstracted image (after upscale/denoise)
     @Published var abstractedImage: UIImage? = nil
@@ -65,6 +63,10 @@ class AppState: ObservableObject {
 
     private var loadingTask: Task<Void, Never>? = nil
     private var processedPixelBands: [Int] = []
+
+    var abstractionIsEnabled: Bool {
+        abstractionStrength > 0
+    }
 
     var availableAbstractionMethods: [AbstractionMethod] {
         AbstractionMethod.allCases.filter { method in
@@ -85,13 +87,12 @@ class AppState: ObservableObject {
         abstractionOperation: AbstractionOperation? = nil
     ) {
         let processor = ImageProcessor()
-        self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, simplificationConfig, onProgress in
+        self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, onProgress in
             try await processor.process(
                 image: image,
                 mode: mode,
                 valueConfig: valueConfig,
                 colorConfig: colorConfig,
-                simplificationConfig: simplificationConfig,
                 onProgress: onProgress
             )
         }
@@ -149,7 +150,7 @@ class AppState: ObservableObject {
             guard !Task.isCancelled else { return }
             originalImage             = scaled
             sourceImage               = scaled
-            if abstractionEnabled {
+            if abstractionIsEnabled {
                 applyAbstraction()
             } else {
                 processingLabel           = "Processing…"
@@ -184,37 +185,20 @@ class AppState: ObservableObject {
 
         processingGeneration += 1
         let myGeneration = processingGeneration
-        let simpConfig = simplificationConfig
         let mode = activeMode
 
         processingTask = Task {
             do {
-                var result = try await processOperation(
+                let result = try await processOperation(
                     source,
                     mode,
                     valueConfig,
                     colorConfig,
-                    simpConfig,
                     { [weak self] p in
                         Task { @MainActor [weak self] in self?.processingProgress = p }
                     }
                 )
                 try Task.checkCancellation()
-
-                // Apply Kuwahara post-processing if enabled
-                if (mode == .value || mode == .color),
-                   simpConfig.enabled,
-                   simpConfig.method == .kuwahara,
-                   let cgImage = result.image.cgImage,
-                   let ctx = MetalContext.shared,
-                   let smoothed = ctx.anisotropicKuwahara(cgImage, radius: simpConfig.kuwaharaRadius) {
-                    result = ProcessingResult(
-                        image: smoothed,
-                        palette: result.palette,
-                        paletteBands: result.paletteBands,
-                        pixelBands: result.pixelBands
-                    )
-                }
 
                 try Task.checkCancellation()
                 await MainActor.run {
@@ -306,6 +290,10 @@ class AppState: ObservableObject {
 
     func applyAbstraction() {
         guard let source = sourceImage else { return }
+        guard abstractionIsEnabled else {
+            resetAbstraction()
+            return
+        }
 
         abstractionTask?.cancel()
         abstractionGeneration += 1

@@ -5,11 +5,6 @@ struct ValueSettingsView: View {
 
     var body: some View {
         Group {
-            Button("Apply Notan") {
-                applyNotan()
-            }
-            .buttonStyle(.bordered)
-
             LabeledSlider(
                 label: "Levels",
                 value: Binding(
@@ -18,12 +13,16 @@ struct ValueSettingsView: View {
                         let level = Int(newVal.rounded())
                         state.valueConfig.levels = level
                         state.valueConfig.thresholds = defaultThresholds(for: level)
-                        state.triggerProcessing()
                     }
                 ),
                 range: 2...8,
                 step: 1,
-                displayFormat: { "\(Int($0))" }
+                displayFormat: { "\(Int($0))" },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.triggerProcessing()
+                    }
+                }
             )
 
             VStack(alignment: .leading, spacing: 8) {
@@ -34,21 +33,18 @@ struct ValueSettingsView: View {
                 ThresholdSliderView(
                     thresholds: Binding(
                         get: { state.valueConfig.thresholds },
-                        set: { state.valueConfig.thresholds = $0; state.triggerProcessing() }
+                        set: { state.valueConfig.thresholds = $0 }
                     ),
                     levels: state.valueConfig.levels,
                     colorForLevel: { level, total in
                         let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
                         return Color(white: t)
+                    },
+                    onEditingEnded: {
+                        state.triggerProcessing()
                     }
                 )
             }
         }
-    }
-
-    private func applyNotan() {
-        state.valueConfig.levels = 2
-        state.valueConfig.thresholds = [0.5]
-        state.triggerProcessing()
     }
 }
