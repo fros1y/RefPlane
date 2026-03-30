@@ -6,7 +6,6 @@ import Dispatch
 
 enum ColorRegionsProcessor {
 
-    private static let familyLWeight: Float = 0.08
     private static let histogramLBins = 12
     private static let histogramABins = 24
     private static let histogramBBins = 24
@@ -73,9 +72,7 @@ enum ColorRegionsProcessor {
         minRegionSize: MinRegionSize
     ) -> Result? {
         let total = width * height
-        let colorFamilies = max(2, min(6, config.colorFamilies))
-        let valuesPerFamily = max(1, min(4, config.valuesPerFamily))
-        let thresholds = normalizedThresholds(config.valueThresholds, levels: valuesPerFamily)
+        let numShades = max(2, config.numShades)
 
         var stepStart = CFAbsoluteTimeGetCurrent()
         guard let (labArray, srcBuffer, labBuffer) = gpu.rgbToOklab(pixels: pixels, width: width, height: height) else {
@@ -84,25 +81,25 @@ enum ColorRegionsProcessor {
         print("[ColorStudy][GPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let familyCentroids: [OklabColor]
+        let centroids: [OklabColor]
         if let gpuCentroids = selectFamilyCentroids(
             gpu: gpu,
             labBuffer: labBuffer,
             count: total,
-            k: colorFamilies,
-            lWeight: familyLWeight,
+            k: numShades,
+            lWeight: 1.0,
             spreadBias: Float(config.paletteSpread)
         ) {
-            familyCentroids = gpuCentroids
-            print("[ColorStudy][GPU] choose_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+            centroids = gpuCentroids
+            print("[ColorStudy][GPU] choose_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         } else {
-            familyCentroids = selectFamilyCentroids(
+            centroids = selectFamilyCentroids(
                 labArray: labArray,
-                k: colorFamilies,
-                lWeight: familyLWeight,
+                k: numShades,
+                lWeight: 1.0,
                 spreadBias: Float(config.paletteSpread)
             )
-            print("[ColorStudy][CPU] choose_families_fallback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+            print("[ColorStudy][CPU] choose_shades_fallback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         }
 
         return processGPUWithCentroids(
@@ -112,9 +109,8 @@ enum ColorRegionsProcessor {
             labBuffer: labBuffer,
             width: width,
             height: height,
-            valuesPerFamily: valuesPerFamily,
-            thresholds: thresholds,
-            familyCentroids: familyCentroids,
+            numShades: numShades,
+            centroids: centroids,
             minRegionFactor: minRegionSize.factor
         )
     }
@@ -126,49 +122,27 @@ enum ColorRegionsProcessor {
         labBuffer: MTLBuffer,
         width: Int,
         height: Int,
-        valuesPerFamily: Int,
-        thresholds: [Float],
-        familyCentroids: [OklabColor],
+        numShades: Int,
+        centroids: [OklabColor],
         minRegionFactor: Double?
     ) -> Result? {
         let total = width * height
-        guard !familyCentroids.isEmpty else { return nil }
+        guard !centroids.isEmpty else { return nil }
 
         var stepStart = CFAbsoluteTimeGetCurrent()
-        let flatCentroids = familyCentroids.flatMap { [$0.L, $0.a, $0.b] }
-        guard let familyAssignments = gpu.kmeansAssign(
+        let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
+        guard let assignments = gpu.kmeansAssign(
             pixelLabBuffer: labBuffer,
             count: total,
             centroidLab: flatCentroids,
-            k: familyCentroids.count,
-            lWeight: familyLWeight
+            k: centroids.count,
+            lWeight: 1.0
         ) else {
             return nil
         }
-        print("[ColorStudy][GPU] assign_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        print("[ColorStudy][GPU] assign_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        stepStart = CFAbsoluteTimeGetCurrent()
-        var globalLabels: [Int32]
-        if let gpuLabels = gpu.buildColorLabels(
-            labBuffer: labBuffer,
-            familyAssignments: familyAssignments,
-            count: total,
-            familyCount: familyCentroids.count,
-            valuesPerFamily: valuesPerFamily,
-            thresholds: thresholds
-        ) {
-            globalLabels = gpuLabels
-            print("[ColorStudy][GPU] build_labels: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-        } else {
-            globalLabels = buildLabels(
-                labArray: labArray,
-                familyAssignments: familyAssignments.map(Int.init),
-                familyCount: familyCentroids.count,
-                valuesPerFamily: valuesPerFamily,
-                thresholds: thresholds
-            )
-            print("[ColorStudy][CPU] build_labels_fallback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-        }
+        var globalLabels = assignments.map { Int32($0) }
 
         if let factor = minRegionFactor {
             stepStart = CFAbsoluteTimeGetCurrent()
@@ -177,22 +151,21 @@ enum ColorRegionsProcessor {
                 width: width,
                 height: height,
                 minFactor: factor,
-                labelCapacity: familyCentroids.count * valuesPerFamily
+                labelCapacity: numShades
             )
             print("[ColorStudy][CPU] region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let quantized = makeQuantizedCentroids(
-            labArray: labArray,
-            labels: globalLabels,
-            familyCentroids: familyCentroids,
-            valuesPerFamily: valuesPerFamily,
-            thresholds: thresholds
-        )
-        print("[ColorStudy][CPU] quantize_values: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        let quantizedCentroids = computeCentroids(labArray: labArray, labels: globalLabels, k: numShades)
+        print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        let flatQuantizedCentroids = quantized.centroids.flatMap { [$0.L, $0.a, $0.b] }
+        let palette: [Color] = quantizedCentroids.map { c in
+            let (r, g, b) = oklabToRGB(c)
+            return Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
+        }
+
+        let flatQuantizedCentroids = quantizedCentroids.flatMap { [$0.L, $0.a, $0.b] }
         stepStart = CFAbsoluteTimeGetCurrent()
         guard let outputPixels = gpu.remapByLabel(
             srcBuffer: srcBuffer,
@@ -207,10 +180,10 @@ enum ColorRegionsProcessor {
 
         return Result(
             image: image,
-            palette: quantized.palette,
-            paletteBands: quantized.paletteBands,
-            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily),
-            quantizedCentroids: quantized.centroids,
+            palette: palette,
+            paletteBands: (0..<numShades).map { $0 },
+            pixelBands: globalLabels.map { Int($0) },
+            quantizedCentroids: quantizedCentroids,
             pixelLabels: globalLabels
         )
     }
@@ -225,9 +198,7 @@ enum ColorRegionsProcessor {
         minRegionSize: MinRegionSize
     ) -> Result? {
         let total = width * height
-        let colorFamilies = max(2, min(6, config.colorFamilies))
-        let valuesPerFamily = max(1, min(4, config.valuesPerFamily))
-        let thresholds = normalizedThresholds(config.valueThresholds, levels: valuesPerFamily)
+        let numShades = max(2, config.numShades)
 
         var stepStart = CFAbsoluteTimeGetCurrent()
         var points = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
@@ -238,28 +209,20 @@ enum ColorRegionsProcessor {
         print("[ColorStudy][CPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let familyCentroids = selectFamilyCentroids(
+        let centroids = selectFamilyCentroids(
             points: points,
-            k: colorFamilies,
-            lWeight: familyLWeight,
+            k: numShades,
+            lWeight: 1.0,
             spreadBias: Float(config.paletteSpread)
         )
-        print("[ColorStudy][CPU] choose_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-        guard !familyCentroids.isEmpty else { return nil }
+        print("[ColorStudy][CPU] choose_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        guard !centroids.isEmpty else { return nil }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let assignments = assignFamiliesCPU(points: points, centroids: familyCentroids, lWeight: familyLWeight)
-        print("[ColorStudy][CPU] assign_families: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        let assignments = assignFamiliesCPU(points: points, centroids: centroids, lWeight: 1.0)
+        print("[ColorStudy][CPU] assign_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        stepStart = CFAbsoluteTimeGetCurrent()
-        var globalLabels = buildLabels(
-            points: points,
-            familyAssignments: assignments,
-            familyCount: familyCentroids.count,
-            valuesPerFamily: valuesPerFamily,
-            thresholds: thresholds
-        )
-        print("[ColorStudy][CPU] build_labels: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        var globalLabels = assignments.map { Int32($0) }
 
         if let factor = minRegionSize.factor {
             stepStart = CFAbsoluteTimeGetCurrent()
@@ -268,33 +231,22 @@ enum ColorRegionsProcessor {
                 width: width,
                 height: height,
                 minFactor: factor,
-                labelCapacity: familyCentroids.count * valuesPerFamily
+                labelCapacity: numShades
             )
             print("[ColorStudy][CPU] region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let quantized = makeQuantizedCentroids(
-            points: points,
-            labels: globalLabels,
-            familyCentroids: familyCentroids,
-            valuesPerFamily: valuesPerFamily,
-            thresholds: thresholds
-        )
-        print("[ColorStudy][CPU] quantize_values: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        let quantizedCentroids = computeCentroids(points: points, labels: globalLabels, k: numShades)
+        print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         stepStart = CFAbsoluteTimeGetCurrent()
         var out = [UInt8](repeating: 255, count: total * 4)
         for i in 0..<total {
-            var label = Int(globalLabels[i])
-            if label < 0 || label >= quantized.centroids.count {
-                label = 0
-            }
-
-            let color = quantized.centroids[label]
-            let (r, g, b) = oklabToRGB(color)
+            let label = min(max(Int(globalLabels[i]), 0), numShades - 1)
+            let (r, g, b) = oklabToRGB(quantizedCentroids[label])
             let base = i * 4
-            out[base] = r
+            out[base]     = r
             out[base + 1] = g
             out[base + 2] = b
             out[base + 3] = pixels[base + 3]
@@ -305,12 +257,17 @@ enum ColorRegionsProcessor {
             return nil
         }
 
+        let palette: [Color] = quantizedCentroids.map { c in
+            let (r, g, b) = oklabToRGB(c)
+            return Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
+        }
+
         return Result(
             image: image,
-            palette: quantized.palette,
-            paletteBands: quantized.paletteBands,
-            pixelBands: pixelBands(from: globalLabels, valuesPerFamily: valuesPerFamily),
-            quantizedCentroids: quantized.centroids,
+            palette: palette,
+            paletteBands: (0..<numShades).map { $0 },
+            pixelBands: globalLabels.map { Int($0) },
+            quantizedCentroids: quantizedCentroids,
             pixelLabels: globalLabels
         )
     }
@@ -873,198 +830,39 @@ enum ColorRegionsProcessor {
         }
     }
 
-    private static func buildLabels(
-        points: [OklabColor],
-        familyAssignments: [Int],
-        familyCount: Int,
-        valuesPerFamily: Int,
-        thresholds: [Float]
-    ) -> [Int32] {
-        var labels = [Int32](repeating: 0, count: points.count)
-        for i in 0..<points.count {
-            let familyIndex = min(max(familyAssignments[i], 0), familyCount - 1)
-            let valueIndex = valueBucket(for: points[i].L, thresholds: thresholds)
-            labels[i] = Int32(familyIndex * valuesPerFamily + valueIndex)
-        }
-        return labels
-    }
-
-    private static func buildLabels(
-        labArray: [Float],
-        familyAssignments: [Int],
-        familyCount: Int,
-        valuesPerFamily: Int,
-        thresholds: [Float]
-    ) -> [Int32] {
-        let pointCount = labArray.count / 3
-        var labels = [Int32](repeating: 0, count: pointCount)
-        for i in 0..<pointCount {
-            let familyIndex = min(max(familyAssignments[i], 0), familyCount - 1)
-            let valueIndex = valueBucket(for: labArray[i * 3], thresholds: thresholds)
-            labels[i] = Int32(familyIndex * valuesPerFamily + valueIndex)
-        }
-        return labels
-    }
-
-    private static func makeQuantizedCentroids(
-        points: [OklabColor],
-        labels: [Int32],
-        familyCentroids: [OklabColor],
-        valuesPerFamily: Int,
-        thresholds: [Float]
-    ) -> (centroids: [OklabColor], palette: [Color], paletteBands: [Int]) {
-        let familyCount = familyCentroids.count
-        let labelCount = familyCount * valuesPerFamily
-
-        var luminanceSums = [Float](repeating: 0, count: labelCount)
-        var luminanceCounts = [Int](repeating: 0, count: labelCount)
-
-        for i in 0..<points.count {
+    private static func computeCentroids(points: [OklabColor], labels: [Int32], k: Int) -> [OklabColor] {
+        var sumL = [Float](repeating: 0, count: k)
+        var sumA = [Float](repeating: 0, count: k)
+        var sumB = [Float](repeating: 0, count: k)
+        var counts = [Int](repeating: 0, count: k)
+        for (i, point) in points.enumerated() {
             let label = Int(labels[i])
-            guard label >= 0 && label < labelCount else { continue }
-            luminanceSums[label] += points[i].L
-            luminanceCounts[label] += 1
+            guard label >= 0 && label < k else { continue }
+            sumL[label] += point.L; sumA[label] += point.a; sumB[label] += point.b
+            counts[label] += 1
         }
-
-        return finalizeQuantizedCentroids(
-            luminanceSums: luminanceSums,
-            luminanceCounts: luminanceCounts,
-            familyCentroids: familyCentroids,
-            valuesPerFamily: valuesPerFamily,
-            thresholds: thresholds
-        )
-    }
-
-    private static func makeQuantizedCentroids(
-        labArray: [Float],
-        labels: [Int32],
-        familyCentroids: [OklabColor],
-        valuesPerFamily: Int,
-        thresholds: [Float]
-    ) -> (centroids: [OklabColor], palette: [Color], paletteBands: [Int]) {
-        let familyCount = familyCentroids.count
-        let labelCount = familyCount * valuesPerFamily
-
-        var luminanceSums = [Float](repeating: 0, count: labelCount)
-        var luminanceCounts = [Int](repeating: 0, count: labelCount)
-        let pointCount = labels.count
-        let workers = workerCount(for: pointCount)
-
-        if workers == 1 {
-            for i in 0..<pointCount {
-                let label = Int(labels[i])
-                guard label >= 0 && label < labelCount else { continue }
-                luminanceSums[label] += labArray[i * 3]
-                luminanceCounts[label] += 1
-            }
-        } else {
-            var partialSums = [Float](repeating: 0, count: workers * labelCount)
-            var partialCounts = [Int](repeating: 0, count: workers * labelCount)
-
-            partialSums.withUnsafeMutableBufferPointer { partialSumsBuffer in
-                partialCounts.withUnsafeMutableBufferPointer { partialCountsBuffer in
-                    labels.withUnsafeBufferPointer { labelBuffer in
-                        labArray.withUnsafeBufferPointer { labBuffer in
-                            DispatchQueue.concurrentPerform(iterations: workers) { worker in
-                                let start = worker * pointCount / workers
-                                let end = (worker + 1) * pointCount / workers
-                                let baseOffset = worker * labelCount
-                                var labIndex = start * 3
-
-                                for i in start..<end {
-                                    let label = Int(labelBuffer[i])
-                                    if label >= 0 && label < labelCount {
-                                        partialSumsBuffer[baseOffset + label] += labBuffer[labIndex]
-                                        partialCountsBuffer[baseOffset + label] += 1
-                                    }
-                                    labIndex += 3
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            for worker in 0..<workers {
-                let baseOffset = worker * labelCount
-                for label in 0..<labelCount {
-                    luminanceSums[label] += partialSums[baseOffset + label]
-                    luminanceCounts[label] += partialCounts[baseOffset + label]
-                }
-            }
+        return (0..<k).map { j in
+            counts[j] > 0
+                ? OklabColor(L: sumL[j] / Float(counts[j]), a: sumA[j] / Float(counts[j]), b: sumB[j] / Float(counts[j]))
+                : OklabColor(L: 0.5, a: 0, b: 0)
         }
-
-        return finalizeQuantizedCentroids(
-            luminanceSums: luminanceSums,
-            luminanceCounts: luminanceCounts,
-            familyCentroids: familyCentroids,
-            valuesPerFamily: valuesPerFamily,
-            thresholds: thresholds
-        )
     }
 
-    private static func finalizeQuantizedCentroids(
-        luminanceSums: [Float],
-        luminanceCounts: [Int],
-        familyCentroids: [OklabColor],
-        valuesPerFamily: Int,
-        thresholds: [Float]
-    ) -> (centroids: [OklabColor], palette: [Color], paletteBands: [Int]) {
-        var centroids = [OklabColor]()
-        var palette = [Color]()
-        var paletteBands = [Int]()
-
-        for familyIndex in 0..<familyCentroids.count {
-            let familyCentroid = familyCentroids[familyIndex]
-            for valueIndex in 0..<valuesPerFamily {
-                let label = familyIndex * valuesPerFamily + valueIndex
-                let luminance: Float
-
-                if luminanceCounts[label] > 0 {
-                    luminance = luminanceSums[label] / Float(luminanceCounts[label])
-                } else {
-                    luminance = bucketMidpoint(for: valueIndex, thresholds: thresholds)
-                }
-
-                let quantized = OklabColor(
-                    L: luminance,
-                    a: familyCentroid.a,
-                    b: familyCentroid.b
-                )
-
-                centroids.append(quantized)
-
-                let (r, g, b) = oklabToRGB(quantized)
-                palette.append(Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255))
-                paletteBands.append(familyIndex)
-            }
+    private static func computeCentroids(labArray: [Float], labels: [Int32], k: Int) -> [OklabColor] {
+        var sumL = [Float](repeating: 0, count: k)
+        var sumA = [Float](repeating: 0, count: k)
+        var sumB = [Float](repeating: 0, count: k)
+        var counts = [Int](repeating: 0, count: k)
+        for i in 0..<labels.count {
+            let label = Int(labels[i])
+            guard label >= 0 && label < k else { continue }
+            sumL[label] += labArray[i * 3]; sumA[label] += labArray[i * 3 + 1]; sumB[label] += labArray[i * 3 + 2]
+            counts[label] += 1
         }
-
-        return (centroids, palette, paletteBands)
-    }
-
-    private static func normalizedThresholds(_ thresholds: [Double], levels: Int) -> [Float] {
-        ThresholdUtilities.normalizedFloats(thresholds, levels: levels)
-    }
-
-    private static func valueBucket(for luminance: Float, thresholds: [Float]) -> Int {
-        var bucket = 0
-        for threshold in thresholds where luminance >= threshold {
-            bucket += 1
-        }
-        return min(bucket, thresholds.count)
-    }
-
-    private static func bucketMidpoint(for valueIndex: Int, thresholds: [Float]) -> Float {
-        let lower = valueIndex == 0 ? 0 : thresholds[valueIndex - 1]
-        let upper = valueIndex < thresholds.count ? thresholds[valueIndex] : 1
-        return (lower + upper) * 0.5
-    }
-
-    private static func pixelBands(from labels: [Int32], valuesPerFamily: Int) -> [Int] {
-        labels.map { label in
-            let value = max(0, Int(label))
-            return valuesPerFamily > 0 ? value / valuesPerFamily : 0
+        return (0..<k).map { j in
+            counts[j] > 0
+                ? OklabColor(L: sumL[j] / Float(counts[j]), a: sumA[j] / Float(counts[j]), b: sumB[j] / Float(counts[j]))
+                : OklabColor(L: 0.5, a: 0, b: 0)
         }
     }
 }

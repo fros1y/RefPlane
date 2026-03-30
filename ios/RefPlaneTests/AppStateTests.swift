@@ -158,6 +158,42 @@ func currentDisplayImageShowsBaseImageInOriginalMode() {
     #expect(state.currentDisplayImage === source)
 }
 
+@MainActor
+@Test
+func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
+    let processedImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 0, 255),
+        ],
+        width: 2,
+        height: 1
+    )
+
+    let state = AppState(
+        processOperation: { _, _, _, _, _ in
+            ProcessingResult(
+                image: processedImage,
+                palette: [],
+                paletteBands: [0, 1],
+                pixelBands: [0, 1],
+                pigmentRecipes: nil
+            )
+        }
+    )
+
+    state.sourceImage = processedImage
+    state.activeMode = .color
+    state.triggerProcessing()
+    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+
+    #expect(state.compareAfterImage === state.currentDisplayImage)
+
+    state.toggleIsolatedBand(1)
+
+    #expect(state.compareAfterImage === state.currentDisplayImage)
+}
+
 // MARK: -
 
 private actor AbstractionOperationProbe {

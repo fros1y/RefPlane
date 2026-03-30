@@ -243,9 +243,9 @@ struct ContentView: View {
 
     @ViewBuilder
     private var canvasArea: some View {
-        if state.compareMode, let base = state.displayBaseImage {
-            let beforeImage = state.originalImage ?? base
-            let afterImage = state.processedImage ?? base
+        if state.compareMode,
+           let beforeImage = state.compareBeforeImage,
+           let afterImage = state.compareAfterImage {
             CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {

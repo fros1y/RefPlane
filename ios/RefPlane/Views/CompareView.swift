@@ -11,19 +11,10 @@ struct CompareSliderView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Image(uiImage: afterImage)
-                    .resizable()
-                    .scaledToFit()
+                StudyImageLayer(image: afterImage, showsGrid: state.gridConfig.enabled)
                     .frame(width: geo.size.width, height: geo.size.height)
 
-                if state.gridConfig.enabled {
-                    GridOverlayView(image: afterImage)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                }
-
-                Image(uiImage: beforeImage)
-                    .resizable()
-                    .scaledToFit()
+                StudyImageLayer(image: beforeImage, showsGrid: false)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
                     .mask(
@@ -136,4 +127,3 @@ private struct SensoryFeedback17: ViewModifier {
         }
     }
 }
-

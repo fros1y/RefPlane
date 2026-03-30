@@ -121,6 +121,14 @@ class AppState: ObservableObject {
         activeMode == .original ? displayBaseImage : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
     }
 
+    var compareBeforeImage: UIImage? {
+        originalImage ?? displayBaseImage
+    }
+
+    var compareAfterImage: UIImage? {
+        activeMode == .original ? displayBaseImage : currentDisplayImage
+    }
+
     func loadImage(_ image: UIImage) {
         // Cancel any in-flight work before starting fresh.
         loadingTask?.cancel()

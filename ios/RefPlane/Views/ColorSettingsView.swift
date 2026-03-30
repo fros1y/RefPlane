@@ -6,34 +6,12 @@ struct ColorSettingsView: View {
     var body: some View {
         Group {
             LabeledSlider(
-                label: "Color Families",
+                label: "Shades",
                 value: Binding(
-                    get: { Double(state.colorConfig.colorFamilies) },
-                    set: { newVal in
-                        state.colorConfig.colorFamilies = Int(newVal.rounded())
-                    }
+                    get: { Double(state.colorConfig.numShades) },
+                    set: { state.colorConfig.numShades = Int($0.rounded()) }
                 ),
-                range: 2...6,
-                step: 1,
-                displayFormat: { "\(Int($0))" },
-                onEditingChanged: { editing in
-                    if !editing {
-                        state.triggerProcessing()
-                    }
-                }
-            )
-
-            LabeledSlider(
-                label: "Values per Color",
-                value: Binding(
-                    get: { Double(state.colorConfig.valuesPerFamily) },
-                    set: { newVal in
-                        let values = Int(newVal.rounded())
-                        state.colorConfig.valuesPerFamily = values
-                        state.colorConfig.valueThresholds = defaultThresholds(for: values)
-                    }
-                ),
-                range: 1...4,
+                range: 2...24,
                 step: 1,
                 displayFormat: { "\(Int($0))" },
                 onEditingChanged: { editing in
@@ -62,27 +40,6 @@ struct ColorSettingsView: View {
                     }
                 }
             )
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Value Thresholds")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.primary)
-
-                ThresholdSliderView(
-                    thresholds: Binding(
-                        get: { state.colorConfig.valueThresholds },
-                        set: { state.colorConfig.valueThresholds = $0 }
-                    ),
-                    levels: state.colorConfig.valuesPerFamily,
-                    colorForLevel: { level, total in
-                        let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
-                        return Color(white: t)
-                    },
-                    onEditingEnded: {
-                        state.triggerProcessing()
-                    }
-                )
-            }
 
             Divider()
 

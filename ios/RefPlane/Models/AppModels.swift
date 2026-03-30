@@ -59,12 +59,10 @@ struct ValueConfig {
 }
 
 struct ColorConfig {
-    var colorFamilies: Int        = 3
-    var valuesPerFamily: Int      = 2
-    var paletteSpread: Double     = 0
-    var valueThresholds: [Double] = defaultThresholds(for: 2)
-    var paintMixEnabled: Bool     = false
-    var maxPigmentsPerMix: Int    = 3
+    var numShades: Int         = 8
+    var paletteSpread: Double  = 0
+    var paintMixEnabled: Bool  = false
+    var maxPigmentsPerMix: Int = 3
 }
 
 func defaultThresholds(for levels: Int) -> [Double] {
