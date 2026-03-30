@@ -94,7 +94,7 @@ enum ColorRegionsProcessor {
             labBuffer: labBuffer,
             count: total,
             k: numShades,
-            lWeight: 1.0,
+            lWeight: 0.3,
             spreadBias: Float(config.paletteSpread)
         ) {
             centroids = gpuCentroids
@@ -103,7 +103,7 @@ enum ColorRegionsProcessor {
             centroids = selectFamilyCentroids(
                 labArray: labArray,
                 k: numShades,
-                lWeight: 1.0,
+                lWeight: 0.3,
                 spreadBias: Float(config.paletteSpread)
             )
             print("[ColorStudy][CPU] choose_shades_fallback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
@@ -143,7 +143,7 @@ enum ColorRegionsProcessor {
             count: total,
             centroidLab: flatCentroids,
             k: centroids.count,
-            lWeight: 1.0
+            lWeight: 0.3
         ) else {
             return nil
         }
@@ -229,14 +229,14 @@ enum ColorRegionsProcessor {
         let centroids = selectFamilyCentroids(
             points: points,
             k: numShades,
-            lWeight: 1.0,
+            lWeight: 0.3,
             spreadBias: Float(config.paletteSpread)
         )
         print("[ColorStudy][CPU] choose_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         guard !centroids.isEmpty else { return nil }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let assignments = assignFamiliesCPU(points: points, centroids: centroids, lWeight: 1.0)
+        let assignments = assignFamiliesCPU(points: points, centroids: centroids, lWeight: 0.3)
         print("[ColorStudy][CPU] assign_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         var globalLabels = assignments.map { Int32($0) }
@@ -529,14 +529,18 @@ enum ColorRegionsProcessor {
             guard count >= minimumWeight else { continue }
 
             let inverseCount = 1 / Float(count)
+            let avgA = sumA[histogramBin] * inverseCount
+            let avgB = sumB[histogramBin] * inverseCount
+            let chroma = sqrtf(avgA * avgA + avgB * avgB)
+            let chromaBoost: Float = 2.0
             candidates.append(
                 HistogramCandidate(
                     color: OklabColor(
                         L: sumL[histogramBin] * inverseCount,
-                        a: sumA[histogramBin] * inverseCount,
-                        b: sumB[histogramBin] * inverseCount
+                        a: avgA,
+                        b: avgB
                     ),
-                    weight: Float(count)
+                    weight: Float(count) * (1.0 + chromaBoost * chroma)
                 )
             )
         }
@@ -577,12 +581,16 @@ enum ColorRegionsProcessor {
             guard count >= minimumWeight else { continue }
 
             let inverseCount = 1 / Float(count)
+            let avgA = sumA[index] * inverseCount
+            let avgB = sumB[index] * inverseCount
             let color = OklabColor(
                 L: sumL[index] * inverseCount,
-                a: sumA[index] * inverseCount,
-                b: sumB[index] * inverseCount
+                a: avgA,
+                b: avgB
             )
-            candidates.append(HistogramCandidate(color: color, weight: Float(count)))
+            let chroma = sqrtf(avgA * avgA + avgB * avgB)
+            let chromaBoost: Float = 2.0
+            candidates.append(HistogramCandidate(color: color, weight: Float(count) * (1.0 + chromaBoost * chroma)))
         }
 
         if candidates.isEmpty {
@@ -619,10 +627,12 @@ enum ColorRegionsProcessor {
             let averageA = histogramAMin + ((Float(sumA[index]) * inverseCount) / 255) * aRange
             let averageB = histogramBMin + ((Float(sumB[index]) * inverseCount) / 255) * bRange
 
+            let chroma = sqrtf(averageA * averageA + averageB * averageB)
+            let chromaBoost: Float = 2.0
             candidates.append(
                 HistogramCandidate(
                     color: OklabColor(L: averageL, a: averageA, b: averageB),
-                    weight: Float(count)
+                    weight: Float(count) * (1.0 + chromaBoost * chroma)
                 )
             )
         }
