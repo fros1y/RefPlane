@@ -8,7 +8,7 @@ func resetAbstractionCancelsInflightAbstractionTask() async throws {
     let abstractor = AbstractionOperationProbe()
     let state = AppState(
         processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil)
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
         },
         abstractionOperation: { image, downscale, method, onProgress in
             try await abstractor.abstract(
@@ -52,7 +52,9 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
                 palette: [],
                 paletteBands: [0, 1],
                 pixelBands: [0, 1],
-                pigmentRecipes: nil
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
             )
         }
     )
@@ -81,7 +83,7 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
 func setModeClearsProcessedState() {
     let state = AppState(
         processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil)
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
         }
     )
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
@@ -105,7 +107,7 @@ func setModeClearsProcessedState() {
 func setModeToSameModeIsNoOp() {
     let state = AppState(
         processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil)
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
         }
     )
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
@@ -177,7 +179,9 @@ func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
                 palette: [],
                 paletteBands: [0, 1],
                 pixelBands: [0, 1],
-                pigmentRecipes: nil
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
             )
         }
     )

@@ -28,6 +28,8 @@ class AppState: ObservableObject {
     @Published var paletteColors: [Color]   = []
     @Published var paletteBands: [Int]      = []
     @Published var pigmentRecipes: [PigmentRecipe]? = nil
+    @Published var selectedTubes: [PigmentData] = []
+    @Published var clippedRecipeIndices: [Int] = []
 
     // UI state
     @Published var activeMode: RefPlaneMode = .original
@@ -146,6 +148,9 @@ class AppState: ObservableObject {
         processedPixelBands       = []
         paletteColors             = []
         paletteBands              = []
+        pigmentRecipes            = nil
+        selectedTubes             = []
+        clippedRecipeIndices      = []
         isolatedBand              = nil
         errorMessage              = nil
         isProcessing              = true
@@ -216,6 +221,8 @@ class AppState: ObservableObject {
                     self.paletteColors       = result.palette
                     self.paletteBands        = result.paletteBands
                     self.pigmentRecipes      = result.pigmentRecipes
+                    self.selectedTubes       = result.selectedTubes
+                    self.clippedRecipeIndices = result.clippedRecipeIndices
                     self.processingProgress  = 1
                     self.refreshIsolatedProcessedImage()
                 }
@@ -247,6 +254,8 @@ class AppState: ObservableObject {
         paletteColors = []
         paletteBands = []
         pigmentRecipes = nil
+        selectedTubes = []
+        clippedRecipeIndices = []
         triggerProcessing()
     }
 

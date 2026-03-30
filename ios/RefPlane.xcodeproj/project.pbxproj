@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05A536F79A9974610A3BEB13 /* PaintPaletteBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3687599C8226E76F13B60871 /* PaintPaletteBuilderTests.swift */; };
+		097184F56F1D4B69A34C551B /* ValueSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */; };
 		0A11B22C33D44E55F6677001 /* ThresholdUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677002 /* ThresholdUtilities.swift */; };
 		0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677004 /* PaletteSections.swift */; };
 		0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */; };
@@ -26,22 +28,32 @@
 		0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */; };
 		0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */; };
 		0A11B22C33D44E55F6677201 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677202 /* XCTest.framework */; };
-		097184F56F1D4B69A34C551B /* ValueSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */; };
 		18900E3DD6FA4EBFB2BCC1A3 /* ImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */; };
 		240039E8209342798ACFEEFF /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A5CCCFD76564CEA842044F7 /* AppModels.swift */; };
 		289C0A7CB43C45138A1973EE /* RefPlaneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E748F0C71BD24DB6A46F633D /* RefPlaneApp.swift */; };
 		3742DD99D9354F8CAF6D398A /* ImageAbstractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C95ED152AB4658AA629DF5 /* ImageAbstractor.swift */; };
+		39137631D8A7F48FEE0A869C /* PigmentDecomposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7329730C1F74CACF021E22 /* PigmentDecomposerTests.swift */; };
 		43761882D6BF45CE9CBE61F7 /* ActionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA8F46FC114F41C5BDDA822F /* ActionBarView.swift */; };
 		54865C4DBC864140A2C83A6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F160D00F80954B0C9211E7F6 /* Assets.xcassets */; };
 		59B41B79D851484E8F2028BC /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523EB845BCBA42B4BBDC7E12 /* AppState.swift */; };
 		6256FE8690AA438BAFA74E15 /* ThresholdSliderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9960E48DDC404E14A65578E6 /* ThresholdSliderView.swift */; };
 		6A0D66489A3D486AA65C28D1 /* AboutPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */; };
 		77475E85729846BCB2B25460 /* ErrorToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0493CA914D0B4273902F650E /* ErrorToastView.swift */; };
+		899C43C6C828A9B141031349 /* PaintPaletteBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A0467FD99B44D6917AA1114 /* PaintPaletteBuilder.swift */; };
 		8C646892F8744755A7B478D4 /* ColorSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87AF7FD89A0E49169C002685 /* ColorSettingsView.swift */; };
 		9D269B4A36CD4FF1B68B714A /* GridOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */; };
 		A049AEDD4C6141208AEBAC09 /* CompareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC8D69363CDB4E37AB598F8A /* CompareView.swift */; };
 		A19D27A8F16448F282CB39AD /* GrayscaleProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25800C7CC7D04D37A930959D /* GrayscaleProcessor.swift */; };
+		AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD667789 /* MetalContext.swift */; };
+		AA11BB22CC334455DD66778A /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD66778B /* Shaders.metal */; };
 		B060BBCBD6FF473F83A23CEA /* KMeansClusterer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C649C9D17B5463C9B8B0D37 /* KMeansClusterer.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F201 /* SpectralData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F202 /* SpectralDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F203 /* KubelkaMunkMixer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F204 /* GoldenAcrylicsKS.json in Resources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */; };
+		B1C2D3E4F5A6B7C8D9E0F205 /* KubelkaMunkMixerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */; };
 		B741A149437E482EAFF0AAB4 /* UIImageExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */; };
 		BE4EBBE37D1B43FFBB5F78B1 /* PaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3EA40383874CE288B53828 /* PaletteView.swift */; };
 		BF40722118FF4AE6A73E5141 /* RegionCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 632255DE24DC47B99F2567C2 /* RegionCleaner.swift */; };
@@ -53,17 +65,8 @@
 		E788E13BEB0D4D0FA8C6C2FF /* OklabColorSpace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89CE768BFFC344A99B069A20 /* OklabColorSpace.swift */; };
 		EA4E4DFAEBE44CDA8FFB4B56 /* ControlPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B5E61D8D7B47A4AEB29906 /* ControlPanelView.swift */; };
 		F2563CEB8768461DAE57C9F1 /* ValueStudyProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97921D53AC4F4C3C8A108993 /* ValueStudyProcessor.swift */; };
-		FB5EA8B452EA430384374737 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80B3D2D0E20405194A6C9B5 /* ContentView.swift */; };
 		F2E3D4C5B6A74839D8C9E001 /* APISR_GRL_x4.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */; };
-		AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD667789 /* MetalContext.swift */; };
-		AA11BB22CC334455DD66778A /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD66778B /* Shaders.metal */; };
-		B1C2D3E4F5A6B7C8D9E0F201 /* SpectralData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */; };
-		B1C2D3E4F5A6B7C8D9E0F202 /* SpectralDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */; };
-		B1C2D3E4F5A6B7C8D9E0F203 /* KubelkaMunkMixer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */; };
-		B1C2D3E4F5A6B7C8D9E0F204 /* GoldenAcrylicsKS.json in Resources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */; };
-		B1C2D3E4F5A6B7C8D9E0F205 /* KubelkaMunkMixerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */; };
-		B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */; };
-		B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */; };
+		FB5EA8B452EA430384374737 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80B3D2D0E20405194A6C9B5 /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,6 +80,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0340E78F278D45F5B04ACA95 /* ColorRegionsProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorRegionsProcessor.swift; path = Processing/ColorRegionsProcessor.swift; sourceTree = "<group>"; };
+		0493CA914D0B4273902F650E /* ErrorToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ErrorToastView.swift; path = Views/ErrorToastView.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677002 /* ThresholdUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ThresholdUtilities.swift; path = Support/ThresholdUtilities.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677004 /* PaletteSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaletteSections.swift; path = Support/PaletteSections.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridLineColorResolver.swift; path = Support/GridLineColorResolver.swift; sourceTree = "<group>"; };
@@ -97,15 +102,16 @@
 		0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValueStudyProcessorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677202 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		0A11B22C33D44E55F6677401 /* RefPlaneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RefPlaneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		0340E78F278D45F5B04ACA95 /* ColorRegionsProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorRegionsProcessor.swift; path = Processing/ColorRegionsProcessor.swift; sourceTree = "<group>"; };
-		0493CA914D0B4273902F650E /* ErrorToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ErrorToastView.swift; path = Views/ErrorToastView.swift; sourceTree = "<group>"; };
 		25800C7CC7D04D37A930959D /* GrayscaleProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GrayscaleProcessor.swift; path = Processing/GrayscaleProcessor.swift; sourceTree = "<group>"; };
+		3687599C8226E76F13B60871 /* PaintPaletteBuilderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PaintPaletteBuilderTests.swift; path = RefPlaneTests/PaintPaletteBuilderTests.swift; sourceTree = "<group>"; };
+		3A0467FD99B44D6917AA1114 /* PaintPaletteBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PaintPaletteBuilder.swift; path = RefPlane/Processing/PaintPaletteBuilder.swift; sourceTree = "<group>"; };
 		3BD4968AA7154D2FAC3796C3 /* ImageCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageCanvasView.swift; path = Views/ImageCanvasView.swift; sourceTree = "<group>"; };
 		3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageProcessor.swift; path = Processing/ImageProcessor.swift; sourceTree = "<group>"; };
 		3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ValueSettingsView.swift; path = Views/ValueSettingsView.swift; sourceTree = "<group>"; };
 		523EB845BCBA42B4BBDC7E12 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppState.swift; path = Models/AppState.swift; sourceTree = "<group>"; };
 		632255DE24DC47B99F2567C2 /* RegionCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegionCleaner.swift; path = Processing/RegionCleaner.swift; sourceTree = "<group>"; };
 		6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AboutPrivacyView.swift; path = Views/AboutPrivacyView.swift; sourceTree = "<group>"; };
+		7D7329730C1F74CACF021E22 /* PigmentDecomposerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PigmentDecomposerTests.swift; path = RefPlaneTests/PigmentDecomposerTests.swift; sourceTree = "<group>"; };
 		84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridOverlayView.swift; path = Views/GridOverlayView.swift; sourceTree = "<group>"; };
 		87AF7FD89A0E49169C002685 /* ColorSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorSettingsView.swift; path = Views/ColorSettingsView.swift; sourceTree = "<group>"; };
 		886EB1023AF84A2984073327 /* ModeBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModeBarView.swift; path = Views/ModeBarView.swift; sourceTree = "<group>"; };
@@ -115,7 +121,17 @@
 		97921D53AC4F4C3C8A108993 /* ValueStudyProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ValueStudyProcessor.swift; path = Processing/ValueStudyProcessor.swift; sourceTree = "<group>"; };
 		9960E48DDC404E14A65578E6 /* ThresholdSliderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ThresholdSliderView.swift; path = Views/ThresholdSliderView.swift; sourceTree = "<group>"; };
 		9A5CCCFD76564CEA842044F7 /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppModels.swift; path = Models/AppModels.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = APISR_GRL_x4.mlpackage; sourceTree = "<group>"; };
+		AA11BB22CC334455DD667789 /* MetalContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetalContext.swift; path = Processing/MetalContext.swift; sourceTree = "<group>"; };
+		AA11BB22CC334455DD66778B /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; name = Shaders.metal; path = Processing/Shaders.metal; sourceTree = "<group>"; };
 		AA8F46FC114F41C5BDDA822F /* ActionBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActionBarView.swift; path = Views/ActionBarView.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpectralData.swift; path = Models/SpectralData.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpectralDataStore.swift; path = Processing/SpectralDataStore.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KubelkaMunkMixer.swift; path = Processing/KubelkaMunkMixer.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = GoldenAcrylicsKS.json; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KubelkaMunkMixerTests.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PigmentDecomposer.swift; path = Processing/PigmentDecomposer.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecipeView.swift; path = Views/RecipeView.swift; sourceTree = "<group>"; };
 		B8B5E61D8D7B47A4AEB29906 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ControlPanelView.swift; path = Views/ControlPanelView.swift; sourceTree = "<group>"; };
 		C80B3D2D0E20405194A6C9B5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = Views/ContentView.swift; sourceTree = "<group>"; };
 		CA3EA40383874CE288B53828 /* PaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaletteView.swift; path = Views/PaletteView.swift; sourceTree = "<group>"; };
@@ -126,16 +142,6 @@
 		E748F0C71BD24DB6A46F633D /* RefPlaneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefPlaneApp.swift; sourceTree = "<group>"; };
 		F160D00F80954B0C9211E7F6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F5C95ED152AB4658AA629DF5 /* ImageAbstractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageAbstractor.swift; path = Processing/ImageAbstractor.swift; sourceTree = "<group>"; };
-		A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = APISR_GRL_x4.mlpackage; sourceTree = "<group>"; };
-		AA11BB22CC334455DD667789 /* MetalContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetalContext.swift; path = Processing/MetalContext.swift; sourceTree = "<group>"; };
-		AA11BB22CC334455DD66778B /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; name = Shaders.metal; path = Processing/Shaders.metal; sourceTree = "<group>"; };
-		B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpectralData.swift; path = Models/SpectralData.swift; sourceTree = "<group>"; };
-		B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpectralDataStore.swift; path = Processing/SpectralDataStore.swift; sourceTree = "<group>"; };
-		B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KubelkaMunkMixer.swift; path = Processing/KubelkaMunkMixer.swift; sourceTree = "<group>"; };
-		B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = GoldenAcrylicsKS.json; sourceTree = "<group>"; };
-		B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KubelkaMunkMixerTests.swift; sourceTree = "<group>"; };
-		B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PigmentDecomposer.swift; path = Processing/PigmentDecomposer.swift; sourceTree = "<group>"; };
-		B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecipeView.swift; path = Views/RecipeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -214,7 +220,7 @@
 				84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */,
 				CC8D69363CDB4E37AB598F8A /* CompareView.swift */,
 				CA3EA40383874CE288B53828 /* PaletteView.swift */,
-			B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */,
+				B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */,
 				AA8F46FC114F41C5BDDA822F /* ActionBarView.swift */,
 				8AAC218192354565AEBABE44 /* ImagePickerView.swift */,
 				0493CA914D0B4273902F650E /* ErrorToastView.swift */,
@@ -234,7 +240,7 @@
 				0340E78F278D45F5B04ACA95 /* ColorRegionsProcessor.swift */,
 				F5C95ED152AB4658AA629DF5 /* ImageAbstractor.swift */,
 				3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */,
-					D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */,
+				D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */,
 				AA11BB22CC334455DD667789 /* MetalContext.swift */,
 				AA11BB22CC334455DD66778B /* Shaders.metal */,
 				B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */,
@@ -258,6 +264,9 @@
 			children = (
 				FC63189E71334324851A5789 /* RefPlane */,
 				0A11B22C33D44E55F667710D /* RefPlaneTests */,
+				3A0467FD99B44D6917AA1114 /* PaintPaletteBuilder.swift */,
+				7D7329730C1F74CACF021E22 /* PigmentDecomposerTests.swift */,
+				3687599C8226E76F13B60871 /* PaintPaletteBuilderTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -392,6 +401,8 @@
 				0A11B22C33D44E55F667710B /* TestImageFactory.swift in Sources */,
 				0A11B22C33D44E55F6677101 /* ThresholdUtilitiesTests.swift in Sources */,
 				0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */,
+				39137631D8A7F48FEE0A869C /* PigmentDecomposerTests.swift in Sources */,
+				05A536F79A9974610A3BEB13 /* PaintPaletteBuilderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -438,6 +449,7 @@
 				B1C2D3E4F5A6B7C8D9E0F203 /* KubelkaMunkMixer.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */,
+				899C43C6C828A9B141031349 /* PaintPaletteBuilder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -560,9 +572,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
-				INFOPLIST_KEY_CFBundleName = Underpaint;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Underpaint;
+				INFOPLIST_KEY_CFBundleName = Underpaint;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -586,9 +598,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
-				INFOPLIST_KEY_CFBundleName = Underpaint;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Underpaint;
+				INFOPLIST_KEY_CFBundleName = Underpaint;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -693,7 +705,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = FE679CBE0A164F04966A82E9 /* Project object */;
 }

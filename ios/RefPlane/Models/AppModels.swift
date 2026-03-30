@@ -60,9 +60,10 @@ struct ValueConfig {
 
 struct ColorConfig {
     var numShades: Int         = 8
+    var numTubes: Int          = 6
     var paletteSpread: Double  = 0
-    var paintMixEnabled: Bool  = false
     var maxPigmentsPerMix: Int = 3
+    var minConcentration: Float = 0.02
 }
 
 func defaultThresholds(for levels: Int) -> [Double] {

@@ -24,7 +24,8 @@ enum PigmentDecomposer {
         targetColors: [OklabColor],
         pigments: [PigmentData],
         database: SpectralDatabase,
-        maxPigments: Int = 3
+        maxPigments: Int = 3,
+        minConcentration: Float = 0.02
     ) -> [PigmentRecipe] {
         let clamped = min(max(maxPigments, 1), 3)
         let lookup = buildLookupTable(pigments: pigments, database: database, maxPigments: clamped)
@@ -35,7 +36,8 @@ enum PigmentDecomposer {
                 pigments: pigments,
                 database: database,
                 lookup: lookup,
-                maxPigments: clamped
+                maxPigments: clamped,
+                minConcentration: minConcentration
             )
         }
     }
@@ -134,7 +136,8 @@ enum PigmentDecomposer {
         pigments: [PigmentData],
         database: SpectralDatabase,
         lookup: [LookupEntry],
-        maxPigments: Int
+        maxPigments: Int,
+        minConcentration: Float
     ) -> PigmentRecipe {
         // Phase 1: Find best lookup entry
         var bestEntry = lookup[0]
@@ -160,7 +163,6 @@ enum PigmentDecomposer {
         // Also try greedy expansion if we have room for more pigments
         var finalIndices = refined.indices
         var finalConcentrations = refined.concentrations
-        var finalColor = refined.color
 
         if refined.indices.count < maxPigments {
             let expanded = greedyExpand(
@@ -176,14 +178,31 @@ enum PigmentDecomposer {
             if expandedDist < refinedDist - 0.0001 {
                 finalIndices = expanded.indices
                 finalConcentrations = expanded.concentrations
-                finalColor = expanded.color
             }
         }
 
-        let deltaE = sqrtf(oklabDistance(target, finalColor))
+        var validTuples = zip(finalIndices, finalConcentrations).filter { $0.1 >= minConcentration }
+        if validTuples.isEmpty, let maxTuple = zip(finalIndices, finalConcentrations).max(by: { $0.1 < $1.1 }) {
+            validTuples = [maxTuple]
+        }
+        
+        let sum = validTuples.reduce(0) { $0 + $1.1 }
+        if sum > 0 {
+            validTuples = validTuples.map { ($0.0, $0.1 / sum) }
+        } else {
+            let fallback = 1.0 / Float(max(1, validTuples.count))
+            validTuples = validTuples.map { ($0.0, fallback) }
+        }
 
-        let components = zip(finalIndices, finalConcentrations)
-            .filter { $0.1 > 0.005 }
+        let strictColor = evaluateMix(
+            indices: validTuples.map { $0.0 },
+            concentrations: validTuples.map { $0.1 },
+            pigments: pigments,
+            database: database
+        )
+        let exactDeltaE = sqrtf(oklabDistance(target, strictColor))
+
+        let components = validTuples
             .map { (idx, conc) in
                 RecipeComponent(
                     pigmentId: pigments[idx].id,
@@ -195,8 +214,8 @@ enum PigmentDecomposer {
 
         return PigmentRecipe(
             components: components,
-            predictedColor: finalColor,
-            deltaE: deltaE
+            predictedColor: strictColor,
+            deltaE: exactDeltaE
         )
     }
 
@@ -409,5 +428,205 @@ enum PigmentDecomposer {
     ) -> OklabColor {
         let pairs = zip(indices, concentrations).map { (kOverS: pigments[$0].kOverS, concentration: $1) }
         return KubelkaMunkMixer.mixToOklab(pigments: pairs, database: database)
+    }
+
+    // MARK: - Limited Palette Helpers
+
+    static func selectTubes(
+        preliminaryRecipes: [PigmentRecipe],
+        pixelCounts: [Int],
+        clusterSalience: [Float],
+        maxTubes: Int,
+        allPigments: [PigmentData],
+        database: SpectralDatabase
+    ) -> [PigmentData] {
+        guard !preliminaryRecipes.isEmpty, maxTubes > 0 else { return [] }
+        
+        var scores = [String: Float]()
+        
+        for (i, recipe) in preliminaryRecipes.enumerated() {
+            let count = i < pixelCounts.count ? Float(pixelCounts[i]) : 1.0
+            let salience = i < clusterSalience.count ? clusterSalience[i] : 1.0
+            let effectiveWeight = count * salience
+            
+            for comp in recipe.components {
+                scores[comp.pigmentId, default: 0] += comp.concentration * effectiveWeight
+            }
+        }
+        
+        struct Candidate {
+            let pigment: PigmentData
+            let score: Float
+        }
+        
+        var allCandidates = allPigments
+            .compactMap { p -> Candidate? in
+                guard let score = scores[p.id], score > 0 else { return nil }
+                return Candidate(pigment: p, score: score)
+            }
+            .sorted { $0.score > $1.score }
+            
+        var selected = [PigmentData]()
+        var masstones = [OklabColor]()
+        
+        var i = 0
+        while i < allCandidates.count && selected.count < maxTubes {
+            var bestIdx = i
+            // Check if next candidate is within 10% score
+            if i + 1 < allCandidates.count, allCandidates[i+1].score >= allCandidates[i].score * 0.9 {
+                let c1 = allCandidates[i].pigment
+                let c2 = allCandidates[i+1].pigment
+                let m1 = KubelkaMunkMixer.pigmentToOklab(kOverS: c1.kOverS, database: database)
+                let m2 = KubelkaMunkMixer.pigmentToOklab(kOverS: c2.kOverS, database: database)
+                
+                let dist1 = selected.isEmpty ? 0 : selected.indices.map { oklabDistance(m1, masstones[$0]) }.min() ?? 0
+                let dist2 = selected.isEmpty ? 0 : selected.indices.map { oklabDistance(m2, masstones[$0]) }.min() ?? 0
+                
+                if dist2 > dist1 {
+                    bestIdx = i + 1
+                }
+            }
+            
+            let chosen = allCandidates[bestIdx]
+            selected.append(chosen.pigment)
+            masstones.append(KubelkaMunkMixer.pigmentToOklab(kOverS: chosen.pigment.kOverS, database: database))
+            
+            if bestIdx == i + 1 {
+                allCandidates.swapAt(i, i+1)
+            }
+            i += 1
+        }
+        
+        return selected
+    }
+
+    static func improveTubeSet(
+        seedTubes: [PigmentData],
+        targetColors: [OklabColor],
+        clusterWeights: [Float],
+        allPigments: [PigmentData],
+        database: SpectralDatabase,
+        maxPigments: Int,
+        minConcentration: Float
+    ) -> [PigmentData] {
+        var currentTubes = seedTubes
+        guard !currentTubes.isEmpty, currentTubes.count < allPigments.count else { return currentTubes }
+        
+        func evaluateError(tubes: [PigmentData]) -> Float {
+            let recipes = decompose(targetColors: targetColors, pigments: tubes, database: database, maxPigments: maxPigments, minConcentration: minConcentration)
+            var totalError: Float = 0
+            for (i, recipe) in recipes.enumerated() {
+                let weight = i < clusterWeights.count ? clusterWeights[i] : 1.0
+                totalError += recipe.deltaE * weight
+            }
+            return totalError
+        }
+        
+        var currentError = evaluateError(tubes: currentTubes)
+        var improved = true
+        var swapCount = 0
+        
+        while improved && swapCount < 5 { // bounded search budget
+            improved = false
+            
+            let unselected = allPigments.filter { p in !currentTubes.contains(where: { $0.id == p.id }) }
+            for unsel in unselected {
+                for i in 0..<currentTubes.count {
+                    var candidateTubes = currentTubes
+                    candidateTubes[i] = unsel
+                    
+                    let candidateError = evaluateError(tubes: candidateTubes)
+                    if candidateError < currentError - 0.001 { // weighted constrained error improves
+                        currentError = candidateError
+                        currentTubes = candidateTubes
+                        improved = true
+                        break 
+                    }
+                }
+                if improved { break }
+            }
+            if improved { swapCount += 1 }
+        }
+        
+        return currentTubes
+    }
+
+    static func mergeRecipes(
+        recipes: [PigmentRecipe],
+        pixelCounts: [Int],
+        colorThreshold: Float = 0.015,
+        concentrationThreshold: Float = 0.05
+    ) -> (recipes: [PigmentRecipe], labelMapping: [Int]) {
+        var mergedRecipes = [PigmentRecipe]()
+        var labelMapping = [Int](repeating: 0, count: recipes.count)
+        var recipeWeights = [Int]() 
+        
+        for (i, recipe) in recipes.enumerated() {
+            let count = i < pixelCounts.count ? pixelCounts[i] : 0
+            guard count > 0 else {
+                labelMapping[i] = 0 // mapped properly in final pass below
+                continue
+            }
+            
+            var matchedIndex: Int? = nil
+            for (j, existing) in mergedRecipes.enumerated() {
+                let dist = sqrtf(oklabDistance(recipe.predictedColor, existing.predictedColor))
+                guard dist < colorThreshold else { continue }
+                
+                // Compare recipe structure
+                let r1Names = Set(recipe.components.map { $0.pigmentId })
+                let r2Names = Set(existing.components.map { $0.pigmentId })
+                guard r1Names == r2Names else { continue }
+                
+                var concDiffOk = true
+                for comp1 in recipe.components {
+                    let comp2 = existing.components.first { $0.pigmentId == comp1.pigmentId }
+                    let diff = abs(comp1.concentration - (comp2?.concentration ?? 0))
+                    if diff > concentrationThreshold {
+                        concDiffOk = false
+                        break
+                    }
+                }
+                
+                if concDiffOk {
+                    matchedIndex = j
+                    break
+                }
+            }
+            
+            if let targetIdx = matchedIndex {
+                labelMapping[i] = targetIdx
+                // The larger cluster absorbs the smaller
+                if count > recipeWeights[targetIdx] {
+                    mergedRecipes[targetIdx] = recipe
+                    recipeWeights[targetIdx] = count
+                } else {
+                    recipeWeights[targetIdx] += count
+                }
+            } else {
+                labelMapping[i] = mergedRecipes.count
+                mergedRecipes.append(recipe)
+                recipeWeights.append(count)
+            }
+        }
+        
+        // Map empty clusters to nearest survivor
+        for i in 0..<recipes.count {
+            let count = i < pixelCounts.count ? pixelCounts[i] : 0
+            if count == 0 {
+                var bestDist = Float.greatestFiniteMagnitude
+                var bestIdx = 0
+                for (j, surv) in mergedRecipes.enumerated() {
+                    let d = oklabDistance(recipes[i].predictedColor, surv.predictedColor)
+                    if d < bestDist {
+                        bestDist = d
+                        bestIdx = j
+                    }
+                }
+                labelMapping[i] = bestIdx
+            }
+        }
+        
+        return (mergedRecipes, labelMapping)
     }
 }

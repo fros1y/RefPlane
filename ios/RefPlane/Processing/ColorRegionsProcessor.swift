@@ -29,9 +29,13 @@ enum ColorRegionsProcessor {
         let quantizedCentroids: [OklabColor]
         /// Per-pixel label index into quantizedCentroids.
         let pixelLabels: [Int32]
+        
+        let pixelLab: [Float]
+        let clusterPixelCounts: [Int]
+        let clusterSalience: [Float]
     }
 
-    static func process(image: UIImage, config: ColorConfig, minRegionSize: MinRegionSize = .off) -> Result? {
+    static func process(image: UIImage, config: ColorConfig, minRegionSize: MinRegionSize = .off, overclusterK: Int? = nil) -> Result? {
         let t0 = CFAbsoluteTimeGetCurrent()
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
 
@@ -42,7 +46,8 @@ enum ColorRegionsProcessor {
                width: width,
                height: height,
                config: config,
-               minRegionSize: minRegionSize
+               minRegionSize: minRegionSize,
+               overclusterK: overclusterK
            ) {
             let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
             print("[ColorStudy] GPU path in \(String(format: "%.1f", totalMs)) ms")
@@ -54,7 +59,8 @@ enum ColorRegionsProcessor {
             width: width,
             height: height,
             config: config,
-            minRegionSize: minRegionSize
+            minRegionSize: minRegionSize,
+            overclusterK: overclusterK
         )
         let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
         print("[ColorStudy] CPU path in \(String(format: "%.1f", totalMs)) ms")
@@ -69,10 +75,11 @@ enum ColorRegionsProcessor {
         width: Int,
         height: Int,
         config: ColorConfig,
-        minRegionSize: MinRegionSize
+        minRegionSize: MinRegionSize,
+        overclusterK: Int?
     ) -> Result? {
         let total = width * height
-        let numShades = max(2, config.numShades)
+        let numShades = overclusterK ?? max(2, config.numShades)
 
         var stepStart = CFAbsoluteTimeGetCurrent()
         guard let (labArray, srcBuffer, labBuffer) = gpu.rgbToOklab(pixels: pixels, width: width, height: height) else {
@@ -157,7 +164,8 @@ enum ColorRegionsProcessor {
         }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let quantizedCentroids = computeCentroids(labArray: labArray, labels: globalLabels, k: numShades)
+        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(pixelLab: labArray, labels: globalLabels, k: numShades)
+        let clusterSalience = computeSalience(centroids: quantizedCentroids, counts: clusterPixelCounts)
         print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         let palette: [Color] = quantizedCentroids.map { c in
@@ -184,7 +192,10 @@ enum ColorRegionsProcessor {
             paletteBands: (0..<numShades).map { $0 },
             pixelBands: globalLabels.map { Int($0) },
             quantizedCentroids: quantizedCentroids,
-            pixelLabels: globalLabels
+            pixelLabels: globalLabels,
+            pixelLab: labArray,
+            clusterPixelCounts: clusterPixelCounts,
+            clusterSalience: clusterSalience
         )
     }
 
@@ -195,16 +206,22 @@ enum ColorRegionsProcessor {
         width: Int,
         height: Int,
         config: ColorConfig,
-        minRegionSize: MinRegionSize
+        minRegionSize: MinRegionSize,
+        overclusterK: Int?
     ) -> Result? {
         let total = width * height
-        let numShades = max(2, config.numShades)
+        let numShades = overclusterK ?? max(2, config.numShades)
 
         var stepStart = CFAbsoluteTimeGetCurrent()
         var points = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
+        var labArray = [Float](repeating: 0, count: total * 3)
         for i in 0..<total {
             let base = i * 4
-            points[i] = rgbToOklab(r: pixels[base], g: pixels[base + 1], b: pixels[base + 2])
+            let ok = rgbToOklab(r: pixels[base], g: pixels[base + 1], b: pixels[base + 2])
+            points[i] = ok
+            labArray[i*3] = ok.L
+            labArray[i*3+1] = ok.a
+            labArray[i*3+2] = ok.b
         }
         print("[ColorStudy][CPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
@@ -237,7 +254,8 @@ enum ColorRegionsProcessor {
         }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let quantizedCentroids = computeCentroids(points: points, labels: globalLabels, k: numShades)
+        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(pixelLab: labArray, labels: globalLabels, k: numShades)
+        let clusterSalience = computeSalience(centroids: quantizedCentroids, counts: clusterPixelCounts)
         print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         stepStart = CFAbsoluteTimeGetCurrent()
@@ -268,7 +286,10 @@ enum ColorRegionsProcessor {
             paletteBands: (0..<numShades).map { $0 },
             pixelBands: globalLabels.map { Int($0) },
             quantizedCentroids: quantizedCentroids,
-            pixelLabels: globalLabels
+            pixelLabels: globalLabels,
+            pixelLab: labArray,
+            clusterPixelCounts: clusterPixelCounts,
+            clusterSalience: clusterSalience
         )
     }
 
@@ -863,6 +884,73 @@ enum ColorRegionsProcessor {
             counts[j] > 0
                 ? OklabColor(L: sumL[j] / Float(counts[j]), a: sumA[j] / Float(counts[j]), b: sumB[j] / Float(counts[j]))
                 : OklabColor(L: 0.5, a: 0, b: 0)
+        }
+    }
+
+    // MARK: - Public Helpers
+    
+    static func reassignLabels(pixelLab: [Float], centroids: [OklabColor], lWeight: Float) -> [Int32] {
+        if let gpu = MetalContext.shared {
+            let total = pixelLab.count / 3
+            let length = pixelLab.count * MemoryLayout<Float>.stride
+            if let pixelLabBuffer = gpu.device.makeBuffer(bytes: pixelLab, length: length, options: .storageModeShared) {
+                let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
+                if let assignments = gpu.kmeansAssign(
+                    pixelLabBuffer: pixelLabBuffer,
+                    count: total,
+                    centroidLab: flatCentroids,
+                    k: centroids.count,
+                    lWeight: lWeight
+                ) {
+                    return assignments.map { Int32($0) }
+                }
+            }
+        }
+        
+        let points = labArrayToColors(pixelLab)
+        let labels = assignFamiliesCPU(points: points, centroids: centroids, lWeight: lWeight)
+        return labels.map { Int32($0) }
+    }
+
+    static func computeCentroidsAndCounts(pixelLab: [Float], labels: [Int32], k: Int) -> (centroids: [OklabColor], counts: [Int]) {
+        var sumL = [Float](repeating: 0, count: k)
+        var sumA = [Float](repeating: 0, count: k)
+        var sumB = [Float](repeating: 0, count: k)
+        var counts = [Int](repeating: 0, count: k)
+        for i in 0..<labels.count {
+            let label = Int(labels[i])
+            guard label >= 0 && label < k else { continue }
+            sumL[label] += pixelLab[i * 3]
+            sumA[label] += pixelLab[i * 3 + 1]
+            sumB[label] += pixelLab[i * 3 + 2]
+            counts[label] += 1
+        }
+        let centroids = (0..<k).map { j in
+            counts[j] > 0
+                ? OklabColor(L: sumL[j] / Float(counts[j]), a: sumA[j] / Float(counts[j]), b: sumB[j] / Float(counts[j]))
+                : OklabColor(L: 0.5, a: 0, b: 0)
+        }
+        return (centroids, counts)
+    }
+
+    private static func computeSalience(centroids: [OklabColor], counts: [Int]) -> [Float] {
+        guard !centroids.isEmpty else { return [] }
+        let totalCount = max(1, counts.reduce(0, +))
+        var meanL: Float = 0, meanA: Float = 0, meanB: Float = 0
+        for (c, count) in zip(centroids, counts) {
+            let weight = Float(count) / Float(totalCount)
+            meanL += c.L * weight
+            meanA += c.a * weight
+            meanB += c.b * weight
+        }
+        let mean = OklabColor(L: meanL, a: meanA, b: meanB)
+        
+        return centroids.map { c in
+            let chroma = sqrtf(c.a * c.a + c.b * c.b)
+            let dist = oklabDistance(c, mean)
+            // baseline 0.75, boost by chroma (up to 0.75) and distance from mean (up to 0.5)
+            let salience = 0.75 + (min(chroma, 0.2) / 0.2) * 0.75 + (min(dist, 0.3) / 0.3) * 0.5
+            return min(2.0, max(0.75, salience))
         }
     }
 }

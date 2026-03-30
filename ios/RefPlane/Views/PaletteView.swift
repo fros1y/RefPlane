@@ -15,6 +15,24 @@ struct PaletteView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
+                if !state.selectedTubes.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Limited Palette (\(state.selectedTubes.count) tubes)")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Text(state.selectedTubes.map(\.name).joined(separator: ", "))
+                            .font(.footnote)
+                            .foregroundStyle(.primary)
+                        
+                        if !state.clippedRecipeIndices.isEmpty {
+                            Text("⚠️ Some recipes were snapped to the nearest mixable color and may be clipped.")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .padding(.bottom, 12)
+                }
+
                 ForEach(sections, id: \.band) { section in
                     VStack(alignment: .leading, spacing: 0) {
                         Button {
