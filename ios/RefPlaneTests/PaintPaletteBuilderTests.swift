@@ -103,4 +103,63 @@ struct PaintPaletteBuilderTests {
         }
         #expect(hasVividRecipe, "Vivid minority cluster should survive in final palette")
     }
+
+    @Test
+    func snapAndReassignProducesValidLabels() throws {
+        // 4 distinct clusters spread across Oklab space
+        let centroids = [
+            OklabColor(L: 0.2, a: 0.0, b: 0.0),   // dark neutral
+            OklabColor(L: 0.8, a: 0.0, b: 0.0),   // light neutral
+            OklabColor(L: 0.5, a: 0.15, b: 0.0),  // reddish
+            OklabColor(L: 0.5, a: -0.1, b: 0.1)   // greenish
+        ]
+        let pixelsPerCluster = 50
+        let total = centroids.count * pixelsPerCluster
+
+        var pixelLab = [Float](repeating: 0, count: total * 3)
+        var labels = [Int32](repeating: 0, count: total)
+        for (ci, centroid) in centroids.enumerated() {
+            for j in 0..<pixelsPerCluster {
+                let idx = ci * pixelsPerCluster + j
+                pixelLab[idx * 3] = centroid.L + Float.random(in: -0.02...0.02)
+                pixelLab[idx * 3 + 1] = centroid.a + Float.random(in: -0.02...0.02)
+                pixelLab[idx * 3 + 2] = centroid.b + Float.random(in: -0.02...0.02)
+                labels[idx] = Int32(ci)
+            }
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: pixelLab,
+            clusterPixelCounts: [Int](repeating: pixelsPerCluster, count: 4),
+            clusterSalience: [Float](repeating: 1.0, count: 4)
+        )
+
+        var config = ColorConfig()
+        config.numShades = 4
+        config.numTubes = 5
+        config.maxPigmentsPerMix = 3
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        // Every pixel label must be a valid recipe index
+        let recipeCount = result.recipes.count
+        for label in result.pixelLabels {
+            #expect(label >= 0 && Int(label) < recipeCount, "Label \(label) out of range [0, \(recipeCount))")
+        }
+
+        // Pixel count should match total
+        #expect(result.pixelLabels.count == total)
+        #expect(result.clusterPixelCounts.reduce(0, +) == total)
+    }
 }
