@@ -48,6 +48,87 @@ struct PigmentDecomposerTests {
     }
     
     @Test
+    func mergeRecipesMergesOnColorMatchAlone() {
+        // Two recipes with DIFFERENT pigment sets but nearly identical predicted colors
+        let r1 = PigmentRecipe(
+            components: [RecipeComponent(pigmentId: "pigA", pigmentName: "A", concentration: 1.0)],
+            predictedColor: OklabColor(L: 0.5, a: 0.1, b: 0.1),
+            deltaE: 0.01
+        )
+        let r2 = PigmentRecipe(
+            components: [RecipeComponent(pigmentId: "pigB", pigmentName: "B", concentration: 1.0)],
+            predictedColor: OklabColor(L: 0.501, a: 0.101, b: 0.101),
+            deltaE: 0.01
+        )
+
+        let (merged, map) = PigmentDecomposer.mergeRecipes(
+            recipes: [r1, r2],
+            pixelCounts: [100, 200],
+            colorThreshold: 0.05,
+            concentrationThreshold: 0.05
+        )
+
+        #expect(merged.count == 1, "Recipes with different pigments but same color should merge")
+        #expect(map == [0, 0])
+    }
+
+    @Test
+    func mergeRecipesMergesOnStructureMatchAlone() {
+        // Two recipes with SAME pigments and similar concentrations but colors beyond colorThreshold
+        let r1 = PigmentRecipe(
+            components: [
+                RecipeComponent(pigmentId: "pigA", pigmentName: "A", concentration: 0.6),
+                RecipeComponent(pigmentId: "pigB", pigmentName: "B", concentration: 0.4)
+            ],
+            predictedColor: OklabColor(L: 0.3, a: 0.1, b: 0.1),
+            deltaE: 0.01
+        )
+        let r2 = PigmentRecipe(
+            components: [
+                RecipeComponent(pigmentId: "pigA", pigmentName: "A", concentration: 0.62),
+                RecipeComponent(pigmentId: "pigB", pigmentName: "B", concentration: 0.38)
+            ],
+            predictedColor: OklabColor(L: 0.5, a: 0.2, b: 0.2),
+            deltaE: 0.01
+        )
+
+        let (merged, map) = PigmentDecomposer.mergeRecipes(
+            recipes: [r1, r2],
+            pixelCounts: [100, 200],
+            colorThreshold: 0.005, // Very tight color threshold — colors are far apart
+            concentrationThreshold: 0.05
+        )
+
+        #expect(merged.count == 1, "Recipes with same pigments and similar concentrations should merge regardless of color distance")
+        #expect(map == [0, 0])
+    }
+
+    @Test
+    func mergeRecipesLargerClusterAbsorbsSmaller() {
+        let r1 = PigmentRecipe(
+            components: [RecipeComponent(pigmentId: "pigA", pigmentName: "A", concentration: 1.0)],
+            predictedColor: OklabColor(L: 0.5, a: 0.1, b: 0.1),
+            deltaE: 0.05
+        )
+        let r2 = PigmentRecipe(
+            components: [RecipeComponent(pigmentId: "pigB", pigmentName: "B", concentration: 1.0)],
+            predictedColor: OklabColor(L: 0.501, a: 0.101, b: 0.101),
+            deltaE: 0.01
+        )
+
+        // r2 has more pixels (500 vs 100), so r2's recipe should be the survivor
+        let (merged, _) = PigmentDecomposer.mergeRecipes(
+            recipes: [r1, r2],
+            pixelCounts: [100, 500],
+            colorThreshold: 0.05,
+            concentrationThreshold: 0.05
+        )
+
+        #expect(merged.count == 1)
+        #expect(merged[0].components[0].pigmentId == "pigB", "Larger cluster's recipe should survive")
+    }
+
+    @Test
     func findBestRecipeRespectsMinConcentration() {
         let target = OklabColor(L: 0.5, a: 0.1, b: 0.1)
         

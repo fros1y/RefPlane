@@ -628,24 +628,26 @@ enum PigmentDecomposer {
             var matchedIndex: Int? = nil
             for (j, existing) in mergedRecipes.enumerated() {
                 let dist = sqrtf(oklabDistance(recipe.predictedColor, existing.predictedColor))
-                guard dist < colorThreshold else { continue }
-                
+                let colorMatch = dist < colorThreshold
+
                 // Compare recipe structure
                 let r1Names = Set(recipe.components.map { $0.pigmentId })
                 let r2Names = Set(existing.components.map { $0.pigmentId })
-                guard r1Names == r2Names else { continue }
-                
-                var concDiffOk = true
-                for comp1 in recipe.components {
-                    let comp2 = existing.components.first { $0.pigmentId == comp1.pigmentId }
-                    let diff = abs(comp1.concentration - (comp2?.concentration ?? 0))
-                    if diff > concentrationThreshold {
-                        concDiffOk = false
-                        break
+                var structureMatch = false
+                if r1Names == r2Names {
+                    var concDiffOk = true
+                    for comp1 in recipe.components {
+                        let comp2 = existing.components.first { $0.pigmentId == comp1.pigmentId }
+                        let diff = abs(comp1.concentration - (comp2?.concentration ?? 0))
+                        if diff > concentrationThreshold {
+                            concDiffOk = false
+                            break
+                        }
                     }
+                    structureMatch = concDiffOk
                 }
-                
-                if concDiffOk {
+
+                if colorMatch || structureMatch {
                     matchedIndex = j
                     break
                 }
