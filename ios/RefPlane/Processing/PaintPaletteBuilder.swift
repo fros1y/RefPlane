@@ -188,7 +188,7 @@ enum PaintPaletteBuilder {
             for i in 0..<newCentroids.count {
                 guard newCounts[i] > 0 else { continue }
                 let moved = oklabDistance(newCentroids[i], currentCentroids[i])
-                if moved > 0.0001 { // ~0.01 Oklab distance, squared
+                if moved > 0.0001 { // oklabDistance is squared; 0.0001 = 0.01² (linear Oklab units)
                     let reDecomposed = PigmentDecomposer.decompose(
                         targetColors: [newCentroids[i]],
                         pigments: selectedTubes,
