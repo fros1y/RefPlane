@@ -235,6 +235,8 @@ struct LabeledSlider: View {
     let displayFormat: (Double) -> String
     var onEditingChanged: ((Bool) -> Void)? = nil
 
+    @State private var valueAtDragStart: Double? = nil
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -251,7 +253,13 @@ struct LabeledSlider: View {
                 in: range,
                 step: step,
                 onEditingChanged: { editing in
-                    onEditingChanged?(editing)
+                    if editing {
+                        valueAtDragStart = value
+                    } else {
+                        let changed = valueAtDragStart.map { $0 != value } ?? true
+                        valueAtDragStart = nil
+                        if changed { onEditingChanged?(false) }
+                    }
                 }
             )
         }

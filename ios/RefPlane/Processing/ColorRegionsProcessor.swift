@@ -917,14 +917,21 @@ enum ColorRegionsProcessor {
         var sumA = [Float](repeating: 0, count: k)
         var sumB = [Float](repeating: 0, count: k)
         var counts = [Int](repeating: 0, count: k)
-        for i in 0..<labels.count {
-            let label = Int(labels[i])
-            guard label >= 0 && label < k else { continue }
-            sumL[label] += pixelLab[i * 3]
-            sumA[label] += pixelLab[i * 3 + 1]
-            sumB[label] += pixelLab[i * 3 + 2]
-            counts[label] += 1
+        
+        pixelLab.withUnsafeBufferPointer { labPtr in
+            labels.withUnsafeBufferPointer { labelPtr in
+                for i in 0..<labelPtr.count {
+                    let label = Int(labelPtr[i])
+                    if label >= 0 && label < k {
+                        sumL[label] += labPtr[i * 3]
+                        sumA[label] += labPtr[i * 3 + 1]
+                        sumB[label] += labPtr[i * 3 + 2]
+                        counts[label] += 1
+                    }
+                }
+            }
         }
+        
         let centroids = (0..<k).map { j in
             counts[j] > 0
                 ? OklabColor(L: sumL[j] / Float(counts[j]), a: sumA[j] / Float(counts[j]), b: sumB[j] / Float(counts[j]))

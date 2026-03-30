@@ -25,20 +25,43 @@ enum PigmentDecomposer {
         pigments: [PigmentData],
         database: SpectralDatabase,
         maxPigments: Int = 3,
-        minConcentration: Float = 0.02
+        minConcentration: Float = 0.02,
+        concurrent: Bool = true
     ) -> [PigmentRecipe] {
+        guard !targetColors.isEmpty else { return [] }
+        
         let clamped = min(max(maxPigments, 1), 3)
         let lookup = buildLookupTable(pigments: pigments, database: database, maxPigments: clamped)
-
-        return targetColors.map { target in
-            findBestRecipe(
-                target: target,
-                pigments: pigments,
-                database: database,
-                lookup: lookup,
-                maxPigments: clamped,
-                minConcentration: minConcentration
-            )
+        
+        if concurrent {
+            var recipes = [PigmentRecipe?](repeating: nil, count: targetColors.count)
+            let lock = NSLock()
+            
+            DispatchQueue.concurrentPerform(iterations: targetColors.count) { i in
+                let recipe = findBestRecipe(
+                    target: targetColors[i],
+                    pigments: pigments,
+                    database: database,
+                    lookup: lookup,
+                    maxPigments: clamped,
+                    minConcentration: minConcentration
+                )
+                lock.lock()
+                recipes[i] = recipe
+                lock.unlock()
+            }
+            return recipes.compactMap { $0 }
+        } else {
+            return targetColors.map { t in
+                findBestRecipe(
+                    target: t,
+                    pigments: pigments,
+                    database: database,
+                    lookup: lookup,
+                    maxPigments: clamped,
+                    minConcentration: minConcentration
+                )
+            }
         }
     }
 
@@ -512,40 +535,74 @@ enum PigmentDecomposer {
         var currentTubes = seedTubes
         guard !currentTubes.isEmpty, currentTubes.count < allPigments.count else { return currentTubes }
         
-        func evaluateError(tubes: [PigmentData]) -> Float {
-            let recipes = decompose(targetColors: targetColors, pigments: tubes, database: database, maxPigments: maxPigments, minConcentration: minConcentration)
+        // Filter the target colors to only the most salient ones (e.g. top 8)
+        // This avoids running expensive Nelder-Mead on all 48 minor clusters for every 1-off pigment swap.
+        let topCount = min(8, targetColors.count)
+        let sortedIndices = clusterWeights.enumerated()
+            .sorted { $0.element > $1.element }
+            .prefix(topCount)
+            .map { $0.offset }
+        
+        let topColors = sortedIndices.map { targetColors[$0] }
+        let topWeights = sortedIndices.map { clusterWeights[$0] }
+        
+        func evaluateApproxError(tubes: [PigmentData]) -> Float {
+            let clamped = min(max(maxPigments, 1), 3)
+            let lookup = buildLookupTable(pigments: tubes, database: database, maxPigments: clamped)
             var totalError: Float = 0
-            for (i, recipe) in recipes.enumerated() {
-                let weight = i < clusterWeights.count ? clusterWeights[i] : 1.0
-                totalError += recipe.deltaE * weight
+            for (i, target) in topColors.enumerated() {
+                var bestDist = Float.greatestFiniteMagnitude
+                for entry in lookup {
+                    let d = oklabDistance(target, entry.color)
+                    if d < bestDist { bestDist = d }
+                }
+                totalError += sqrtf(bestDist) * topWeights[i]
             }
             return totalError
         }
         
-        var currentError = evaluateError(tubes: currentTubes)
         var improved = true
         var swapCount = 0
         
-        while improved && swapCount < 5 { // bounded search budget
+        while improved && swapCount < 3 { // bounded search budget
             improved = false
-            
+            let currentApproxError = evaluateApproxError(tubes: currentTubes)
             let unselected = allPigments.filter { p in !currentTubes.contains(where: { $0.id == p.id }) }
+            
+            struct SwapCandidate {
+                let tubeIndex: Int
+                let tubes: [PigmentData]
+            }
+            var candidates = [SwapCandidate]()
             for unsel in unselected {
                 for i in 0..<currentTubes.count {
                     var candidateTubes = currentTubes
                     candidateTubes[i] = unsel
-                    
-                    let candidateError = evaluateError(tubes: candidateTubes)
-                    if candidateError < currentError - 0.001 { // weighted constrained error improves
-                        currentError = candidateError
-                        currentTubes = candidateTubes
-                        improved = true
-                        break 
-                    }
+                    candidates.append(SwapCandidate(tubeIndex: i, tubes: candidateTubes))
                 }
-                if improved { break }
             }
-            if improved { swapCount += 1 }
+            
+            var bestCandidate: SwapCandidate? = nil
+            var bestError = currentApproxError
+            let lock = NSLock()
+            
+            DispatchQueue.concurrentPerform(iterations: candidates.count) { i in
+                let candidate = candidates[i]
+                let candidateError = evaluateApproxError(tubes: candidate.tubes)
+                
+                lock.lock()
+                if candidateError < bestError - 0.001 {
+                    bestError = candidateError
+                    bestCandidate = candidate
+                }
+                lock.unlock()
+            }
+            
+            if let best = bestCandidate {
+                currentTubes = best.tubes
+                improved = true
+                swapCount += 1
+            }
         }
         
         return currentTubes

@@ -4,43 +4,43 @@ struct ColorSettingsView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        Group {
-            LabeledSlider(
-                label: "Shades",
-                value: Binding(
-                    get: { Double(state.colorConfig.numShades) },
-                    set: { state.colorConfig.numShades = Int($0.rounded()) }
-                ),
-                range: 2...24,
-                step: 1,
-                displayFormat: { "\(Int($0))" },
-                onEditingChanged: { editing in
-                    if !editing {
-                        state.triggerProcessing()
-                    }
+        LabeledSlider(
+            label: "Shades",
+            value: Binding(
+                get: { Double(state.colorConfig.numShades) },
+                set: { state.colorConfig.numShades = Int($0.rounded()) }
+            ),
+            range: 2...24,
+            step: 1,
+            displayFormat: { "\(Int($0))" },
+            onEditingChanged: { editing in
+                if !editing {
+                    state.triggerProcessing()
                 }
-            )
+            }
+        )
 
-            LabeledSlider(
-                label: "Palette Spread",
-                value: Binding(
-                    get: { state.colorConfig.paletteSpread },
-                    set: { state.colorConfig.paletteSpread = $0 }
-                ),
-                range: 0...1,
-                step: 0.01,
-                displayFormat: { value in
-                    if value <= 0.01 { return "Mass" }
-                    if value >= 0.99 { return "Hue" }
-                    return String(format: "%.2f", value)
-                },
-                onEditingChanged: { editing in
-                    if !editing {
-                        state.triggerProcessing()
-                    }
+        LabeledSlider(
+            label: "Palette Spread",
+            value: Binding(
+                get: { state.colorConfig.paletteSpread },
+                set: { state.colorConfig.paletteSpread = $0 }
+            ),
+            range: 0...1,
+            step: 0.01,
+            displayFormat: { value in
+                if value <= 0.01 { return "Mass" }
+                if value >= 0.99 { return "Hue" }
+                return String(format: "%.2f", value)
+            },
+            onEditingChanged: { editing in
+                if !editing {
+                    state.triggerProcessing()
                 }
-            )
+            }
+        )
 
+        if state.activeMode == .color {
             Divider()
 
             LabeledSlider(

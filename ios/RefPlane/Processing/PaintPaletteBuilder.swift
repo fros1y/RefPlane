@@ -19,7 +19,8 @@ enum PaintPaletteBuilder {
         colorRegions: ColorRegionsProcessor.Result,
         config: ColorConfig,
         database: SpectralDatabase,
-        pigments: [PigmentData]
+        pigments: [PigmentData],
+        onProgress: ((Double) -> Void)? = nil
     ) throws -> PaintPaletteResult {
         
         let t0 = CFAbsoluteTimeGetCurrent()
@@ -39,6 +40,7 @@ enum PaintPaletteBuilder {
         
         let t1 = CFAbsoluteTimeGetCurrent()
         print("[PaintPaletteBuilder] Stage 2 (Prelim Decomp) took \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
+        onProgress?(0.35)
         
         // Stage 3 - Tube Selection
         let seedTubes = PigmentDecomposer.selectTubes(
@@ -68,45 +70,11 @@ enum PaintPaletteBuilder {
         
         let t2 = CFAbsoluteTimeGetCurrent()
         print("[PaintPaletteBuilder] Stage 3 (Tube Selection) took \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
+        onProgress?(0.50)
         
-        // Stage 4 - Constrained Decomposition + Snap/Reassign Loop
-        var workingCentroids = colorRegions.quantizedCentroids
-        var workingLabels = colorRegions.pixelLabels
-        var workingCounts = colorRegions.clusterPixelCounts
-        var workingRecipes = prelimRecipes
-        
-        let iterationCount = 2
-        for _ in 0..<iterationCount {
-            workingRecipes = PigmentDecomposer.decompose(
-                targetColors: workingCentroids,
-                pigments: selectedTubes,
-                database: database,
-                maxPigments: config.maxPigmentsPerMix,
-                minConcentration: config.minConcentration
-            )
-            
-            let snappedColors = workingRecipes.map { $0.predictedColor }
-            workingLabels = ColorRegionsProcessor.reassignLabels(
-                pixelLab: colorRegions.pixelLab,
-                centroids: snappedColors,
-                lWeight: 1.0
-            )
-            
-            let recomputed = ColorRegionsProcessor.computeCentroidsAndCounts(
-                pixelLab: colorRegions.pixelLab,
-                labels: workingLabels,
-                k: snappedColors.count
-            )
-            
-            // Only re-decompose centroids that moved significantly if we cared to track it,
-            // but wholesale recompute is fast enough per iteration
-            workingCentroids = recomputed.centroids
-            workingCounts = recomputed.counts
-        }
-        
-        // Final decomposition before merge
-        workingRecipes = PigmentDecomposer.decompose(
-            targetColors: workingCentroids,
+        // Stage 4 - Constrained Decomposition
+        let workingRecipes = PigmentDecomposer.decompose(
+            targetColors: colorRegions.quantizedCentroids,
             pigments: selectedTubes,
             database: database,
             maxPigments: config.maxPigmentsPerMix,
@@ -115,59 +83,44 @@ enum PaintPaletteBuilder {
         
         let t3 = CFAbsoluteTimeGetCurrent()
         print("[PaintPaletteBuilder] Stage 4 (Constrained Iterations) took \(String(format: "%.1f", (t3 - t2) * 1000)) ms")
+        onProgress?(0.75)
         
         // Stage 5 - Merge, Prune, and Finalize
         let (mergedRecipes, mergeMap) = PigmentDecomposer.mergeRecipes(
             recipes: workingRecipes,
-            pixelCounts: workingCounts
+            pixelCounts: colorRegions.clusterPixelCounts
         )
         
-        // Remap working labels through the merge map
-        workingLabels = workingLabels.map { Int32(mergeMap[Int($0)]) }
+        var workingLabels = colorRegions.pixelLabels.map { Int32(mergeMap[Int($0)]) }
         
-        let finalRecomputed = ColorRegionsProcessor.computeCentroidsAndCounts(
-            pixelLab: colorRegions.pixelLab,
-            labels: workingLabels,
-            k: mergedRecipes.count
-        )
+        var finalCounts = [Int](repeating: 0, count: mergedRecipes.count)
+        for label in workingLabels {
+            finalCounts[Int(label)] += 1
+        }
         
-        var finalRecipes = PigmentDecomposer.decompose(
-            targetColors: finalRecomputed.centroids,
-            pigments: selectedTubes,
-            database: database,
-            maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration
-        )
+        var finalRecipes = mergedRecipes
         
-        // Prune down to numShades if needed
+        // Prune down to numShades safely using index mapping to protect cluster geometry
         if finalRecipes.count > config.numShades && config.numShades > 1 {
             finalRecipes = pruneToMaxShades(
                 recipes: finalRecipes,
-                counts: finalRecomputed.counts,
-                pixelLab: colorRegions.pixelLab,
+                counts: finalCounts,
                 labels: &workingLabels,
-                maxShades: config.numShades,
-                database: database,
-                tubes: selectedTubes,
-                config: config
+                maxShades: config.numShades
             )
         }
         
-        // Clean up any empty clusters created by pruning
-        let validIndices = (0..<finalRecipes.count).filter { i in
-            workingLabels.contains(Int32(i))
-        }
+        // Clean up empty indices
+        let validIndices = (0..<finalRecipes.count).filter { i in workingLabels.contains(Int32(i)) }
         let prunedRecipes = validIndices.map { finalRecipes[$0] }
         let newLabelMap = Dictionary(uniqueKeysWithValues: validIndices.enumerated().map { ($1, Int32($0)) })
         workingLabels = workingLabels.map { newLabelMap[Int($0)] ?? 0 }
         
-        let finalCounts = ColorRegionsProcessor.computeCentroidsAndCounts(
-            pixelLab: colorRegions.pixelLab,
-            labels: workingLabels,
-            k: prunedRecipes.count
-        ).counts
+        finalCounts = [Int](repeating: 0, count: prunedRecipes.count)
+        for label in workingLabels {
+            finalCounts[Int(label)] += 1
+        }
         
-        // Flags
         var clippedIndices = [Int]()
         for (i, recipe) in prunedRecipes.enumerated() {
             if recipe.deltaE > 0.05 { // Materially high delta E
@@ -178,6 +131,7 @@ enum PaintPaletteBuilder {
         let t4 = CFAbsoluteTimeGetCurrent()
         print("[PaintPaletteBuilder] Stage 5 (Merge & Prune) took \(String(format: "%.1f", (t4 - t3) * 1000)) ms")
         print("[PaintPaletteBuilder] Total execution took \(String(format: "%.1f", (t4 - t0) * 1000)) ms")
+        onProgress?(0.95)
         
         return PaintPaletteResult(
             selectedTubes: selectedTubes,
@@ -191,12 +145,8 @@ enum PaintPaletteBuilder {
     private static func pruneToMaxShades(
         recipes: [PigmentRecipe],
         counts: [Int],
-        pixelLab: [Float],
         labels: inout [Int32],
-        maxShades: Int,
-        database: SpectralDatabase,
-        tubes: [PigmentData],
-        config: ColorConfig
+        maxShades: Int
     ) -> [PigmentRecipe] {
         var survivors = Array(0..<recipes.count)
         
@@ -244,15 +194,28 @@ enum PaintPaletteBuilder {
             survivors.removeAll(where: { $0 == weakestIdx })
         }
         
-        // Reassign eliminated labels to nearest survivor
-        let survivorRecipes = survivors.map { recipes[$0] }
-        labels = ColorRegionsProcessor.reassignLabels(
-            pixelLab: pixelLab,
-            centroids: survivorRecipes.map { $0.predictedColor },
-            lWeight: 1.0
-        )
+        // Reassign eliminated labels strictly logically to preserve Palette Spread spatial geometry
+        var indexMap = [Int32](repeating: 0, count: recipes.count)
+        for i in 0..<recipes.count {
+            if survivors.contains(i) {
+                indexMap[i] = Int32(i)
+            } else {
+                let droppedColor = recipes[i].predictedColor
+                var bestDist = Float.greatestFiniteMagnitude
+                var bestSurv = survivors[0]
+                for s in survivors {
+                    let d = oklabDistance(droppedColor, recipes[s].predictedColor)
+                    if d < bestDist {
+                        bestDist = d
+                        bestSurv = s
+                    }
+                }
+                indexMap[i] = Int32(bestSurv)
+            }
+        }
         
-        // And we just return the survivor recipes, PaintPaletteResult will clean it up tightly
-        return survivorRecipes
+        labels = labels.map { indexMap[Int($0)] }
+        
+        return recipes
     }
 }

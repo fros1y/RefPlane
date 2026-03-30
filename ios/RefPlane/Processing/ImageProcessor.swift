@@ -77,7 +77,7 @@ actor ImageProcessor {
             )
 
         case .color:
-            onProgress(0.2)
+            onProgress(0.05)
             try Task.checkCancellation()
             let overclusterK = min(2 * max(2, colorConfig.numShades), 48)
             guard let result = ColorRegionsProcessor.process(image: image, config: colorConfig, overclusterK: overclusterK) else {
@@ -93,7 +93,7 @@ actor ImageProcessor {
             var outputPalette = result.palette
             var outputPixelBands = result.pixelBands
             
-            onProgress(0.85)
+            onProgress(0.2)
             try Task.checkCancellation()
             let db = SpectralDataStore.shared
             let pigments = SpectralDataStore.essentialPigments
@@ -103,7 +103,8 @@ actor ImageProcessor {
                     colorRegions: result,
                     config: colorConfig,
                     database: db,
-                    pigments: pigments
+                    pigments: pigments,
+                    onProgress: onProgress
                 )
                 
                 pigmentRecipes = pb.recipes
