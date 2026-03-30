@@ -658,10 +658,8 @@ enum PigmentDecomposer {
                 // The larger cluster absorbs the smaller
                 if count > recipeWeights[targetIdx] {
                     mergedRecipes[targetIdx] = recipe
-                    recipeWeights[targetIdx] = count
-                } else {
-                    recipeWeights[targetIdx] += count
                 }
+                recipeWeights[targetIdx] += count
             } else {
                 labelMapping[i] = mergedRecipes.count
                 mergedRecipes.append(recipe)

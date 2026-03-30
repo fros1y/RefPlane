@@ -117,7 +117,7 @@ struct PigmentDecomposerTests {
         )
 
         // r2 has more pixels (500 vs 100), so r2's recipe should be the survivor
-        let (merged, _) = PigmentDecomposer.mergeRecipes(
+        let (merged, map) = PigmentDecomposer.mergeRecipes(
             recipes: [r1, r2],
             pixelCounts: [100, 500],
             colorThreshold: 0.05,
@@ -126,6 +126,7 @@ struct PigmentDecomposerTests {
 
         #expect(merged.count == 1)
         #expect(merged[0].components[0].pigmentId == "pigB", "Larger cluster's recipe should survive")
+        #expect(map == [0, 0])
     }
 
     @Test
