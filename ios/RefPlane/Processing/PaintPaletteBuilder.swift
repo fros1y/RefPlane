@@ -15,6 +15,8 @@ enum PaintPaletteBuilder {
         case refinementFailed
     }
 
+    private static let adaptivePruneErrorThreshold: Float = 0.005 // Per-pixel weighted error increase threshold
+
     static func build(
         colorRegions: ColorRegionsProcessor.Result,
         config: ColorConfig,
@@ -115,20 +117,19 @@ enum PaintPaletteBuilder {
         var finalRecipes = mergedRecipes
 
         // Stage 5A - Adaptive shade count
-        // Identify anchors: darkest and lightest non-trivial clusters
-        let nonTrivialThreshold5A = max(1, finalCounts.reduce(0, +) / 100)
-        var anchors5A = Set<Int>()
-        var minL5A: Float = .greatestFiniteMagnitude
-        var maxL5A: Float = -.greatestFiniteMagnitude
-        var darkestIdx5A: Int? = nil
-        var lightestIdx5A: Int? = nil
-
-        for i in 0..<finalRecipes.count where finalCounts[i] > nonTrivialThreshold5A {
-            let c = finalRecipes[i].predictedColor
-            if c.L < minL5A { minL5A = c.L; darkestIdx5A = i }
-            if c.L > maxL5A { maxL5A = c.L; lightestIdx5A = i }
-        }
-        [darkestIdx5A, lightestIdx5A].compactMap { $0 }.forEach { anchors5A.insert($0) }
+        let anchors5A: Set<Int> = {
+            let threshold = max(1, finalCounts.reduce(0, +) / 100)
+            var minL: Float = .greatestFiniteMagnitude
+            var maxL: Float = -.greatestFiniteMagnitude
+            var darkest: Int? = nil
+            var lightest: Int? = nil
+            for i in 0..<finalRecipes.count where finalCounts[i] > threshold {
+                let L = finalRecipes[i].predictedColor.L
+                if L < minL { minL = L; darkest = i }
+                if L > maxL { maxL = L; lightest = i }
+            }
+            return Set([darkest, lightest].compactMap { $0 })
+        }()
 
         finalRecipes = adaptivePrune(
             recipes: finalRecipes,
@@ -259,7 +260,6 @@ enum PaintPaletteBuilder {
     ) -> [PigmentRecipe] {
         let totalPixels = max(1, counts.reduce(0, +))
         var survivors = Array(0..<recipes.count)
-        let errorThreshold: Float = 0.005 // Per-pixel weighted error increase threshold
 
         while survivors.count > 2 {
             // Find weakest non-anchor by pixel count
@@ -288,7 +288,7 @@ enum PaintPaletteBuilder {
             let errorIncrease = Float(weakestCount) * sqrtf(nearestDist)
             let perPixelIncrease = errorIncrease / Float(totalPixels)
 
-            if perPixelIncrease >= errorThreshold { break }
+            if perPixelIncrease >= adaptivePruneErrorThreshold { break }
 
             survivors.removeAll { $0 == weakestIdx }
         }
@@ -296,28 +296,34 @@ enum PaintPaletteBuilder {
         // Only reassign labels if we actually removed something
         guard survivors.count < recipes.count else { return recipes }
 
-        let survivorSet = Set(survivors)
+        // Build a compacted index: original recipe index → contiguous survivor index
+        var oldToNew = [Int: Int32]()
+        for (newIdx, oldIdx) in survivors.enumerated() {
+            oldToNew[oldIdx] = Int32(newIdx)
+        }
+
+        // Map eliminated recipe indices to their nearest survivor's new index
         var indexMap = [Int32](repeating: 0, count: recipes.count)
         for i in 0..<recipes.count {
-            if survivorSet.contains(i) {
-                indexMap[i] = Int32(i)
+            if let newIdx = oldToNew[i] {
+                indexMap[i] = newIdx
             } else {
                 let droppedColor = recipes[i].predictedColor
                 var bestDist = Float.greatestFiniteMagnitude
-                var bestSurv = survivors[0]
-                for s in survivors {
-                    let d = oklabDistance(droppedColor, recipes[s].predictedColor)
+                var bestNewIdx: Int32 = 0
+                for (origIdx, newIdx) in oldToNew {
+                    let d = oklabDistance(droppedColor, recipes[origIdx].predictedColor)
                     if d < bestDist {
                         bestDist = d
-                        bestSurv = s
+                        bestNewIdx = newIdx
                     }
                 }
-                indexMap[i] = Int32(bestSurv)
+                indexMap[i] = bestNewIdx
             }
         }
 
         labels = labels.map { indexMap[Int($0)] }
-        return recipes
+        return survivors.map { recipes[$0] }
     }
 
     private static func pruneToMaxShades(
