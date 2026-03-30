@@ -162,4 +162,55 @@ struct PaintPaletteBuilderTests {
         #expect(result.pixelLabels.count == total)
         #expect(result.clusterPixelCounts.reduce(0, +) == total)
     }
+
+    @Test
+    func nearMonochromeImageProducesFewShades() throws {
+        // All clusters are very close in color — a gray image with tiny variation
+        let k = 6
+        let pixelsPerCluster = 100
+        let total = k * pixelsPerCluster
+
+        var pixelLab = [Float](repeating: 0, count: total * 3)
+        var labels = [Int32](repeating: 0, count: total)
+        var centroids = [OklabColor]()
+
+        for ci in 0..<k {
+            let L = 0.48 + 0.01 * Float(ci) // Very tight L range: 0.48 to 0.53
+            centroids.append(OklabColor(L: L, a: 0.0, b: 0.0))
+            for j in 0..<pixelsPerCluster {
+                let idx = ci * pixelsPerCluster + j
+                pixelLab[idx * 3] = L + Float.random(in: -0.005...0.005)
+                pixelLab[idx * 3 + 1] = Float.random(in: -0.005...0.005)
+                pixelLab[idx * 3 + 2] = Float.random(in: -0.005...0.005)
+                labels[idx] = Int32(ci)
+            }
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: pixelLab,
+            clusterPixelCounts: [Int](repeating: pixelsPerCluster, count: k),
+            clusterSalience: [Float](repeating: 1.0, count: k)
+        )
+
+        var config = ColorConfig()
+        config.numShades = 8 // Request 8 but image only needs ~1-2
+        config.numTubes = 4
+        config.maxPigmentsPerMix = 3
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        // With near-monochrome input, adaptive pruning should collapse most shades
+        #expect(result.recipes.count < k, "Near-monochrome image should not keep all \(k) distinct shades")
+    }
 }
