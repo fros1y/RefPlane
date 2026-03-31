@@ -2,7 +2,7 @@ import UIKit
 import Testing
 @testable import Underpaint
 
-@Suite
+@Suite(.serialized)
 struct PaintPaletteBuilderTests {
     let database = SpectralDataStore.shared
     let pigments = SpectralDataStore.essentialPigments
@@ -322,16 +322,11 @@ struct PaintPaletteBuilderTests {
         )
 
         let lightnesses = result.recipes.map { $0.predictedColor.L }
-        // The input spans L=0.1 to L=0.95; after pruning to 3 shades the
-        // darkest and lightest recipe must still represent the extremes.
-        // We use relative checks (not absolute thresholds) so pigment gamut
-        // limits don't cause false failures.
-        let darkestL = lightnesses.min() ?? 1.0
-        let lightestL = lightnesses.max() ?? 0.0
-        let valueRange = lightestL - darkestL
-
-        #expect(valueRange > 0.3, "Surviving recipes should span a wide value range (got \(valueRange)); anchors may have been pruned")
-        #expect(result.recipes.count >= 2, "Should have at least 2 recipes after pruning")
+        let hasVeryDark = lightnesses.contains { $0 < 0.4 }
+        let hasVeryLight = lightnesses.contains { $0 > 0.6 }
+        #expect(hasVeryDark, "Darkest anchor (L~0.1) should survive pruning")
+        #expect(hasVeryLight, "Lightest anchor (L~0.95) should survive pruning")
+        #expect(result.recipes.count >= 2)
     }
 
     @Test
@@ -438,5 +433,10 @@ struct PaintPaletteBuilderTests {
             #expect(idx >= 0 && idx < result.recipes.count, "Clipped index \(idx) out of range")
             #expect(result.recipes[idx].deltaE > 0.05, "Clipped recipe should have materially high deltaE")
         }
+
+        // Either some recipes are clipped, or the decomposer found a sufficiently close match for all colors
+        let allWithinGamut = result.recipes.allSatisfy { $0.deltaE <= 0.05 }
+        #expect(!result.clippedRecipeIndices.isEmpty || allWithinGamut,
+            "Expected either some clipped recipes (deltaE > 0.05) or all recipes within gamut, but got \(result.clippedRecipeIndices.count) clipped and max deltaE = \(result.recipes.map { $0.deltaE }.max() ?? 0)")
     }
 }
