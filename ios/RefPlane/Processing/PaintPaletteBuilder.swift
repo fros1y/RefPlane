@@ -167,14 +167,14 @@ enum PaintPaletteBuilder {
 
         // Stage 5B - Final Constrained Refit
         // Recompute centroids from final pixel labels, then refit each recipe
-        let (refitCentroids, _) = ColorRegionsProcessor.computeCentroidsAndCounts(
+        let (refitCentroids, refitCounts) = ColorRegionsProcessor.computeCentroidsAndCounts(
             pixelLab: colorRegions.pixelLab,
             labels: workingLabels,
             k: prunedRecipes.count
         )
 
         var refitRecipes = prunedRecipes
-        for i in 0..<refitCentroids.count where finalCounts[i] > 0 {
+        for i in 0..<refitCentroids.count where refitCounts[i] > 0 {
             let reDecomposed = PigmentDecomposer.decompose(
                 targetColors: [refitCentroids[i]],
                 pigments: selectedTubes,
