@@ -164,22 +164,57 @@ enum PaintPaletteBuilder {
         for label in workingLabels {
             finalCounts[Int(label)] += 1
         }
-        
+
+        // Stage 5B - Final Constrained Refit
+        // Recompute centroids from final pixel labels, then refit each recipe
+        let (refitCentroids, _) = ColorRegionsProcessor.computeCentroidsAndCounts(
+            pixelLab: colorRegions.pixelLab,
+            labels: workingLabels,
+            k: prunedRecipes.count
+        )
+
+        var refitRecipes = prunedRecipes
+        for i in 0..<refitCentroids.count where finalCounts[i] > 0 {
+            let reDecomposed = PigmentDecomposer.decompose(
+                targetColors: [refitCentroids[i]],
+                pigments: selectedTubes,
+                database: database,
+                maxPigments: config.maxPigmentsPerMix,
+                minConcentration: config.minConcentration,
+                concurrent: false
+            )
+            if let recipe = reDecomposed.first {
+                refitRecipes[i] = recipe
+            }
+        }
+
+        // Final pixel reassignment to refit predicted colors
+        workingLabels = ColorRegionsProcessor.reassignLabels(
+            pixelLab: colorRegions.pixelLab,
+            centroids: refitRecipes.map { $0.predictedColor },
+            lWeight: 0.3
+        )
+
+        finalCounts = [Int](repeating: 0, count: refitRecipes.count)
+        for label in workingLabels {
+            finalCounts[Int(label)] += 1
+        }
+
         var clippedIndices = [Int]()
-        for (i, recipe) in prunedRecipes.enumerated() {
-            if recipe.deltaE > 0.05 { // Materially high delta E
+        for (i, recipe) in refitRecipes.enumerated() {
+            if recipe.deltaE > 0.05 {
                 clippedIndices.append(i)
             }
         }
-        
+
         let t4 = CFAbsoluteTimeGetCurrent()
-        print("[PaintPaletteBuilder] Stage 5 (Merge & Prune) took \(String(format: "%.1f", (t4 - t3b) * 1000)) ms")
+        print("[PaintPaletteBuilder] Stage 5 (Merge, Prune & Refit) took \(String(format: "%.1f", (t4 - t3b) * 1000)) ms")
         print("[PaintPaletteBuilder] Total execution took \(String(format: "%.1f", (t4 - t0) * 1000)) ms")
         onProgress?(0.95)
-        
+
         return PaintPaletteResult(
             selectedTubes: selectedTubes,
-            recipes: prunedRecipes,
+            recipes: refitRecipes,
             pixelLabels: workingLabels,
             clusterPixelCounts: finalCounts,
             clippedRecipeIndices: clippedIndices

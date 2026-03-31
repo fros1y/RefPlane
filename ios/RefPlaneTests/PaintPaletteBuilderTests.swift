@@ -164,6 +164,63 @@ struct PaintPaletteBuilderTests {
     }
 
     @Test
+    func allFinalRecipesUseOnlySelectedTubes() throws {
+        let centroids = [
+            OklabColor(L: 0.2, a: -0.05, b: 0.0),
+            OklabColor(L: 0.5, a: 0.1, b: 0.05),
+            OklabColor(L: 0.8, a: 0.0, b: -0.05),
+            OklabColor(L: 0.6, a: -0.1, b: 0.1),
+            OklabColor(L: 0.35, a: 0.05, b: -0.1)
+        ]
+        let pixelsPerCluster = 100
+        let total = centroids.count * pixelsPerCluster
+
+        var pixelLab = [Float](repeating: 0, count: total * 3)
+        var labels = [Int32](repeating: 0, count: total)
+        for (ci, centroid) in centroids.enumerated() {
+            for j in 0..<pixelsPerCluster {
+                let idx = ci * pixelsPerCluster + j
+                pixelLab[idx * 3] = centroid.L + Float.random(in: -0.01...0.01)
+                pixelLab[idx * 3 + 1] = centroid.a + Float.random(in: -0.01...0.01)
+                pixelLab[idx * 3 + 2] = centroid.b + Float.random(in: -0.01...0.01)
+                labels[idx] = Int32(ci)
+            }
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: pixelLab,
+            clusterPixelCounts: [Int](repeating: pixelsPerCluster, count: centroids.count),
+            clusterSalience: [Float](repeating: 1.0, count: centroids.count)
+        )
+
+        var config = ColorConfig()
+        config.numShades = 5
+        config.numTubes = 4
+        config.maxPigmentsPerMix = 3
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        let tubeIds = Set(result.selectedTubes.map { $0.id })
+        for (i, recipe) in result.recipes.enumerated() {
+            for comp in recipe.components {
+                #expect(tubeIds.contains(comp.pigmentId),
+                    "Recipe \(i) uses pigment '\(comp.pigmentName)' (\(comp.pigmentId)) which is not in selectedTubes")
+            }
+        }
+    }
+
+    @Test
     func nearMonochromeImageProducesFewShades() throws {
         // All clusters are very close in color — a gray image with tiny variation
         let k = 6
