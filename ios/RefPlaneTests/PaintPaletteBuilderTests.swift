@@ -270,4 +270,173 @@ struct PaintPaletteBuilderTests {
         // With near-monochrome input, adaptive pruning should collapse most shades
         #expect(result.recipes.count < k, "Near-monochrome image should not keep all \(k) distinct shades")
     }
+
+    @Test
+    func valueAnchorsPreservedAfterMergeAndPrune() throws {
+        // Create clusters with a wide value range — darkest and lightest should survive
+        let centroids = [
+            OklabColor(L: 0.1, a: 0.0, b: 0.0),   // very dark — anchor
+            OklabColor(L: 0.3, a: 0.02, b: 0.01),
+            OklabColor(L: 0.5, a: 0.05, b: 0.03),
+            OklabColor(L: 0.5, a: -0.05, b: -0.03),
+            OklabColor(L: 0.7, a: 0.02, b: 0.01),
+            OklabColor(L: 0.95, a: 0.0, b: 0.0)   // very light — anchor
+        ]
+        let pixelsPerCluster = 80
+        let total = centroids.count * pixelsPerCluster
+
+        var pixelLab = [Float](repeating: 0, count: total * 3)
+        var labels = [Int32](repeating: 0, count: total)
+        for (ci, centroid) in centroids.enumerated() {
+            for j in 0..<pixelsPerCluster {
+                let idx = ci * pixelsPerCluster + j
+                pixelLab[idx * 3] = centroid.L + Float.random(in: -0.01...0.01)
+                pixelLab[idx * 3 + 1] = centroid.a + Float.random(in: -0.01...0.01)
+                pixelLab[idx * 3 + 2] = centroid.b + Float.random(in: -0.01...0.01)
+                labels[idx] = Int32(ci)
+            }
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: pixelLab,
+            clusterPixelCounts: [Int](repeating: pixelsPerCluster, count: centroids.count),
+            clusterSalience: [Float](repeating: 1.0, count: centroids.count)
+        )
+
+        var config = ColorConfig()
+        config.numShades = 3 // Force heavy pruning
+        config.numTubes = 5
+        config.maxPigmentsPerMix = 3
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        let lightnesses = result.recipes.map { $0.predictedColor.L }
+        // The input spans L=0.1 to L=0.95; after pruning to 3 shades the
+        // darkest and lightest recipe must still represent the extremes.
+        // We use relative checks (not absolute thresholds) so pigment gamut
+        // limits don't cause false failures.
+        let darkestL = lightnesses.min() ?? 1.0
+        let lightestL = lightnesses.max() ?? 0.0
+        let valueRange = lightestL - darkestL
+
+        #expect(valueRange > 0.3, "Surviving recipes should span a wide value range (got \(valueRange)); anchors may have been pruned")
+        #expect(result.recipes.count >= 2, "Should have at least 2 recipes after pruning")
+    }
+
+    @Test
+    func duplicateDarkRecipesMerge() throws {
+        // Multiple dark clusters that should all map to the same dark pigment mix
+        let centroids = [
+            OklabColor(L: 0.08, a: 0.0, b: 0.0),
+            OklabColor(L: 0.10, a: 0.01, b: 0.0),
+            OklabColor(L: 0.12, a: 0.0, b: 0.01),
+            OklabColor(L: 0.6, a: 0.1, b: 0.05)   // one distinct mid-tone
+        ]
+        let pixelsPerCluster = 100
+        let total = centroids.count * pixelsPerCluster
+
+        var pixelLab = [Float](repeating: 0, count: total * 3)
+        var labels = [Int32](repeating: 0, count: total)
+        for (ci, centroid) in centroids.enumerated() {
+            for j in 0..<pixelsPerCluster {
+                let idx = ci * pixelsPerCluster + j
+                pixelLab[idx * 3] = centroid.L + Float.random(in: -0.005...0.005)
+                pixelLab[idx * 3 + 1] = centroid.a + Float.random(in: -0.005...0.005)
+                pixelLab[idx * 3 + 2] = centroid.b + Float.random(in: -0.005...0.005)
+                labels[idx] = Int32(ci)
+            }
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: pixelLab,
+            clusterPixelCounts: [Int](repeating: pixelsPerCluster, count: centroids.count),
+            clusterSalience: [Float](repeating: 1.0, count: centroids.count)
+        )
+
+        var config = ColorConfig()
+        config.numShades = 8
+        config.numTubes = 4
+        config.maxPigmentsPerMix = 3
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        // The 3 near-identical dark clusters should merge into 1 or 2 at most
+        let darkRecipes = result.recipes.filter { $0.predictedColor.L < 0.25 }
+        #expect(darkRecipes.count <= 2, "Near-identical dark clusters should merge, got \(darkRecipes.count)")
+        #expect(result.recipes.count >= 2, "Should still have at least 2 distinct recipes (dark + mid)")
+    }
+
+    @Test
+    func clippedRecipesAreFlagged() throws {
+        // Include a highly saturated color that's hard to mix with limited tubes
+        let centroids = [
+            OklabColor(L: 0.5, a: 0.0, b: 0.0),       // neutral — easy
+            OklabColor(L: 0.7, a: 0.25, b: 0.25)       // extremely vivid — likely clipped
+        ]
+        let total = 200
+
+        var pixelLab = [Float](repeating: 0, count: total * 3)
+        var labels = [Int32](repeating: 0, count: total)
+        for i in 0..<100 {
+            pixelLab[i * 3] = 0.5; pixelLab[i * 3 + 1] = 0.0; pixelLab[i * 3 + 2] = 0.0
+            labels[i] = 0
+        }
+        for i in 100..<200 {
+            pixelLab[i * 3] = 0.7; pixelLab[i * 3 + 1] = 0.25; pixelLab[i * 3 + 2] = 0.25
+            labels[i] = 1
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: pixelLab,
+            clusterPixelCounts: [100, 100],
+            clusterSalience: [1.0, 1.5]
+        )
+
+        var config = ColorConfig()
+        config.numShades = 2
+        config.numTubes = 3 // Very limited tube budget
+        config.maxPigmentsPerMix = 2
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        // clippedRecipeIndices should only contain valid indices
+        // and those recipes should have materially high deltaE
+        for idx in result.clippedRecipeIndices {
+            #expect(idx >= 0 && idx < result.recipes.count, "Clipped index \(idx) out of range")
+            #expect(result.recipes[idx].deltaE > 0.05, "Clipped recipe should have materially high deltaE")
+        }
+    }
 }
