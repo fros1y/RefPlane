@@ -77,7 +77,7 @@ struct ColorSettingsView: View {
                                         state.colorConfig.enabledPigmentIDs.remove(pigment.id)
                                     }
                                 }
-                                state.triggerProcessing()
+                                pigmentDidChange()
                             }
                         )
                     }
@@ -118,11 +118,32 @@ struct ColorSettingsView: View {
             },
             set: { newPreset in
                 if let preset = newPreset {
+                    // Switching to a named preset — save current as custom first
+                    // (only if current selection doesn't already match a preset)
+                    if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.colorConfig.enabledPigmentIDs }) == nil {
+                        state.colorConfig.saveCustomPigmentIDs()
+                    }
                     state.colorConfig.enabledPigmentIDs = preset.pigmentIDs
+                    state.colorConfig.saveEnabledPigmentIDs()
+                    state.triggerProcessing()
+                } else {
+                    // "Custom" selected — restore saved custom palette
+                    state.colorConfig.enabledPigmentIDs = ColorConfig.loadCustomPigmentIDs()
+                    state.colorConfig.saveEnabledPigmentIDs()
                     state.triggerProcessing()
                 }
             }
         )
+    }
+
+    /// Save current selection and trigger reprocessing.
+    private func pigmentDidChange() {
+        state.colorConfig.saveEnabledPigmentIDs()
+        // Also keep custom palette in sync when in custom mode
+        if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.colorConfig.enabledPigmentIDs }) == nil {
+            state.colorConfig.saveCustomPigmentIDs()
+        }
+        state.triggerProcessing()
     }
 }
 
