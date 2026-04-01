@@ -34,6 +34,10 @@ class AppState: ObservableObject {
     // UI state
     @Published var activeMode: RefPlaneMode = .original
     @Published var isProcessing: Bool       = false
+    /// `true` while the image is being loaded or simplified (abstracted);
+    /// `false` during actual mode processing. Used to suppress the blur
+    /// overlay so the original image stays crisp during simplification.
+    @Published var isSimplifying: Bool      = false
     @Published var processingProgress: Double = 0
     @Published var processingLabel: String  = "Processing…"
     @Published var processingIsIndeterminate: Bool = false
@@ -154,6 +158,7 @@ class AppState: ObservableObject {
         isolatedBand              = nil
         errorMessage              = nil
         isProcessing              = true
+        isSimplifying             = true
         processingProgress        = 0
         processingLabel           = "Loading…"
         processingIsIndeterminate = true
@@ -167,6 +172,7 @@ class AppState: ObservableObject {
             if abstractionIsEnabled {
                 applyAbstraction()
             } else {
+                isSimplifying             = false
                 processingLabel           = "Processing…"
                 processingIsIndeterminate = false
                 triggerProcessing()
@@ -333,6 +339,7 @@ class AppState: ObservableObject {
         let method = abstractionMethod
 
         isProcessing = true
+        isSimplifying = true
         processingProgress = 0
         processingLabel = "Abstracting…"
         processingIsIndeterminate = false
@@ -353,6 +360,7 @@ class AppState: ObservableObject {
                 await MainActor.run {
                     guard self.abstractionGeneration == generation else { return }
                     self.abstractedImage = abstracted
+                    self.isSimplifying   = false
                     self.isProcessing    = false
                     self.processingLabel = "Processing…"
                     self.triggerProcessing()
@@ -362,6 +370,7 @@ class AppState: ObservableObject {
             } catch {
                 await MainActor.run {
                     guard self.abstractionGeneration == generation else { return }
+                    self.isSimplifying = false
                     self.isProcessing = false
                     self.processingLabel = "Processing…"
                     self.errorMessage = error.localizedDescription
@@ -373,6 +382,7 @@ class AppState: ObservableObject {
     func resetAbstraction() {
         abstractionTask?.cancel()
         abstractionGeneration += 1
+        isSimplifying = false
         abstractedImage = nil
         isolatedProcessedImage = nil
         processedPixelBands = []
