@@ -28,11 +28,6 @@ enum LineStyle: String, CaseIterable {
     case custom       = "Custom"
 }
 
-enum CellAspect: String, CaseIterable {
-    case square     = "Square"
-    case matchImage = "Image"
-}
-
 enum MinRegionSize: String, CaseIterable {
     case off    = "Off"
     case small  = "Small"
@@ -52,9 +47,7 @@ enum MinRegionSize: String, CaseIterable {
 struct GridConfig {
     var enabled: Bool       = false
     var divisions: Int      = 4
-    var cellAspect: CellAspect = .square
     var showDiagonals: Bool    = false
-    var showCenterLines: Bool  = false
     var lineStyle: LineStyle   = .autoContrast
     var customColor: Color     = .white
     var opacity: Double        = 0.7
@@ -65,11 +58,91 @@ struct ValueConfig {
     var thresholds: [Double]     = defaultThresholds(for: 3)
 }
 
+// MARK: - Pigment palette presets
+
+enum PigmentPreset: String, CaseIterable, Identifiable {
+    case all      = "All"
+    case zorn     = "Zorn"
+    case primary  = "Primary"
+    case warm     = "Warm"
+    case cool     = "Cool"
+
+    var id: String { rawValue }
+
+    /// The pigment IDs belonging to this preset.
+    var pigmentIDs: Set<String> {
+        switch self {
+        case .all:
+            return Set(SpectralDataStore.essentialPigments.map(\.id))
+        case .zorn:
+            // Anders Zorn palette: Yellow Ochre, Cad Red Medium, Carbon Black + Titanium White
+            return ["yellow_ochre", "cad_red_medium", "carbon_black", "titanium_white"]
+        case .primary:
+            // Split-primary: warm/cool of each primary + white + black
+            return [
+                "cad_red_medium", "quin_crimson",
+                "cad_yellow_medium", "cadmium_yellow_light",
+                "ultramarine_blue", "phthalo_blue_gs",
+                "carbon_black", "titanium_white"
+            ]
+        case .warm:
+            return [
+                "cad_red_medium", "cad_red_dark", "cadmium_orange",
+                "cad_yellow_medium", "yellow_ochre", "raw_sienna",
+                "burnt_sienna", "burnt_umber", "titanium_white", "carbon_black"
+            ]
+        case .cool:
+            return [
+                "ultramarine_blue", "phthalo_blue_gs", "cerulean_blue_chromium",
+                "phthalo_green_bs", "chromium_oxide", "dioxazine_purple",
+                "paynes_gray", "raw_umber", "titanium_white", "carbon_black"
+            ]
+        }
+    }
+}
+
 struct ColorConfig {
-    var colorFamilies: Int       = 3
-    var valuesPerFamily: Int     = 2
-    var paletteSpread: Double    = 0
-    var valueThresholds: [Double] = defaultThresholds(for: 2)
+    var numShades: Int         = 24
+    var enabledPigmentIDs: Set<String> = {
+        ColorConfig.loadEnabledPigmentIDs()
+            ?? Set(SpectralDataStore.essentialPigments.map(\.id))
+    }()
+    var paletteSpread: Double  = 0
+    var maxPigmentsPerMix: Int = 3
+    var minConcentration: Float = 0.02
+
+    // MARK: - Persistence
+
+    private static let enabledKey = "ColorConfig.enabledPigmentIDs"
+    private static let customKey  = "ColorConfig.customPigmentIDs"
+
+    /// Persist the current pigment selection.
+    func saveEnabledPigmentIDs() {
+        let array = Array(enabledPigmentIDs).sorted()
+        UserDefaults.standard.set(array, forKey: ColorConfig.enabledKey)
+    }
+
+    /// Save the current selection as the "custom" palette (separate from preset).
+    func saveCustomPigmentIDs() {
+        let array = Array(enabledPigmentIDs).sorted()
+        UserDefaults.standard.set(array, forKey: ColorConfig.customKey)
+    }
+
+    /// Load persisted pigment selection, or nil if none saved.
+    static func loadEnabledPigmentIDs() -> Set<String>? {
+        guard let array = UserDefaults.standard.stringArray(forKey: enabledKey) else { return nil }
+        let valid = Set(array).intersection(Set(SpectralDataStore.essentialPigments.map(\.id)))
+        return valid.isEmpty ? nil : valid
+    }
+
+    /// Load the saved custom palette, falling back to all essentials.
+    static func loadCustomPigmentIDs() -> Set<String> {
+        guard let array = UserDefaults.standard.stringArray(forKey: customKey) else {
+            return Set(SpectralDataStore.essentialPigments.map(\.id))
+        }
+        let valid = Set(array).intersection(Set(SpectralDataStore.essentialPigments.map(\.id)))
+        return valid.isEmpty ? Set(SpectralDataStore.essentialPigments.map(\.id)) : valid
+    }
 }
 
 func defaultThresholds(for levels: Int) -> [Double] {
@@ -103,18 +176,4 @@ enum AbstractionMethod: String, CaseIterable, Identifiable {
     var modelBundleName: String? {
         return "APISR_GRL_x4"
     }
-}
-
-// MARK: - Simplification (post-processing) model
-
-enum SimplificationMethod: String, CaseIterable {
-    case regionCompaction = "Region Compaction"
-    case kuwahara = "Kuwahara"
-}
-
-struct SimplificationConfig {
-    var enabled: Bool = false
-    var method: SimplificationMethod = .regionCompaction
-    var minRegionSize: MinRegionSize = .small
-    var kuwaharaRadius: Int = 6
 }

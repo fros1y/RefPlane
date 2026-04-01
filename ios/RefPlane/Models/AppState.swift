@@ -8,7 +8,6 @@ class AppState: ObservableObject {
         RefPlaneMode,
         ValueConfig,
         ColorConfig,
-        SimplificationConfig,
         @escaping @Sendable (Double) -> Void
     ) async throws -> ProcessingResult
 
@@ -28,6 +27,9 @@ class AppState: ObservableObject {
     @Published var processedImage: UIImage? = nil
     @Published var paletteColors: [Color]   = []
     @Published var paletteBands: [Int]      = []
+    @Published var pigmentRecipes: [PigmentRecipe]? = nil
+    @Published var selectedTubes: [PigmentData] = []
+    @Published var clippedRecipeIndices: [Int] = []
 
     // UI state
     @Published var activeMode: RefPlaneMode = .original
@@ -45,11 +47,10 @@ class AppState: ObservableObject {
     @Published var gridConfig: GridConfig   = GridConfig()
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
-    @Published var abstractionEnabled: Bool    = true
-    /// Abstraction strength 0–1. Maps to downscale factor 2–12.
+    /// Abstraction strength 0–1. `0` disables abstraction; positive values map
+    /// to the existing downscale-based abstraction range.
     @Published var abstractionStrength: Double  = 0.5
     @Published var abstractionMethod: AbstractionMethod = .apisr
-    @Published var simplificationConfig: SimplificationConfig = SimplificationConfig()
 
     // Abstracted image (after upscale/denoise)
     @Published var abstractedImage: UIImage? = nil
@@ -65,6 +66,10 @@ class AppState: ObservableObject {
 
     private var loadingTask: Task<Void, Never>? = nil
     private var processedPixelBands: [Int] = []
+
+    var abstractionIsEnabled: Bool {
+        abstractionStrength > 0
+    }
 
     var availableAbstractionMethods: [AbstractionMethod] {
         AbstractionMethod.allCases.filter { method in
@@ -85,13 +90,12 @@ class AppState: ObservableObject {
         abstractionOperation: AbstractionOperation? = nil
     ) {
         let processor = ImageProcessor()
-        self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, simplificationConfig, onProgress in
+        self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, onProgress in
             try await processor.process(
                 image: image,
                 mode: mode,
                 valueConfig: valueConfig,
                 colorConfig: colorConfig,
-                simplificationConfig: simplificationConfig,
                 onProgress: onProgress
             )
         }
@@ -119,6 +123,14 @@ class AppState: ObservableObject {
         activeMode == .original ? displayBaseImage : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
     }
 
+    var compareBeforeImage: UIImage? {
+        originalImage ?? displayBaseImage
+    }
+
+    var compareAfterImage: UIImage? {
+        activeMode == .original ? displayBaseImage : currentDisplayImage
+    }
+
     func loadImage(_ image: UIImage) {
         // Cancel any in-flight work before starting fresh.
         loadingTask?.cancel()
@@ -136,6 +148,9 @@ class AppState: ObservableObject {
         processedPixelBands       = []
         paletteColors             = []
         paletteBands              = []
+        pigmentRecipes            = nil
+        selectedTubes             = []
+        clippedRecipeIndices      = []
         isolatedBand              = nil
         errorMessage              = nil
         isProcessing              = true
@@ -149,7 +164,7 @@ class AppState: ObservableObject {
             guard !Task.isCancelled else { return }
             originalImage             = scaled
             sourceImage               = scaled
-            if abstractionEnabled {
+            if abstractionIsEnabled {
                 applyAbstraction()
             } else {
                 processingLabel           = "Processing…"
@@ -184,45 +199,31 @@ class AppState: ObservableObject {
 
         processingGeneration += 1
         let myGeneration = processingGeneration
-        let simpConfig = simplificationConfig
         let mode = activeMode
 
         processingTask = Task {
             do {
-                var result = try await processOperation(
+                let result = try await processOperation(
                     source,
                     mode,
                     valueConfig,
                     colorConfig,
-                    simpConfig,
                     { [weak self] p in
                         Task { @MainActor [weak self] in self?.processingProgress = p }
                     }
                 )
                 try Task.checkCancellation()
 
-                // Apply Kuwahara post-processing if enabled
-                if (mode == .value || mode == .color),
-                   simpConfig.enabled,
-                   simpConfig.method == .kuwahara,
-                   let cgImage = result.image.cgImage,
-                   let ctx = MetalContext.shared,
-                   let smoothed = ctx.anisotropicKuwahara(cgImage, radius: simpConfig.kuwaharaRadius) {
-                    result = ProcessingResult(
-                        image: smoothed,
-                        palette: result.palette,
-                        paletteBands: result.paletteBands,
-                        pixelBands: result.pixelBands
-                    )
-                }
-
                 try Task.checkCancellation()
                 await MainActor.run {
-                    self.processedImage  = result.image
+                    self.processedImage      = result.image
                     self.processedPixelBands = result.pixelBands
-                    self.paletteColors   = result.palette
-                    self.paletteBands    = result.paletteBands
-                    self.processingProgress = 1
+                    self.paletteColors       = result.palette
+                    self.paletteBands        = result.paletteBands
+                    self.pigmentRecipes      = result.pigmentRecipes
+                    self.selectedTubes       = result.selectedTubes
+                    self.clippedRecipeIndices = result.clippedRecipeIndices
+                    self.processingProgress  = 1
                     self.refreshIsolatedProcessedImage()
                 }
             } catch is CancellationError {
@@ -252,6 +253,9 @@ class AppState: ObservableObject {
         processedPixelBands = []
         paletteColors = []
         paletteBands = []
+        pigmentRecipes = nil
+        selectedTubes = []
+        clippedRecipeIndices = []
         triggerProcessing()
     }
 
@@ -270,25 +274,15 @@ class AppState: ObservableObject {
     private func renderGridOnto(_ image: UIImage) -> UIImage {
         let size = image.size
         let config = gridConfig
-
-        let lineColor = UIColor(GridLineColorResolver.resolvedColor(config: config, image: image))
-
-        let div = CGFloat(config.divisions)
-        let cellW: CGFloat
-        let cellH: CGFloat
-        switch config.cellAspect {
-        case .square:
-            let shortEdge = min(size.width, size.height)
-            cellW = shortEdge / div
-            cellH = cellW
-        case .matchImage:
-            cellW = size.width  / div
-            cellH = size.height / div
-        }
-
-        let cols = Int((size.width  / cellW).rounded(.up))
-        let rows = Int((size.height / cellH).rounded(.up))
         let lineWidth = max(1.0, min(size.width, size.height) / 1000.0)
+        let segments = GridLineColorResolver.resolvedSegments(
+            config: config,
+            image: image,
+            segments: GridLineColorResolver.normalizedSegments(
+                config: config,
+                imageSize: size
+            )
+        )
 
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1.0
@@ -297,51 +291,29 @@ class AppState: ObservableObject {
             image.draw(in: CGRect(origin: .zero, size: size))
 
             let cg = ctx.cgContext
-            cg.setStrokeColor(lineColor.withAlphaComponent(config.opacity).cgColor)
             cg.setLineWidth(lineWidth)
+            cg.setLineCap(.square)
             cg.clip(to: CGRect(origin: .zero, size: size))
 
-            for col in 0...cols {
-                let x = CGFloat(col) * cellW
-                cg.move(to: CGPoint(x: x, y: 0))
-                cg.addLine(to: CGPoint(x: x, y: size.height))
+            for resolvedSegment in segments {
+                let mappedSegment = resolvedSegment.segment.mapped(
+                    to: CGRect(origin: .zero, size: size)
+                )
+                let color = UIColor(resolvedSegment.color).withAlphaComponent(config.opacity)
+                cg.setStrokeColor(color.cgColor)
+                cg.move(to: mappedSegment.start)
+                cg.addLine(to: mappedSegment.end)
+                cg.strokePath()
             }
-            for row in 0...rows {
-                let y = CGFloat(row) * cellH
-                cg.move(to: CGPoint(x: 0, y: y))
-                cg.addLine(to: CGPoint(x: size.width, y: y))
-            }
-
-            if config.showDiagonals || config.showCenterLines {
-                for col in 0..<cols {
-                    for row in 0..<rows {
-                        let cx = CGFloat(col) * cellW
-                        let cy = CGFloat(row) * cellH
-                        let cw = min(cellW, size.width  - cx)
-                        let ch = min(cellH, size.height - cy)
-
-                        if config.showDiagonals {
-                            cg.move(to:    CGPoint(x: cx,      y: cy))
-                            cg.addLine(to: CGPoint(x: cx + cw, y: cy + ch))
-                            cg.move(to:    CGPoint(x: cx + cw, y: cy))
-                            cg.addLine(to: CGPoint(x: cx,      y: cy + ch))
-                        }
-                        if config.showCenterLines {
-                            cg.move(to:    CGPoint(x: cx + cw / 2, y: cy))
-                            cg.addLine(to: CGPoint(x: cx + cw / 2, y: cy + ch))
-                            cg.move(to:    CGPoint(x: cx,           y: cy + ch / 2))
-                            cg.addLine(to: CGPoint(x: cx + cw,      y: cy + ch / 2))
-                        }
-                    }
-                }
-            }
-
-            cg.strokePath()
         }
     }
 
     func applyAbstraction() {
         guard let source = sourceImage else { return }
+        guard abstractionIsEnabled else {
+            resetAbstraction()
+            return
+        }
 
         abstractionTask?.cancel()
         abstractionGeneration += 1

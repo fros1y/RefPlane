@@ -7,8 +7,8 @@ import Testing
 func resetAbstractionCancelsInflightAbstractionTask() async throws {
     let abstractor = AbstractionOperationProbe()
     let state = AppState(
-        processOperation: { image, _, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
+        processOperation: { image, _, _, _, _ in
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
         },
         abstractionOperation: { image, downscale, method, onProgress in
             try await abstractor.abstract(
@@ -21,7 +21,6 @@ func resetAbstractionCancelsInflightAbstractionTask() async throws {
     )
 
     state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.abstractionEnabled = true
 
     state.applyAbstraction()
     state.resetAbstraction()
@@ -47,12 +46,15 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
     )
 
     let state = AppState(
-        processOperation: { _, _, _, _, _, _ in
+        processOperation: { _, _, _, _, _ in
             ProcessingResult(
                 image: processedImage,
                 palette: [],
                 paletteBands: [0, 1],
-                pixelBands: [0, 1]
+                pixelBands: [0, 1],
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
             )
         }
     )
@@ -80,8 +82,8 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
 @Test
 func setModeClearsProcessedState() {
     let state = AppState(
-        processOperation: { image, _, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
+        processOperation: { image, _, _, _, _ in
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
         }
     )
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
@@ -104,8 +106,8 @@ func setModeClearsProcessedState() {
 @Test
 func setModeToSameModeIsNoOp() {
     let state = AppState(
-        processOperation: { image, _, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [])
+        processOperation: { image, _, _, _, _ in
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
         }
     )
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
@@ -156,6 +158,44 @@ func currentDisplayImageShowsBaseImageInOriginalMode() {
     state.activeMode     = .original
 
     #expect(state.currentDisplayImage === source)
+}
+
+@MainActor
+@Test
+func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
+    let processedImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 0, 255),
+        ],
+        width: 2,
+        height: 1
+    )
+
+    let state = AppState(
+        processOperation: { _, _, _, _, _ in
+            ProcessingResult(
+                image: processedImage,
+                palette: [],
+                paletteBands: [0, 1],
+                pixelBands: [0, 1],
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
+            )
+        }
+    )
+
+    state.sourceImage = processedImage
+    state.activeMode = .color
+    state.triggerProcessing()
+    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+
+    #expect(state.compareAfterImage === state.currentDisplayImage)
+
+    state.toggleIsolatedBand(1)
+
+    #expect(state.compareAfterImage === state.currentDisplayImage)
 }
 
 // MARK: -

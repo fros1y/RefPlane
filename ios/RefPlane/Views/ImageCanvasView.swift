@@ -54,14 +54,7 @@ struct ImageCanvasView: View {
         )
 
         return ZStack {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if state.gridConfig.enabled {
-                GridOverlayView()
-            }
+            StudyImageLayer(image: image, showsGrid: state.gridConfig.enabled)
         }
         .scaleEffect(combinedScale)
         .offset(combinedOffset)
@@ -208,6 +201,24 @@ struct ImageCanvasView: View {
             }
         default:
             return state.processingLabel
+        }
+    }
+}
+
+struct StudyImageLayer: View {
+    let image: UIImage
+    let showsGrid: Bool
+
+    var body: some View {
+        ZStack {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showsGrid {
+                GridOverlayView(image: image)
+            }
         }
     }
 }

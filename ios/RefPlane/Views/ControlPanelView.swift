@@ -43,56 +43,42 @@ struct ControlPanelView: View {
     private var inspectorForm: some View {
         Form {
             Section("Abstraction") {
-                Toggle("Abstract Image", isOn: Binding(
-                    get: { state.abstractionEnabled },
-                    set: { isEnabled in
-                        state.abstractionEnabled = isEnabled
-                        if isEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Strength")
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(strengthLabel)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.primary)
+                    }
+
+                    Slider(
+                        value: $state.abstractionStrength,
+                        in: 0...1,
+                        step: 0.05
+                    ) {
+                        Text("Strength")
+                    } onEditingChanged: { editing in
+                        if !editing {
                             state.applyAbstraction()
-                        } else {
-                            state.resetAbstraction()
                         }
                     }
-                ))
+                }
 
-                if state.abstractionEnabled {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Strength")
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Text("\(Int(state.abstractionStrength * 100))%")
-                                .font(.subheadline.monospacedDigit())
-                                .foregroundStyle(.primary)
-                        }
-
-                        Slider(
-                            value: $state.abstractionStrength,
-                            in: 0...1,
-                            step: 0.05
-                        ) {
-                            Text("Strength")
-                        } onEditingChanged: { editing in
-                            if !editing {
+                if state.availableAbstractionMethods.count > 1 {
+                    Picker("Style", selection: Binding(
+                        get: { state.abstractionMethod },
+                        set: { method in
+                            state.abstractionMethod = method
+                            if state.abstractionIsEnabled {
                                 state.applyAbstraction()
                             }
                         }
-                    }
-
-                    if state.availableAbstractionMethods.count > 1 {
-                        Picker("Style", selection: Binding(
-                            get: { state.abstractionMethod },
-                            set: { method in
-                                state.abstractionMethod = method
-                                if state.abstractionEnabled {
-                                    state.applyAbstraction()
-                                }
-                            }
-                        )) {
-                            ForEach(state.availableAbstractionMethods) { method in
-                                Text(method.label).tag(method)
-                            }
+                    )) {
+                        ForEach(state.availableAbstractionMethods) { method in
+                            Text(method.label).tag(method)
                         }
                     }
                 }
@@ -109,12 +95,6 @@ struct ControlPanelView: View {
             } else if state.activeMode == .color {
                 Section("Adjustments") {
                     ColorSettingsView()
-                }
-            }
-
-            if state.activeMode == .value || state.activeMode == .color {
-                Section("Simplification") {
-                    SimplificationSettingsView()
                 }
             }
 
@@ -142,5 +122,9 @@ struct ControlPanelView: View {
                 onClose?()
             }
         }
+    }
+
+    private var strengthLabel: String {
+        state.abstractionIsEnabled ? "\(Int(state.abstractionStrength * 100))%" : "Off"
     }
 }

@@ -6,6 +6,7 @@ struct ThresholdSliderView: View {
     @Binding var thresholds: [Double]
     let levels: Int
     let colorForLevel: (Int, Int) -> Color
+    var onEditingEnded: (() -> Void)? = nil
 
     @State private var selectedHandleIndex: Int? = nil
     // Captures the threshold value at the moment each drag begins, preventing
@@ -109,6 +110,7 @@ struct ThresholdSliderView: View {
                 }
                 .onEnded { _ in
                     dragStartValues.removeValue(forKey: index)
+                    onEditingEnded?()
                 }
         )
         .selectionFeedback(trigger: thresholds)
@@ -194,6 +196,7 @@ struct ThresholdSliderView: View {
 
         updated[index] = max(lowerBound, min(upperBound, updated[index] + delta))
         thresholds = updated
+        onEditingEnded?()
     }
 
     private func normalizeThresholds(expectedHandles: Int) {
@@ -230,6 +233,9 @@ struct LabeledSlider: View {
     let range: ClosedRange<Double>
     let step: Double
     let displayFormat: (Double) -> String
+    var onEditingChanged: ((Bool) -> Void)? = nil
+
+    @State private var valueAtDragStart: Double? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -242,7 +248,20 @@ struct LabeledSlider: View {
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.primary)
             }
-            Slider(value: $value, in: range, step: step)
+            Slider(
+                value: $value,
+                in: range,
+                step: step,
+                onEditingChanged: { editing in
+                    if editing {
+                        valueAtDragStart = value
+                    } else {
+                        let changed = valueAtDragStart.map { $0 != value } ?? true
+                        valueAtDragStart = nil
+                        if changed { onEditingChanged?(false) }
+                    }
+                }
+            )
         }
     }
 }

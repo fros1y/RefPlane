@@ -22,24 +22,9 @@ struct GridSettingsView: View {
                     displayFormat: { "\(Int($0))" }
                 )
 
-                LabeledPicker(
-                    title: "Cell",
-                    selection: Binding(
-                        get: { state.gridConfig.cellAspect },
-                        set: { state.gridConfig.cellAspect = $0 }
-                    ),
-                    options: CellAspect.allCases,
-                    label: { $0.rawValue }
-                )
-
                 Toggle("Diagonals", isOn: Binding(
                     get: { state.gridConfig.showDiagonals },
                     set: { state.gridConfig.showDiagonals = $0 }
-                ))
-
-                Toggle("Center Lines", isOn: Binding(
-                    get: { state.gridConfig.showCenterLines },
-                    set: { state.gridConfig.showCenterLines = $0 }
                 ))
 
                 LabeledPicker(
