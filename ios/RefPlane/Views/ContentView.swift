@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var state = AppState()
     @State private var showImagePicker = false
+    @State private var showSamplePicker = false
     @State private var showInspector = false
     @State private var showAbout = false
     @State private var exportItem: ExportItem?
@@ -109,6 +110,11 @@ struct ContentView: View {
         .environmentObject(state)
         .sheet(isPresented: $showImagePicker) {
             ImagePickerView { image in
+                state.loadImage(image)
+            }
+        }
+        .sheet(isPresented: $showSamplePicker) {
+            SampleImagePickerView { image in
                 state.loadImage(image)
             }
         }
@@ -249,7 +255,7 @@ struct ContentView: View {
             CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ImageCanvasView(showImagePicker: $showImagePicker)
+            ImageCanvasView(showImagePicker: $showImagePicker, showSamplePicker: $showSamplePicker)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
