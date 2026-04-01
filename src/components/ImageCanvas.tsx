@@ -171,7 +171,7 @@ const WHEEL_STROKE = 5;
 const WHEEL_RADIUS = (WHEEL_SIZE - WHEEL_STROKE) / 2;
 const WHEEL_CIRCUMFERENCE = 2 * Math.PI * WHEEL_RADIUS;
 
-function ProgressWheel({ progress }: { progress?: { stage: string; percent: number } | null }) {
+export function ProgressWheel({ progress }: { progress?: { stage: string; percent: number } | null }) {
   const hasPercent = progress != null;
   const percent = progress?.percent ?? 0;
   const stage = progress?.stage ?? '';

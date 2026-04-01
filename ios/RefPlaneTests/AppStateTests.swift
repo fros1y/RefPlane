@@ -312,6 +312,12 @@ func abstractionAppliesKuwaharaPostFilter() async throws {
     let abstractor = AbstractionOperationProbe()
     let kuwaharaProbe = KuwaharaOperationProbe(result: filteredImage)
 
+// MARK: - isSimplifying
+
+@MainActor
+@Test
+func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
+    let abstractor = AbstractionOperationProbe()
     let state = AppState(
         processOperation: { image, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
@@ -337,11 +343,35 @@ func abstractionAppliesKuwaharaPostFilter() async throws {
     #expect(state.abstractedImage === abstractedImage)
     #expect(state.kuwaharaFilteredImage === filteredImage)
     #expect(state.displayBaseImage === filteredImage)
+            try await abstractor.abstract(
+                image: image,
+                downscale: downscale,
+                method: method,
+                onProgress: onProgress
+            )
+        }
+    )
+
+    state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
+
+    state.applyAbstraction()
+
+    // isSimplifying should be true while the abstraction task is running
+    #expect(state.isSimplifying == true)
+
+    let result = TestImageFactory.makeSolid(width: 20, height: 20, color: .blue)
+    await abstractor.resume(with: result)
+    // Allow the MainActor continuation to run
+    for _ in 0..<50 where state.isSimplifying { await Task.yield() }
+
+    // isSimplifying should be cleared once abstraction completes
+    #expect(state.isSimplifying == false)
 }
 
 @MainActor
 @Test
 func resetAbstractionClearsKuwaharaFilteredImage() {
+func isSimplifyingIsFalseAfterResetAbstraction() {
     let state = AppState(
         processOperation: { image, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
@@ -360,6 +390,14 @@ func resetAbstractionClearsKuwaharaFilteredImage() {
 
     #expect(state.abstractedImage == nil)
     #expect(state.kuwaharaFilteredImage == nil)
+    state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
+    state.abstractionStrength = 0.5
+    state.applyAbstraction()
+    #expect(state.isSimplifying == true)
+
+    state.resetAbstraction()
+
+    #expect(state.isSimplifying == false)
 }
 
 // MARK: -

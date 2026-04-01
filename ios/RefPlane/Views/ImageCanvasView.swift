@@ -3,6 +3,7 @@ import SwiftUI
 struct ImageCanvasView: View {
     @EnvironmentObject private var state: AppState
     @Binding var showImagePicker: Bool
+    @Binding var showSamplePicker: Bool
 
     @GestureState private var gestureScale: CGFloat = 1.0
     @GestureState private var gesturePan: CGSize = .zero
@@ -21,9 +22,9 @@ struct ImageCanvasView: View {
 
                 if let image = displayImage {
                     zoomableCanvas(image: image, containerSize: geo.size)
-                        .blur(radius: state.isProcessing ? 8 : 0)
-                        .opacity(state.isProcessing ? 0.6 : 1.0)
-                        .animation(.easeInOut(duration: 0.2), value: state.isProcessing)
+                        .blur(radius: (state.isProcessing && !state.isSimplifying) ? 8 : 0)
+                        .opacity((state.isProcessing && !state.isSimplifying) ? 0.6 : 1.0)
+                        .animation(.easeInOut(duration: 0.2), value: state.isProcessing && !state.isSimplifying)
                         .onChange(of: geo.size) { _ in
                             // Reset zoom when the canvas is resized (rotation, panel open/close)
                             // so the image doesn't end up in an unexpected position.
@@ -139,10 +140,17 @@ struct ImageCanvasView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button("Open") {
-                showImagePicker = true
+            HStack(spacing: 12) {
+                Button("Open") {
+                    showImagePicker = true
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Try a Sample") {
+                    showSamplePicker = true
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 32)
