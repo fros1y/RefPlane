@@ -109,8 +109,10 @@ struct ThresholdSliderView: View {
                     )
                 }
                 .onEnded { _ in
-                    dragStartValues.removeValue(forKey: index)
-                    onEditingEnded?()
+                    let startValue = dragStartValues.removeValue(forKey: index)
+                    if let start = startValue, index < thresholds.count, start != thresholds[index] {
+                        onEditingEnded?()
+                    }
                 }
         )
         .selectionFeedback(trigger: thresholds)

@@ -13,6 +13,8 @@ struct ControlPanelView: View {
     let presentation: Presentation
     var onClose: (() -> Void)? = nil
 
+    @State private var abstractionStrengthAtDragStart: Double? = nil
+
     var body: some View {
         Group {
             switch presentation {
@@ -61,8 +63,12 @@ struct ControlPanelView: View {
                     ) {
                         Text("Strength")
                     } onEditingChanged: { editing in
-                        if !editing {
-                            state.applyAbstraction()
+                        if editing {
+                            abstractionStrengthAtDragStart = state.abstractionStrength
+                        } else {
+                            let changed = abstractionStrengthAtDragStart.map { $0 != state.abstractionStrength } ?? false
+                            abstractionStrengthAtDragStart = nil
+                            if changed { state.applyAbstraction() }
                         }
                     }
                 }
