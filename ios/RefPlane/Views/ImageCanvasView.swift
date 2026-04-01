@@ -3,6 +3,7 @@ import SwiftUI
 struct ImageCanvasView: View {
     @EnvironmentObject private var state: AppState
     @Binding var showImagePicker: Bool
+    @Binding var showSamplePicker: Bool
 
     @GestureState private var gestureScale: CGFloat = 1.0
     @GestureState private var gesturePan: CGSize = .zero
@@ -139,10 +140,17 @@ struct ImageCanvasView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button("Open") {
-                showImagePicker = true
+            HStack(spacing: 12) {
+                Button("Open") {
+                    showImagePicker = true
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Try a Sample") {
+                    showSamplePicker = true
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 32)
