@@ -28,7 +28,6 @@ struct PaintPaletteBuilderTests {
         
         var config = ColorConfig()
         config.numShades = 3
-        config.numTubes = 5
         config.maxPigmentsPerMix = 3
         config.minConcentration = 0.05
         
@@ -40,7 +39,7 @@ struct PaintPaletteBuilderTests {
         )
         
         #expect(result.recipes.count <= config.numShades)
-        #expect(result.selectedTubes.count <= config.numTubes)
+        #expect(result.selectedTubes.count == pigments.count)
         #expect(result.pixelLabels.count == 100)
     }
 
@@ -86,7 +85,6 @@ struct PaintPaletteBuilderTests {
 
         var config = ColorConfig()
         config.numShades = 2
-        config.numTubes = 4
         config.maxPigmentsPerMix = 3
 
         let result = try PaintPaletteBuilder.build(
@@ -142,7 +140,6 @@ struct PaintPaletteBuilderTests {
 
         var config = ColorConfig()
         config.numShades = 4
-        config.numTubes = 5
         config.maxPigmentsPerMix = 3
 
         let result = try PaintPaletteBuilder.build(
@@ -206,7 +203,6 @@ struct PaintPaletteBuilderTests {
 
         var config = ColorConfig()
         config.numShades = 5
-        config.numTubes = 4
         config.maxPigmentsPerMix = 3
 
         let result = try PaintPaletteBuilder.build(
@@ -262,7 +258,6 @@ struct PaintPaletteBuilderTests {
 
         var config = ColorConfig()
         config.numShades = 8 // Request 8 but image only needs ~1-2
-        config.numTubes = 4
         config.maxPigmentsPerMix = 3
 
         let result = try PaintPaletteBuilder.build(
@@ -316,7 +311,6 @@ struct PaintPaletteBuilderTests {
 
         var config = ColorConfig()
         config.numShades = 3 // Force heavy pruning
-        config.numTubes = 5
         config.maxPigmentsPerMix = 3
 
         let result = try PaintPaletteBuilder.build(
@@ -374,7 +368,6 @@ struct PaintPaletteBuilderTests {
         // numShades=8 > input cluster count (4), so pruneToMaxShades is not triggered.
         // This test exercises mergeRecipes (color proximity merge) and adaptivePrune.
         config.numShades = 8
-        config.numTubes = 4
         config.maxPigmentsPerMix = 3
 
         let result = try PaintPaletteBuilder.build(
@@ -424,7 +417,6 @@ struct PaintPaletteBuilderTests {
 
         var config = ColorConfig()
         config.numShades = 2
-        config.numTubes = 3 // Very limited tube budget
         config.maxPigmentsPerMix = 2
 
         let result = try PaintPaletteBuilder.build(

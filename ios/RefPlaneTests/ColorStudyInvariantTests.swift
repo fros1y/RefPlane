@@ -56,7 +56,6 @@ struct ColorStudyInvariantTests {
         func errorForShades(_ shades: Int) throws -> Float {
             var clone = baseConfig
             clone.numShades = shades
-            clone.numTubes = 10
             clone.maxPigmentsPerMix = 3
             
             let result = try PaintPaletteBuilder.build(
@@ -87,24 +86,29 @@ struct ColorStudyInvariantTests {
         var baseConfig = ColorConfig()
         baseConfig.numShades = 12
         let regions = ColorRegionsProcessor.process(image: image, config: baseConfig, overclusterK: 24)!
-        
-        func errorForTubes(_ tubes: Int) throws -> Float {
+
+        // Build pigment subsets of increasing size from the essential pigments
+        let allEssential = SpectralDataStore.essentialPigments
+        let sorted = allEssential.sorted { $0.name < $1.name }
+
+        func errorForTubeCount(_ count: Int) throws -> Float {
             var clone = baseConfig
-            clone.numTubes = tubes
+            clone.enabledPigmentIDs = Set(sorted.prefix(count).map(\.id))
             clone.maxPigmentsPerMix = 3
             
+            let subset = sorted.prefix(count).map { $0 }
             let result = try PaintPaletteBuilder.build(
                 colorRegions: regions,
                 config: clone,
                 database: self.database,
-                pigments: self.pigments
+                pigments: subset
             )
             return computeGlobalError(originalLab: regions.pixelLab, result: result)
         }
         
-        let error4 = try errorForTubes(4)
-        let error8 = try errorForTubes(8)
-        let error12 = try errorForTubes(12)
+        let error4 = try errorForTubeCount(4)
+        let error8 = try errorForTubeCount(8)
+        let error12 = try errorForTubeCount(12)
         
         let tolerance: Float = 0.001
         #expect(error8 <= error4 + tolerance, "Increasing tubes from 4 to 8 should not increase error. error4: \(error4), error8: \(error8)")
@@ -122,7 +126,6 @@ struct ColorStudyInvariantTests {
         
         func errorForPigs(_ maxPigments: Int) throws -> Float {
             var clone = baseConfig
-            clone.numTubes = 8
             clone.maxPigmentsPerMix = maxPigments
             
             let result = try PaintPaletteBuilder.build(

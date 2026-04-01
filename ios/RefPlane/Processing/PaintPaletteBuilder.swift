@@ -48,35 +48,11 @@ enum PaintPaletteBuilder {
         print("[PaintPaletteBuilder] Stage 2 (Prelim Decomp) took \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
         onProgress?(0.35)
         
-        // Stage 3 - Tube Selection
-        let seedTubes = PigmentDecomposer.selectTubes(
-            preliminaryRecipes: prelimRecipes,
-            pixelCounts: colorRegions.clusterPixelCounts,
-            clusterSalience: colorRegions.clusterSalience,
-            maxTubes: config.numTubes,
-            allPigments: pigments,
-            database: database
-        )
-        
-        let selectedTubes = PigmentDecomposer.improveTubeSet(
-            seedTubes: seedTubes,
-            targetColors: colorRegions.quantizedCentroids,
-            clusterWeights: colorRegions.clusterSalience.enumerated().map { i, salience in
-                Float(colorRegions.clusterPixelCounts[i]) * salience
-            },
-            allPigments: pigments,
-            database: database,
-            maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration,
-            lookupTable: lookupTable
-        )
-        
-        guard !selectedTubes.isEmpty else {
-            throw BuilderError.refinementFailed
-        }
+        // Stage 3 - skipped: user-selected pigments are used directly as selectedTubes.
+        let selectedTubes = pigments
         
         let t2 = CFAbsoluteTimeGetCurrent()
-        print("[PaintPaletteBuilder] Stage 3 (Tube Selection) took \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
+        print("[PaintPaletteBuilder] Stage 3 (Tube Selection) skipped – using \(selectedTubes.count) user-selected tubes")
         onProgress?(0.50)
         
         // Stage 4A - Constrained Decomposition

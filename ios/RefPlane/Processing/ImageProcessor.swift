@@ -96,7 +96,8 @@ actor ImageProcessor {
             onProgress(0.2)
             try Task.checkCancellation()
             let db = SpectralDataStore.shared
-            let pigments = SpectralDataStore.essentialPigments
+            let allPigments = SpectralDataStore.essentialPigments
+            let pigments = allPigments.filter { colorConfig.enabledPigmentIDs.contains($0.id) }
             
             do {
                 let pb = try PaintPaletteBuilder.build(

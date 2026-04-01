@@ -58,9 +58,52 @@ struct ValueConfig {
     var thresholds: [Double]     = defaultThresholds(for: 3)
 }
 
+// MARK: - Pigment palette presets
+
+enum PigmentPreset: String, CaseIterable, Identifiable {
+    case all      = "All"
+    case zorn     = "Zorn"
+    case primary  = "Primary"
+    case warm     = "Warm"
+    case cool     = "Cool"
+
+    var id: String { rawValue }
+
+    /// The pigment IDs belonging to this preset.
+    var pigmentIDs: Set<String> {
+        switch self {
+        case .all:
+            return Set(SpectralDataStore.essentialPigments.map(\.id))
+        case .zorn:
+            // Anders Zorn palette: Yellow Ochre, Cad Red Medium, Carbon Black + (implied white via dilution)
+            return ["yellow_ochre", "cad_red_medium", "carbon_black", "titan_buff"]
+        case .primary:
+            // Split-primary: warm/cool of each primary + white + black
+            return [
+                "cad_red_medium", "quin_crimson",
+                "cad_yellow_medium", "cadmium_yellow_light",
+                "ultramarine_blue", "phthalo_blue_gs",
+                "carbon_black", "titan_buff"
+            ]
+        case .warm:
+            return [
+                "cad_red_medium", "cad_red_dark", "cadmium_orange",
+                "cad_yellow_medium", "yellow_ochre", "raw_sienna",
+                "burnt_sienna", "burnt_umber", "titan_buff", "carbon_black"
+            ]
+        case .cool:
+            return [
+                "ultramarine_blue", "phthalo_blue_gs", "cerulean_blue_chromium",
+                "phthalo_green_bs", "chromium_oxide", "dioxazine_purple",
+                "paynes_gray", "raw_umber", "titan_buff", "carbon_black"
+            ]
+        }
+    }
+}
+
 struct ColorConfig {
     var numShades: Int         = 8
-    var numTubes: Int          = 6
+    var enabledPigmentIDs: Set<String> = Set(SpectralDataStore.essentialPigments.map(\.id))
     var paletteSpread: Double  = 0
     var maxPigmentsPerMix: Int = 3
     var minConcentration: Float = 0.02
