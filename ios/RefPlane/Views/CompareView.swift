@@ -37,6 +37,34 @@ struct CompareSliderView: View {
 
                     Spacer()
                 }
+
+                if state.isProcessing {
+                    ZStack {
+                        Color.black.opacity(0.24)
+
+                        VStack(spacing: 12) {
+                            if state.processingIsIndeterminate {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(1.1)
+                            } else {
+                                ProgressView(value: state.processingProgress)
+                                    .tint(.white)
+                                    .frame(width: 180)
+                            }
+
+                            Text(state.processingLabel)
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .ignoresSafeArea()
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(state.processingLabel)
+                }
             }
             .background(Color.black)
         }
