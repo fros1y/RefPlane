@@ -1,12 +1,15 @@
 import { useRef, useEffect, useState } from 'preact/hooks';
+import { ProgressWheel } from './ImageCanvas';
 
 interface Props {
   beforeData: ImageData | null;
   afterData: ImageData | null;
   onClose: () => void;
+  isProcessing?: boolean;
+  processingProgress?: { stage: string; percent: number } | null;
 }
 
-export function CompareView({ beforeData, afterData, onClose }: Props) {
+export function CompareView({ beforeData, afterData, onClose, isProcessing, processingProgress }: Props) {
   const beforeRef = useRef<HTMLCanvasElement>(null);
   const afterRef = useRef<HTMLCanvasElement>(null);
   const [split, setSplit] = useState(0.5);
@@ -66,6 +69,11 @@ export function CompareView({ beforeData, afterData, onClose }: Props) {
             </svg>
           </div>
         </div>
+        {isProcessing && (
+          <div class="processing-overlay">
+            <ProgressWheel progress={processingProgress} />
+          </div>
+        )}
       </div>
       <button
         class="compare-close"
