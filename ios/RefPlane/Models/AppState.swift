@@ -131,8 +131,42 @@ class AppState: ObservableObject {
             )
         }
         self.kuwaharaOperation = kuwaharaOperation ?? { image, radius in
-            guard let ctx = MetalContext.shared, let cg = image.cgImage else { return nil }
-            return ctx.anisotropicKuwahara(cg, radius: radius)
+            guard let ctx = MetalContext.shared, let origCG = image.cgImage else { return nil }
+            let origW = origCG.width
+            let origH = origCG.height
+
+            // The radius (1–8) is defined relative to a ~600 px reference image.
+            // Raw CGImages on Retina devices are often 2–4× larger in each dimension
+            // (e.g. 4032 px at 3× scale), making the effect invisible at the raw
+            // pixel level.  Downsample to ≤600 px on the longest side, apply the
+            // filter there, then upscale back so downstream processing sees the
+            // original pixel dimensions.
+            let maxWorkPx = 600
+            let longestSide = max(origW, origH)
+
+            let workCG: CGImage
+            if longestSide > maxWorkPx {
+                let s    = Double(maxWorkPx) / Double(longestSide)
+                let workW = max(1, Int((Double(origW) * s).rounded()))
+                let workH = max(1, Int((Double(origH) * s).rounded()))
+                let fmt  = UIGraphicsImageRendererFormat.default()
+                fmt.scale = 1.0
+                let small = UIGraphicsImageRenderer(size: CGSize(width: workW, height: workH), format: fmt)
+                    .image { _ in image.draw(in: CGRect(x: 0, y: 0, width: workW, height: workH)) }
+                guard let cg = small.cgImage else { return nil }
+                workCG = cg
+            } else {
+                workCG = origCG
+            }
+
+            guard let filtered = ctx.anisotropicKuwahara(workCG, radius: radius) else { return nil }
+
+            // Upscale back to original pixel dimensions if we downsampled.
+            guard workCG.width != origW || workCG.height != origH else { return filtered }
+            let fmt = UIGraphicsImageRendererFormat.default()
+            fmt.scale = 1.0
+            return UIGraphicsImageRenderer(size: CGSize(width: origW, height: origH), format: fmt)
+                .image { _ in filtered.draw(in: CGRect(x: 0, y: 0, width: origW, height: origH)) }
         }
 
         NotificationCenter.default.addObserver(
