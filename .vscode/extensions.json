@@ -1,5 +1,8 @@
 {
   "recommendations": [
     "sweetpad.sweetpad",
+    "sswg.swift-lang",
+    "github.copilot",
+    "github.copilot-chat"
   ]
 }
