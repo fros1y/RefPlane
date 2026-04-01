@@ -18,6 +18,9 @@ class AppState: ObservableObject {
         @escaping @Sendable (Double) -> Void
     ) async throws -> UIImage
 
+    /// Apply the Kuwahara post-filter. Returns the filtered image, or nil on failure.
+    typealias KuwaharaOperation = @Sendable (UIImage, Int) async -> UIImage?
+
     // Source images
     @Published var fullResolutionOriginalImage: UIImage? = nil
     @Published var originalImage: UIImage?  = nil
@@ -55,9 +58,14 @@ class AppState: ObservableObject {
     /// to the existing downscale-based abstraction range.
     @Published var abstractionStrength: Double  = 0.5
     @Published var abstractionMethod: AbstractionMethod = .apisr
+    /// Kuwahara post-filter strength 0–1. `0` disables the filter; positive
+    /// values map to a neighbourhood radius of 1–8 applied after the SR model.
+    @Published var kuwaharaStrength: Double = 0
 
     // Abstracted image (after upscale/denoise)
     @Published var abstractedImage: UIImage? = nil
+    /// Kuwahara-filtered image applied on top of the abstracted (or source) image.
+    @Published var kuwaharaFilteredImage: UIImage? = nil
 
     private var processingTask: Task<Void, Never>? = nil
     private let processOperation: ProcessOperation
@@ -68,11 +76,21 @@ class AppState: ObservableObject {
     private var abstractionTask: Task<Void, Never>? = nil
     private var abstractionGeneration: Int = 0
 
+    private let kuwaharaOperation: KuwaharaOperation
+    private var kuwaharaTask: Task<Void, Never>? = nil
+
     private var loadingTask: Task<Void, Never>? = nil
     private var processedPixelBands: [Int] = []
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
+    }
+
+    /// Kuwahara neighbourhood radius derived from `kuwaharaStrength`.
+    /// Returns 0 when the filter is off, and a value clamped to 1…8 otherwise.
+    var kuwaharaRadius: Int {
+        guard kuwaharaStrength > 0 else { return 0 }
+        return min(max(Int((kuwaharaStrength * 8).rounded()), 1), 8)
     }
 
     var availableAbstractionMethods: [AbstractionMethod] {
@@ -91,7 +109,8 @@ class AppState: ObservableObject {
 
     init(
         processOperation: ProcessOperation? = nil,
-        abstractionOperation: AbstractionOperation? = nil
+        abstractionOperation: AbstractionOperation? = nil,
+        kuwaharaOperation: KuwaharaOperation? = nil
     ) {
         let processor = ImageProcessor()
         self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, onProgress in
@@ -111,6 +130,10 @@ class AppState: ObservableObject {
                 onProgress: onProgress
             )
         }
+        self.kuwaharaOperation = kuwaharaOperation ?? { image, radius in
+            guard let ctx = MetalContext.shared, let cg = image.cgImage else { return nil }
+            return ctx.anisotropicKuwahara(cg, radius: radius)
+        }
 
         NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
@@ -121,7 +144,7 @@ class AppState: ObservableObject {
         }
     }
 
-    var displayBaseImage: UIImage? { abstractedImage ?? sourceImage }
+    var displayBaseImage: UIImage? { kuwaharaFilteredImage ?? abstractedImage ?? sourceImage }
 
     var currentDisplayImage: UIImage? {
         activeMode == .original ? displayBaseImage : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
@@ -140,6 +163,7 @@ class AppState: ObservableObject {
         loadingTask?.cancel()
         processingTask?.cancel()
         abstractionTask?.cancel()
+        kuwaharaTask?.cancel()
 
         // Show the picked image immediately, then swap in the scaled version
         // once preprocessing finishes so the canvas never blanks out.
@@ -147,6 +171,7 @@ class AppState: ObservableObject {
         originalImage             = image
         sourceImage               = image
         abstractedImage           = nil
+        kuwaharaFilteredImage     = nil
         processedImage            = nil
         isolatedProcessedImage    = nil
         processedPixelBands       = []
@@ -171,6 +196,10 @@ class AppState: ObservableObject {
             sourceImage               = scaled
             if abstractionIsEnabled {
                 applyAbstraction()
+            } else if kuwaharaStrength > 0 {
+                processingLabel           = "Processing…"
+                processingIsIndeterminate = false
+                applyKuwahara()
             } else {
                 isSimplifying             = false
                 processingLabel           = "Processing…"
@@ -322,6 +351,7 @@ class AppState: ObservableObject {
         }
 
         abstractionTask?.cancel()
+        kuwaharaTask?.cancel()
         abstractionGeneration += 1
         let generation = abstractionGeneration
 
@@ -337,6 +367,7 @@ class AppState: ObservableObject {
         let rawDownscale = 2.0 + abstractionStrength * 10.0
         let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
         let method = abstractionMethod
+        let kuwaharaRadius = self.kuwaharaRadius
 
         isProcessing = true
         isSimplifying = true
@@ -357,9 +388,22 @@ class AppState: ObservableObject {
                 )
                 try Task.checkCancellation()
 
+                // Apply Kuwahara post-filter if enabled
+                var filteredImage: UIImage? = nil
+                if kuwaharaRadius > 0 {
+                    await MainActor.run {
+                        guard self.abstractionGeneration == generation else { return }
+                        self.processingLabel = "Filtering…"
+                        self.processingIsIndeterminate = true
+                    }
+                    filteredImage = await kuwaharaOperation(abstracted, kuwaharaRadius)
+                }
+                try Task.checkCancellation()
+
                 await MainActor.run {
                     guard self.abstractionGeneration == generation else { return }
                     self.abstractedImage = abstracted
+                    self.kuwaharaFilteredImage = filteredImage
                     self.isSimplifying   = false
                     self.isProcessing    = false
                     self.processingLabel = "Processing…"
@@ -381,14 +425,57 @@ class AppState: ObservableObject {
 
     func resetAbstraction() {
         abstractionTask?.cancel()
+        kuwaharaTask?.cancel()
         abstractionGeneration += 1
         isSimplifying = false
         abstractedImage = nil
+        kuwaharaFilteredImage = nil
         isolatedProcessedImage = nil
         processedPixelBands = []
         processingLabel = "Processing…"
         processingIsIndeterminate = false
-        triggerProcessing()
+        if kuwaharaStrength > 0 {
+            applyKuwahara()
+        } else {
+            triggerProcessing()
+        }
+    }
+
+    /// Apply the Kuwahara post-filter to the current base image
+    /// (abstractedImage if available, otherwise sourceImage).
+    /// Call this when only `kuwaharaStrength` changes without re-running the SR model.
+    func applyKuwahara() {
+        kuwaharaTask?.cancel()
+
+        guard kuwaharaStrength > 0 else {
+            kuwaharaFilteredImage = nil
+            triggerProcessing()
+            return
+        }
+
+        guard let source = abstractedImage ?? sourceImage else {
+            kuwaharaFilteredImage = nil
+            return
+        }
+
+        let radius = kuwaharaRadius
+
+        isProcessing = true
+        processingProgress = 0
+        processingLabel = "Filtering…"
+        processingIsIndeterminate = true
+
+        kuwaharaTask = Task {
+            let filtered = await kuwaharaOperation(source, radius)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self.kuwaharaFilteredImage = filtered
+                self.isProcessing = false
+                self.processingIsIndeterminate = false
+                self.processingLabel = "Processing…"
+                self.triggerProcessing()
+            }
+        }
     }
 
     func toggleIsolatedBand(_ band: Int) {
