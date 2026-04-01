@@ -102,7 +102,7 @@ enum PigmentPreset: String, CaseIterable, Identifiable {
 }
 
 struct ColorConfig {
-    var numShades: Int         = 8
+    var numShades: Int         = 24
     var enabledPigmentIDs: Set<String> = {
         ColorConfig.loadEnabledPigmentIDs()
             ?? Set(SpectralDataStore.essentialPigments.map(\.id))

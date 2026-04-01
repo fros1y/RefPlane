@@ -16,12 +16,6 @@ struct RecipeView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if recipe.deltaE > 3.0 {
-                Text("≈ approximate")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .italic()
-            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 2)

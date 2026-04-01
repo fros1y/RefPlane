@@ -193,11 +193,18 @@ enum PaintPaletteBuilder {
         }
 
         // Final pixel assignment: O(K × r) centroid assign + single O(pixels) projection.
-        let finalQToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
+        var finalQToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
             quantizedCentroids: colorRegions.quantizedCentroids,
             recipeCentroids: refitRecipes.map { $0.predictedColor },
             lWeight: 0.3
         )
+
+        // Stage 5C - Dedup: merge recipes with identical quantized signatures.
+        (refitRecipes, finalQToRecipe) = deduplicateRecipes(
+            recipes: refitRecipes,
+            centroidToRecipe: finalQToRecipe
+        )
+
         let finalPixelLabels = ColorRegionsProcessor.projectQuantizedLabels(
             pixelQuantizedLabels: colorRegions.pixelLabels,
             centroidToRecipe: finalQToRecipe
@@ -301,6 +308,44 @@ enum PaintPaletteBuilder {
         )
 
         return (currentRecipes, finalCentroidToRecipe, finalCounts)
+    }
+
+    /// Merge recipes that have identical quantized pigment signatures.
+    /// Returns compacted recipes and remapped centroid-to-recipe labels.
+    private static func deduplicateRecipes(
+        recipes: [PigmentRecipe],
+        centroidToRecipe: [Int32]
+    ) -> (recipes: [PigmentRecipe], centroidToRecipe: [Int32]) {
+        // Build a signature for each recipe: sorted (pigmentId, quantizedConc) pairs.
+        func signature(of recipe: PigmentRecipe) -> String {
+            recipe.components
+                .map { "\($0.pigmentId):\(Int(($0.concentration * 8).rounded()))" }
+                .sorted()
+                .joined(separator: "|")
+        }
+
+        var signatureToNew = [String: Int]()
+        var dedupedRecipes = [PigmentRecipe]()
+        var oldToNew = [Int32](repeating: 0, count: recipes.count)
+
+        for (i, recipe) in recipes.enumerated() {
+            let sig = signature(of: recipe)
+            if let existing = signatureToNew[sig] {
+                oldToNew[i] = Int32(existing)
+            } else {
+                let newIdx = dedupedRecipes.count
+                signatureToNew[sig] = newIdx
+                dedupedRecipes.append(recipe)
+                oldToNew[i] = Int32(newIdx)
+            }
+        }
+
+        guard dedupedRecipes.count < recipes.count else {
+            return (recipes, centroidToRecipe)
+        }
+
+        let remapped = centroidToRecipe.map { oldToNew[Int($0)] }
+        return (dedupedRecipes, remapped)
     }
 
     private static func adaptivePrune(
