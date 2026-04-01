@@ -11,7 +11,7 @@ struct RecipeView: View {
                         .font(.caption2)
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text("\(Int((component.concentration * 100).rounded()))%")
+                    Text("\(Int((component.concentration * 8).rounded()))/8")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }

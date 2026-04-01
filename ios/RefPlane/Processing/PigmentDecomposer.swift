@@ -3,13 +3,18 @@ import Foundation
 // MARK: - Pigment decomposition engine
 //
 // Decomposes target Oklab colors into sparse pigment recipes (≤3 pigments)
-// using Kubelka-Munk spectral mixing and a two-phase approach:
-//   1. Precomputed lookup table of all 1/2/3-pigment mixes
-//   2. Nelder-Mead refinement of concentrations
+// using Kubelka-Munk spectral mixing.
+//
+// Two modes:
+//   Fast (default): uses a precomputed PigmentLookupTable loaded from
+//     PigmentLookup.bin, which covers all 78 pigments × full 0/8…8/8 simplex
+//     grid.  No Kubelka-Munk arithmetic at query time.
+//   Fallback: builds a runtime lookup table from the active pigment subset
+//     (original behaviour, used when the binary asset is unavailable).
 
 enum PigmentDecomposer {
 
-    // MARK: - Lookup table entry
+    // MARK: - Runtime lookup table entry (fallback path)
 
     private struct LookupEntry {
         let pigmentIndices: [Int]       // indices into pigment array
@@ -20,23 +25,67 @@ enum PigmentDecomposer {
     // MARK: - Public API
 
     /// Decompose an array of target colors into pigment recipes.
+    ///
+    /// - Parameters:
+    ///   - targetColors:  Oklab colors to match.
+    ///   - pigments:      Active paint tubes (subset of the full database).
+    ///   - database:      Full spectral database (used for index mapping and KMM).
+    ///   - maxPigments:   Max paints per mix (1–3).
+    ///   - minConcentration: Components below this threshold are pruned.
+    ///   - concurrent:    Use `DispatchQueue.concurrentPerform`.
+    ///   - lookupTable:   Pre-computed table (pass `SpectralDataStore.sharedLookupTable`).
+    ///                    When provided, zero Kubelka-Munk math is done per query.
     static func decompose(
         targetColors: [OklabColor],
         pigments: [PigmentData],
         database: SpectralDatabase,
         maxPigments: Int = 3,
         minConcentration: Float = 0.02,
-        concurrent: Bool = true
+        concurrent: Bool = true,
+        lookupTable: PigmentLookupTable? = nil
     ) -> [PigmentRecipe] {
         guard !targetColors.isEmpty else { return [] }
-        
+
         let clamped = min(max(maxPigments, 1), 3)
+
+        // ── Fast path: precomputed table ────────────────────────────────────
+        if let table = lookupTable {
+            let globalIdx = globalIndices(for: pigments, in: database)
+            if concurrent {
+                var recipes = [PigmentRecipe?](repeating: nil, count: targetColors.count)
+                let lock = NSLock()
+                DispatchQueue.concurrentPerform(iterations: targetColors.count) { i in
+                    let r = recipeFromTable(
+                        target: targetColors[i],
+                        globalIndices: globalIdx,
+                        database: database,
+                        table: table,
+                        maxPigments: clamped,
+                        minConcentration: minConcentration
+                    )
+                    lock.lock(); recipes[i] = r; lock.unlock()
+                }
+                return recipes.compactMap { $0 }
+            } else {
+                return targetColors.compactMap {
+                    recipeFromTable(
+                        target: $0,
+                        globalIndices: globalIdx,
+                        database: database,
+                        table: table,
+                        maxPigments: clamped,
+                        minConcentration: minConcentration
+                    )
+                }
+            }
+        }
+
+        // ── Fallback path: runtime table build ─────────────────────────────
         let lookup = buildLookupTable(pigments: pigments, database: database, maxPigments: clamped)
-        
+
         if concurrent {
             var recipes = [PigmentRecipe?](repeating: nil, count: targetColors.count)
             let lock = NSLock()
-            
             DispatchQueue.concurrentPerform(iterations: targetColors.count) { i in
                 let recipe = findBestRecipe(
                     target: targetColors[i],
@@ -46,15 +95,13 @@ enum PigmentDecomposer {
                     maxPigments: clamped,
                     minConcentration: minConcentration
                 )
-                lock.lock()
-                recipes[i] = recipe
-                lock.unlock()
+                lock.lock(); recipes[i] = recipe; lock.unlock()
             }
             return recipes.compactMap { $0 }
         } else {
-            return targetColors.map { t in
+            return targetColors.map {
                 findBestRecipe(
-                    target: t,
+                    target: $0,
                     pigments: pigments,
                     database: database,
                     lookup: lookup,
@@ -82,9 +129,9 @@ enum PigmentDecomposer {
             entries.append(LookupEntry(pigmentIndices: [i], concentrations: [1.0], color: color))
         }
 
-        // Two-pigment mixes at 11 concentration steps
+        // Two-pigment mixes at 1/8 concentration steps
         if maxPigments >= 2 {
-            let steps: [Float] = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+            let steps: [Float] = (1...7).map { Float($0) / 8.0 }
             for i in 0..<n {
                 for j in (i + 1)..<n {
                     for c in steps {
@@ -107,9 +154,9 @@ enum PigmentDecomposer {
             }
         }
 
-        // Three-pigment mixes at coarser steps
+        // Three-pigment mixes at 1/8 steps
         if maxPigments >= 3 {
-            let tripleSteps: [(Float, Float, Float)] = generateTripleSteps(resolution: 5)
+            let tripleSteps: [(Float, Float, Float)] = generateTripleSteps(resolution: 8)
             for i in 0..<n {
                 for j in (i + 1)..<n {
                     for k in (j + 1)..<n {
@@ -152,6 +199,62 @@ enum PigmentDecomposer {
         return result
     }
 
+    // MARK: - Precomputed table helpers
+
+    /// Return the global pigment indices (ascending) for a subset of pigments.
+    static func globalIndices(for pigments: [PigmentData], in database: SpectralDatabase) -> [Int] {
+        pigments.compactMap { pig in
+            database.pigments.firstIndex(where: { $0.id == pig.id })
+        }.sorted()
+    }
+
+    /// Find the best recipe for `target` using the precomputed lookup table.
+    /// This path performs zero Kubelka-Munk arithmetic.
+    private static func recipeFromTable(
+        target: OklabColor,
+        globalIndices: [Int],
+        database: SpectralDatabase,
+        table: PigmentLookupTable,
+        maxPigments: Int,
+        minConcentration: Float
+    ) -> PigmentRecipe? {
+        guard let (entry, distSq) = table.findBest(
+            for: target,
+            enabledGlobalIndices: globalIndices,
+            maxPigments: maxPigments
+        ) else { return nil }
+
+        let a0 = entry.a0, a1 = entry.a1, a2 = entry.a2
+        var slots: [(globalIdx: Int, conc: Float)] = []
+        if a0 > 0 { slots.append((Int(entry.i0), Float(a0) / 8.0)) }
+        if a1 > 0 { slots.append((Int(entry.i1), Float(a1) / 8.0)) }
+        if a2 > 0 { slots.append((Int(entry.i2), Float(a2) / 8.0)) }
+
+        // minConcentration prune (all 1/8-step values ≥ 0.125, so pruning is
+        // rare in practice; kept for correctness with future resolution changes)
+        var valid = slots.filter { $0.conc >= minConcentration }
+        if valid.isEmpty {
+            valid = [slots.max(by: { $0.conc < $1.conc })!]
+        }
+
+        let sum = valid.reduce(0.0) { $0 + $1.conc }
+        if sum > 0 { valid = valid.map { ($0.globalIdx, $0.conc / sum) } }
+
+        let components = valid.map { (gIdx, conc) in
+            RecipeComponent(
+                pigmentId:   database.pigments[gIdx].id,
+                pigmentName: database.pigments[gIdx].name,
+                concentration: conc
+            )
+        }.sorted { $0.concentration > $1.concentration }
+
+        return PigmentRecipe(
+            components: components,
+            predictedColor: entry.color,
+            deltaE: sqrtf(distSq)
+        )
+    }
+
     // MARK: - Best recipe search
 
     private static func findBestRecipe(
@@ -174,35 +277,9 @@ enum PigmentDecomposer {
             }
         }
 
-        // Phase 2: Refine concentrations with Nelder-Mead
-        let refined = refineConcentrations(
-            target: target,
-            pigmentIndices: bestEntry.pigmentIndices,
-            initialConcentrations: bestEntry.concentrations,
-            pigments: pigments,
-            database: database
-        )
-
-        // Also try greedy expansion if we have room for more pigments
-        var finalIndices = refined.indices
-        var finalConcentrations = refined.concentrations
-
-        if refined.indices.count < maxPigments {
-            let expanded = greedyExpand(
-                target: target,
-                currentIndices: refined.indices,
-                currentConcentrations: refined.concentrations,
-                pigments: pigments,
-                database: database,
-                maxPigments: maxPigments
-            )
-            let expandedDist = oklabDistance(target, expanded.color)
-            let refinedDist = oklabDistance(target, refined.color)
-            if expandedDist < refinedDist - 0.0001 {
-                finalIndices = expanded.indices
-                finalConcentrations = expanded.concentrations
-            }
-        }
+        // With fractions of 1/8, no continuous Nelder-Mead interpolation is done.
+        let finalIndices = bestEntry.pigmentIndices
+        let finalConcentrations = bestEntry.concentrations
 
         var validTuples = zip(finalIndices, finalConcentrations).filter { $0.1 >= minConcentration }
         if validTuples.isEmpty, let maxTuple = zip(finalIndices, finalConcentrations).max(by: { $0.1 < $1.1 }) {
@@ -240,205 +317,6 @@ enum PigmentDecomposer {
             predictedColor: strictColor,
             deltaE: exactDeltaE
         )
-    }
-
-    // MARK: - Greedy expansion
-
-    private struct RefinementResult {
-        let indices: [Int]
-        let concentrations: [Float]
-        let color: OklabColor
-    }
-
-    private static func greedyExpand(
-        target: OklabColor,
-        currentIndices: [Int],
-        currentConcentrations: [Float],
-        pigments: [PigmentData],
-        database: SpectralDatabase,
-        maxPigments: Int
-    ) -> RefinementResult {
-        var bestIndices = currentIndices
-        var bestConcentrations = currentConcentrations
-        var bestColor = evaluateMix(indices: currentIndices, concentrations: currentConcentrations, pigments: pigments, database: database)
-        var bestDist = oklabDistance(target, bestColor)
-
-        var indices = currentIndices
-        var concentrations = currentConcentrations
-
-        while indices.count < maxPigments {
-            var candidateBestIdx = -1
-            var candidateBestDist = bestDist
-
-            let usedSet = Set(indices)
-            for i in 0..<pigments.count where !usedSet.contains(i) {
-                // Try adding pigment i at 20% and re-normalize
-                var tryIndices = indices + [i]
-                var tryConc = concentrations.map { $0 * 0.8 } + [0.2]
-
-                let refined = refineConcentrations(
-                    target: target,
-                    pigmentIndices: tryIndices,
-                    initialConcentrations: tryConc,
-                    pigments: pigments,
-                    database: database
-                )
-                let dist = oklabDistance(target, refined.color)
-                if dist < candidateBestDist - 0.0001 {
-                    candidateBestDist = dist
-                    candidateBestIdx = i
-                    tryIndices = refined.indices
-                    tryConc = refined.concentrations
-                }
-            }
-
-            if candidateBestIdx < 0 { break }
-
-            indices.append(candidateBestIdx)
-            concentrations = concentrations.map { $0 * 0.8 } + [0.2]
-            let refined = refineConcentrations(
-                target: target,
-                pigmentIndices: indices,
-                initialConcentrations: concentrations,
-                pigments: pigments,
-                database: database
-            )
-            indices = refined.indices
-            concentrations = refined.concentrations
-            bestColor = refined.color
-            bestDist = oklabDistance(target, bestColor)
-
-            if bestDist < candidateBestDist + 0.0001 {
-                bestIndices = indices
-                bestConcentrations = concentrations
-            }
-        }
-
-        return RefinementResult(indices: bestIndices, concentrations: bestConcentrations, color: bestColor)
-    }
-
-    // MARK: - Nelder-Mead concentration refinement
-
-    private static func refineConcentrations(
-        target: OklabColor,
-        pigmentIndices: [Int],
-        initialConcentrations: [Float],
-        pigments: [PigmentData],
-        database: SpectralDatabase
-    ) -> RefinementResult {
-        let n = pigmentIndices.count
-        guard n > 1 else {
-            let color = evaluateMix(indices: pigmentIndices, concentrations: [1.0], pigments: pigments, database: database)
-            return RefinementResult(indices: pigmentIndices, concentrations: [1.0], color: color)
-        }
-
-        // Optimize in (n-1) dimensional simplex space.
-        // Use free variables for first n-1 concentrations; last = 1 - sum.
-        let dims = n - 1
-
-        func concentrationsFromFree(_ free: [Float]) -> [Float] {
-            var conc = free.map { max(0, $0) }
-            let sum = conc.reduce(0, +)
-            let last = max(0, 1.0 - sum)
-            conc.append(last)
-            // Normalize
-            let total = conc.reduce(0, +)
-            if total > 0 {
-                for i in 0..<conc.count { conc[i] /= total }
-            }
-            return conc
-        }
-
-        func objective(_ free: [Float]) -> Float {
-            let conc = concentrationsFromFree(free)
-            let color = evaluateMix(indices: pigmentIndices, concentrations: conc, pigments: pigments, database: database)
-            return oklabDistance(target, color)
-        }
-
-        // Nelder-Mead simplex
-        var simplex: [[Float]] = []
-        let initFree = Array(initialConcentrations.prefix(dims))
-        simplex.append(initFree)
-        for d in 0..<dims {
-            var vertex = initFree
-            vertex[d] = min(1.0, vertex[d] + 0.15)
-            simplex.append(vertex)
-        }
-
-        var values = simplex.map { objective($0) }
-
-        let alpha: Float = 1.0
-        let gamma: Float = 2.0
-        let rho: Float = 0.5
-        let sigma: Float = 0.5
-        let maxIter = 80
-
-        for _ in 0..<maxIter {
-            // Sort
-            let sorted = zip(simplex.indices, values).sorted { $0.1 < $1.1 }
-            simplex = sorted.map { simplex[$0.0] }
-            values = sorted.map { $0.1 }
-
-            // Convergence check
-            if values.last! - values.first! < 1e-8 { break }
-
-            // Centroid of all but worst
-            var centroid = [Float](repeating: 0, count: dims)
-            for i in 0..<(simplex.count - 1) {
-                for d in 0..<dims { centroid[d] += simplex[i][d] }
-            }
-            let divisor = Float(simplex.count - 1)
-            for d in 0..<dims { centroid[d] /= divisor }
-
-            let worst = simplex.last!
-            let worstVal = values.last!
-
-            // Reflection
-            var reflected = [Float](repeating: 0, count: dims)
-            for d in 0..<dims { reflected[d] = centroid[d] + alpha * (centroid[d] - worst[d]) }
-            let reflectedVal = objective(reflected)
-
-            if reflectedVal < values.first! {
-                // Expansion
-                var expanded = [Float](repeating: 0, count: dims)
-                for d in 0..<dims { expanded[d] = centroid[d] + gamma * (reflected[d] - centroid[d]) }
-                let expandedVal = objective(expanded)
-                if expandedVal < reflectedVal {
-                    simplex[simplex.count - 1] = expanded
-                    values[values.count - 1] = expandedVal
-                } else {
-                    simplex[simplex.count - 1] = reflected
-                    values[values.count - 1] = reflectedVal
-                }
-            } else if reflectedVal < worstVal {
-                simplex[simplex.count - 1] = reflected
-                values[values.count - 1] = reflectedVal
-            } else {
-                // Contraction
-                var contracted = [Float](repeating: 0, count: dims)
-                for d in 0..<dims { contracted[d] = centroid[d] + rho * (worst[d] - centroid[d]) }
-                let contractedVal = objective(contracted)
-                if contractedVal < worstVal {
-                    simplex[simplex.count - 1] = contracted
-                    values[values.count - 1] = contractedVal
-                } else {
-                    // Shrink
-                    let best = simplex[0]
-                    for i in 1..<simplex.count {
-                        for d in 0..<dims {
-                            simplex[i][d] = best[d] + sigma * (simplex[i][d] - best[d])
-                        }
-                        values[i] = objective(simplex[i])
-                    }
-                }
-            }
-        }
-
-        let bestFree = simplex[values.enumerated().min(by: { $0.1 < $1.1 })!.offset]
-        let bestConc = concentrationsFromFree(bestFree)
-        let bestColor = evaluateMix(indices: pigmentIndices, concentrations: bestConc, pigments: pigments, database: database)
-
-        return RefinementResult(indices: pigmentIndices, concentrations: bestConc, color: bestColor)
     }
 
     // MARK: - Helpers
@@ -530,41 +408,55 @@ enum PigmentDecomposer {
         allPigments: [PigmentData],
         database: SpectralDatabase,
         maxPigments: Int,
-        minConcentration: Float
+        minConcentration: Float,
+        lookupTable: PigmentLookupTable? = nil
     ) -> [PigmentData] {
         var currentTubes = seedTubes
         guard !currentTubes.isEmpty, currentTubes.count < allPigments.count else { return currentTubes }
-        
-        // Filter the target colors to only the most salient ones (e.g. top 8)
-        // This avoids running expensive Nelder-Mead on all 48 minor clusters for every 1-off pigment swap.
-        let topCount = min(8, targetColors.count)
+
         let sortedIndices = clusterWeights.enumerated()
             .sorted { $0.element > $1.element }
-            .prefix(topCount)
             .map { $0.offset }
-        
-        let topColors = sortedIndices.map { targetColors[$0] }
+
+        let topColors  = sortedIndices.map { targetColors[$0] }
         let topWeights = sortedIndices.map { clusterWeights[$0] }
-        
+        let clamped    = min(max(maxPigments, 1), 3)
+
         func evaluateApproxError(tubes: [PigmentData]) -> Float {
-            let clamped = min(max(maxPigments, 1), 3)
-            let lookup = buildLookupTable(pigments: tubes, database: database, maxPigments: clamped)
             var totalError: Float = 0
-            for (i, target) in topColors.enumerated() {
-                var bestDist = Float.greatestFiniteMagnitude
-                for entry in lookup {
-                    let d = oklabDistance(target, entry.color)
-                    if d < bestDist { bestDist = d }
+
+            if let table = lookupTable {
+                // Fast path: index into the precomputed table — no KMM math.
+                let gIdx = globalIndices(for: tubes, in: database)
+                for (i, target) in topColors.enumerated() {
+                    if let (_, dSq) = table.findBest(
+                        for: target,
+                        enabledGlobalIndices: gIdx,
+                        maxPigments: clamped
+                    ) {
+                        totalError += sqrtf(dSq) * topWeights[i]
+                    }
                 }
-                totalError += sqrtf(bestDist) * topWeights[i]
+            } else {
+                // Fallback: build a runtime lookup for this tube subset.
+                let lookup = buildLookupTable(pigments: tubes, database: database, maxPigments: clamped)
+                for (i, target) in topColors.enumerated() {
+                    var bestDist = Float.greatestFiniteMagnitude
+                    for entry in lookup {
+                        let d = oklabDistance(target, entry.color)
+                        if d < bestDist { bestDist = d }
+                    }
+                    totalError += sqrtf(bestDist) * topWeights[i]
+                }
             }
             return totalError
         }
         
         var improved = true
         var swapCount = 0
+        let maxSwaps = max(3, currentTubes.count * 2) // scale up search budget with tube complexity
         
-        while improved && swapCount < 3 { // bounded search budget
+        while improved && swapCount < maxSwaps { // bounded search budget
             improved = false
             let currentApproxError = evaluateApproxError(tubes: currentTubes)
             let unselected = allPigments.filter { p in !currentTubes.contains(where: { $0.id == p.id }) }

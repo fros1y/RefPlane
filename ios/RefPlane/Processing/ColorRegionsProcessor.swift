@@ -13,6 +13,7 @@ enum ColorRegionsProcessor {
     private static let histogramAMax: Float = 0.45
     private static let histogramBMin: Float = -0.45
     private static let histogramBMax: Float = 0.45
+    private static let histogramChromaBoost: Float = 2.0
 
     private struct HistogramCandidate {
         let color: OklabColor
@@ -532,7 +533,6 @@ enum ColorRegionsProcessor {
             let avgA = sumA[histogramBin] * inverseCount
             let avgB = sumB[histogramBin] * inverseCount
             let chroma = sqrtf(avgA * avgA + avgB * avgB)
-            let chromaBoost: Float = 2.0
             candidates.append(
                 HistogramCandidate(
                     color: OklabColor(
@@ -540,7 +540,7 @@ enum ColorRegionsProcessor {
                         a: avgA,
                         b: avgB
                     ),
-                    weight: Float(count) * (1.0 + chromaBoost * chroma)
+                    weight: Float(count) * (1.0 + histogramChromaBoost * chroma)
                 )
             )
         }
@@ -589,8 +589,7 @@ enum ColorRegionsProcessor {
                 b: avgB
             )
             let chroma = sqrtf(avgA * avgA + avgB * avgB)
-            let chromaBoost: Float = 2.0
-            candidates.append(HistogramCandidate(color: color, weight: Float(count) * (1.0 + chromaBoost * chroma)))
+            candidates.append(HistogramCandidate(color: color, weight: Float(count) * (1.0 + histogramChromaBoost * chroma)))
         }
 
         if candidates.isEmpty {
@@ -628,11 +627,10 @@ enum ColorRegionsProcessor {
             let averageB = histogramBMin + ((Float(sumB[index]) * inverseCount) / 255) * bRange
 
             let chroma = sqrtf(averageA * averageA + averageB * averageB)
-            let chromaBoost: Float = 2.0
             candidates.append(
                 HistogramCandidate(
                     color: OklabColor(L: averageL, a: averageA, b: averageB),
-                    weight: Float(count) * (1.0 + chromaBoost * chroma)
+                    weight: Float(count) * (1.0 + histogramChromaBoost * chroma)
                 )
             )
         }
@@ -945,6 +943,74 @@ enum ColorRegionsProcessor {
         let centroids = (0..<k).map { j in
             counts[j] > 0
                 ? OklabColor(L: sumL[j] / Float(counts[j]), a: sumA[j] / Float(counts[j]), b: sumB[j] / Float(counts[j]))
+                : OklabColor(L: 0.5, a: 0, b: 0)
+        }
+        return (centroids, counts)
+    }
+
+    // MARK: - Quantized-centroid fast helpers
+
+    /// Maps each quantized centroid to the nearest recipe centroid.
+    /// O(qCount × recipeCount) — typically O(50 × 12): negligible vs O(pixels × k).
+    static func assignQuantizedToRecipes(
+        quantizedCentroids: [OklabColor],
+        recipeCentroids: [OklabColor],
+        lWeight: Float
+    ) -> [Int32] {
+        guard !recipeCentroids.isEmpty else {
+            return [Int32](repeating: 0, count: quantizedCentroids.count)
+        }
+        return quantizedCentroids.map { qc -> Int32 in
+            var best: Int32 = 0
+            var bestD = Float.greatestFiniteMagnitude
+            for (ri, rc) in recipeCentroids.enumerated() {
+                let dL = (qc.L - rc.L) * lWeight
+                let da = qc.a - rc.a
+                let db = qc.b - rc.b
+                let d = dL*dL + da*da + db*db
+                if d < bestD { bestD = d; best = Int32(ri) }
+            }
+            return best
+        }
+    }
+
+    /// Projects per-pixel quantized labels through a centroid→recipe map.
+    /// O(pixels) with a single lookup and no arithmetic per pixel.
+    static func projectQuantizedLabels(
+        pixelQuantizedLabels: [Int32],
+        centroidToRecipe: [Int32]
+    ) -> [Int32] {
+        pixelQuantizedLabels.map { centroidToRecipe[Int($0)] }
+    }
+
+    /// Compute recipe centroids and counts using the small quantized centroid set.
+    /// O(qCount) — avoids touching the full per-pixel array.
+    static func computeCentroidsAndCountsQuantized(
+        quantizedCentroids: [OklabColor],
+        quantizedPixelCounts: [Int],
+        centroidToRecipe: [Int32],
+        recipeCount: Int
+    ) -> (centroids: [OklabColor], counts: [Int]) {
+        var sumL = [Float](repeating: 0, count: recipeCount)
+        var sumA = [Float](repeating: 0, count: recipeCount)
+        var sumB = [Float](repeating: 0, count: recipeCount)
+        var counts = [Int](repeating: 0, count: recipeCount)
+        for qi in 0..<quantizedCentroids.count {
+            let ri = Int(centroidToRecipe[qi])
+            guard ri >= 0, ri < recipeCount else { continue }
+            let pw = quantizedPixelCounts[qi]
+            let qc = quantizedCentroids[qi]
+            sumL[ri] += qc.L * Float(pw)
+            sumA[ri] += qc.a * Float(pw)
+            sumB[ri] += qc.b * Float(pw)
+            counts[ri] += pw
+        }
+        let centroids = (0..<recipeCount).map { j -> OklabColor in
+            counts[j] > 0
+                ? OklabColor(
+                    L: sumL[j] / Float(counts[j]),
+                    a: sumA[j] / Float(counts[j]),
+                    b: sumB[j] / Float(counts[j]))
                 : OklabColor(L: 0.5, a: 0, b: 0)
         }
         return (centroids, counts)

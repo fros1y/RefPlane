@@ -25,19 +25,23 @@ enum PaintPaletteBuilder {
         onProgress: ((Double) -> Void)? = nil
     ) throws -> PaintPaletteResult {
         
-        let t0 = CFAbsoluteTimeGetCurrent()
-        
         guard !colorRegions.quantizedCentroids.isEmpty else {
             throw BuilderError.missingData
         }
         
+        // Grab the shared precomputed table once (nil → falls back to runtime build).
+        let lookupTable = SpectralDataStore.sharedLookupTable
+
+        let t0 = CFAbsoluteTimeGetCurrent()
+
         // Stage 2 - Preliminary Decomposition
         let prelimRecipes = PigmentDecomposer.decompose(
             targetColors: colorRegions.quantizedCentroids,
             pigments: pigments,
             database: database,
             maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration
+            minConcentration: config.minConcentration,
+            lookupTable: lookupTable
         )
         
         let t1 = CFAbsoluteTimeGetCurrent()
@@ -63,7 +67,8 @@ enum PaintPaletteBuilder {
             allPigments: pigments,
             database: database,
             maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration
+            minConcentration: config.minConcentration,
+            lookupTable: lookupTable
         )
         
         guard !selectedTubes.isEmpty else {
@@ -80,7 +85,8 @@ enum PaintPaletteBuilder {
             pigments: selectedTubes,
             database: database,
             maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration
+            minConcentration: config.minConcentration,
+            lookupTable: lookupTable
         )
 
         let t3 = CFAbsoluteTimeGetCurrent()
@@ -88,13 +94,14 @@ enum PaintPaletteBuilder {
         onProgress?(0.60)
 
         // Stage 4B - Snap/Reassign Loop
-        let (workingRecipes, snappedLabels, snappedCounts) = snapAndReassign(
+        let (workingRecipes, snappedCentroidToRecipe, snappedCounts) = snapAndReassign(
             recipes: constrainedRecipes,
-            pixelLab: colorRegions.pixelLab,
+            colorRegions: colorRegions,
             selectedTubes: selectedTubes,
             database: database,
             maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration
+            minConcentration: config.minConcentration,
+            lookupTable: lookupTable
         )
 
         let t3b = CFAbsoluteTimeGetCurrent()
@@ -102,23 +109,29 @@ enum PaintPaletteBuilder {
         onProgress?(0.75)
 
         // Stage 5 - Merge, Prune, and Finalize
+        // All intermediate work operates on centroid-level labels (size K ≈ 50).
+        // A single O(pixels) projection is deferred to the very end.
+
         let (mergedRecipes, mergeMap) = PigmentDecomposer.mergeRecipes(
             recipes: workingRecipes,
             pixelCounts: snappedCounts
         )
 
-        var workingLabels = snappedLabels.map { Int32(mergeMap[Int($0)]) }
-        
-        var finalCounts = [Int](repeating: 0, count: mergedRecipes.count)
-        for label in workingLabels {
-            finalCounts[Int(label)] += 1
-        }
-        
+        let mergeMapI32 = mergeMap.map { Int32($0) }
+        var qCentroidLabels = snappedCentroidToRecipe.map { mergeMapI32[Int($0)] }
         var finalRecipes = mergedRecipes
+
+        // O(K) counts via quantized centroids.
+        var finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+            quantizedCentroids: colorRegions.quantizedCentroids,
+            quantizedPixelCounts: colorRegions.clusterPixelCounts,
+            centroidToRecipe: qCentroidLabels,
+            recipeCount: finalRecipes.count
+        ).counts
 
         // Stage 5A - Adaptive shade count
         let anchors5A: Set<Int> = {
-            let threshold = max(1, finalCounts.reduce(0, +) / 100)
+            let threshold = max(1, colorRegions.clusterPixelCounts.reduce(0, +) / 100)
             var minL: Float = .greatestFiniteMagnitude
             var maxL: Float = -.greatestFiniteMagnitude
             var darkest: Int? = nil
@@ -134,43 +147,57 @@ enum PaintPaletteBuilder {
         finalRecipes = adaptivePrune(
             recipes: finalRecipes,
             counts: finalCounts,
-            labels: &workingLabels,
-            anchors: anchors5A
+            labels: &qCentroidLabels,
+            anchors: anchors5A,
+            minShades: config.numShades
         )
 
-        // Recompute counts after adaptive prune
-        finalCounts = [Int](repeating: 0, count: finalRecipes.count)
-        for label in workingLabels {
-            finalCounts[Int(label)] += 1
-        }
+        // Recompute counts after prune (O(K)).
+        finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+            quantizedCentroids: colorRegions.quantizedCentroids,
+            quantizedPixelCounts: colorRegions.clusterPixelCounts,
+            centroidToRecipe: qCentroidLabels,
+            recipeCount: finalRecipes.count
+        ).counts
 
-        // Prune down to numShades safely using index mapping to protect cluster geometry
+        // Prune down to numShades.
         if finalRecipes.count > config.numShades && config.numShades > 1 {
             finalRecipes = pruneToMaxShades(
                 recipes: finalRecipes,
                 counts: finalCounts,
-                labels: &workingLabels,
+                labels: &qCentroidLabels,
                 maxShades: config.numShades
             )
-        }
-        
-        // Clean up empty indices
-        let validIndices = (0..<finalRecipes.count).filter { i in workingLabels.contains(Int32(i)) }
-        let prunedRecipes = validIndices.map { finalRecipes[$0] }
-        let newLabelMap = Dictionary(uniqueKeysWithValues: validIndices.enumerated().map { ($1, Int32($0)) })
-        workingLabels = workingLabels.map { newLabelMap[Int($0)] ?? 0 }
-        
-        finalCounts = [Int](repeating: 0, count: prunedRecipes.count)
-        for label in workingLabels {
-            finalCounts[Int(label)] += 1
+            // Recompute counts after prune.
+            finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+                quantizedCentroids: colorRegions.quantizedCentroids,
+                quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                centroidToRecipe: qCentroidLabels,
+                recipeCount: finalRecipes.count
+            ).counts
         }
 
-        // Stage 5B - Final Constrained Refit
-        // Recompute centroids from final pixel labels, then refit each recipe
-        let (refitCentroids, refitCounts) = ColorRegionsProcessor.computeCentroidsAndCounts(
-            pixelLab: colorRegions.pixelLab,
-            labels: workingLabels,
-            k: prunedRecipes.count
+        // Compact: remove recipes with no pixels. O(K).
+        let validIndices = (0..<finalRecipes.count).filter { finalCounts[$0] > 0 }
+        let prunedRecipes = validIndices.map { finalRecipes[$0] }
+        var newIndexMap = [Int32](repeating: 0, count: finalRecipes.count)
+        for (newIdx, oldIdx) in validIndices.enumerated() {
+            newIndexMap[oldIdx] = Int32(newIdx)
+        }
+        qCentroidLabels = qCentroidLabels.map { newIndexMap[Int($0)] }
+
+        finalCounts = [Int](repeating: 0, count: prunedRecipes.count)
+        for qi in 0..<qCentroidLabels.count {
+            let ri = Int(qCentroidLabels[qi])
+            if ri >= 0, ri < finalCounts.count { finalCounts[ri] += colorRegions.clusterPixelCounts[qi] }
+        }
+
+        // Stage 5B - Final Constrained Refit (O(K) centroid computation, no full pixel scan).
+        let (refitCentroids, refitCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+            quantizedCentroids: colorRegions.quantizedCentroids,
+            quantizedPixelCounts: colorRegions.clusterPixelCounts,
+            centroidToRecipe: qCentroidLabels,
+            recipeCount: prunedRecipes.count
         )
 
         var refitRecipes = prunedRecipes
@@ -181,23 +208,29 @@ enum PaintPaletteBuilder {
                 database: database,
                 maxPigments: config.maxPigmentsPerMix,
                 minConcentration: config.minConcentration,
-                concurrent: false
+                concurrent: false,
+                lookupTable: lookupTable
             )
             if let recipe = reDecomposed.first {
                 refitRecipes[i] = recipe
             }
         }
 
-        // Final pixel reassignment to refit predicted colors
-        workingLabels = ColorRegionsProcessor.reassignLabels(
-            pixelLab: colorRegions.pixelLab,
-            centroids: refitRecipes.map { $0.predictedColor },
+        // Final pixel assignment: O(K × r) centroid assign + single O(pixels) projection.
+        let finalQToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
+            quantizedCentroids: colorRegions.quantizedCentroids,
+            recipeCentroids: refitRecipes.map { $0.predictedColor },
             lWeight: 0.3
+        )
+        let finalPixelLabels = ColorRegionsProcessor.projectQuantizedLabels(
+            pixelQuantizedLabels: colorRegions.pixelLabels,
+            centroidToRecipe: finalQToRecipe
         )
 
         finalCounts = [Int](repeating: 0, count: refitRecipes.count)
-        for label in workingLabels {
-            finalCounts[Int(label)] += 1
+        for qi in 0..<finalQToRecipe.count {
+            let ri = Int(finalQToRecipe[qi])
+            if ri >= 0, ri < finalCounts.count { finalCounts[ri] += colorRegions.clusterPixelCounts[qi] }
         }
 
         var clippedIndices = [Int]()
@@ -215,7 +248,7 @@ enum PaintPaletteBuilder {
         return PaintPaletteResult(
             selectedTubes: selectedTubes,
             recipes: refitRecipes,
-            pixelLabels: workingLabels,
+            pixelLabels: finalPixelLabels,
             clusterPixelCounts: finalCounts,
             clippedRecipeIndices: clippedIndices
         )
@@ -223,44 +256,50 @@ enum PaintPaletteBuilder {
     
     private static func snapAndReassign(
         recipes: [PigmentRecipe],
-        pixelLab: [Float],
+        colorRegions: ColorRegionsProcessor.Result,
         selectedTubes: [PigmentData],
         database: SpectralDatabase,
         maxPigments: Int,
         minConcentration: Float,
-        iterations: Int = 2
-    ) -> (recipes: [PigmentRecipe], labels: [Int32], counts: [Int]) {
-        var currentRecipes = recipes
+        iterations: Int = 2,
+        lookupTable: PigmentLookupTable? = nil
+    ) -> (recipes: [PigmentRecipe], centroidToRecipe: [Int32], counts: [Int]) {
+        let qCentroids   = colorRegions.quantizedCentroids
+        let qCounts      = colorRegions.clusterPixelCounts
+
+        var currentRecipes   = recipes
         var currentCentroids = recipes.map { $0.predictedColor }
 
         for _ in 0..<iterations {
-            // Reassign all pixels to snapped centroids (recipe predicted colors)
-            let newLabels = ColorRegionsProcessor.reassignLabels(
-                pixelLab: pixelLab,
-                centroids: currentCentroids,
+            // O(K × recipeCount): assign each quantized centroid to nearest recipe.
+            let centroidToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
+                quantizedCentroids: qCentroids,
+                recipeCentroids: currentCentroids,
                 lWeight: 0.3
             )
 
-            // Recompute centroids and counts from new labels
-            let (newCentroids, newCounts) = ColorRegionsProcessor.computeCentroidsAndCounts(
-                pixelLab: pixelLab,
-                labels: newLabels,
-                k: currentCentroids.count
+            // O(K): compute new recipe centroids weighted by pixel counts.
+            let (newCentroids, newCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+                quantizedCentroids: qCentroids,
+                quantizedPixelCounts: qCounts,
+                centroidToRecipe: centroidToRecipe,
+                recipeCount: currentCentroids.count
             )
 
-            // Re-decompose only centroids that moved significantly (or became empty)
+            // Re-decompose only centroids that moved significantly (or became empty).
             var updatedRecipes = currentRecipes
             for i in 0..<newCentroids.count {
                 guard newCounts[i] > 0 else { continue }
                 let moved = oklabDistance(newCentroids[i], currentCentroids[i])
-                if moved > 0.0001 { // oklabDistance is squared; 0.0001 = 0.01² (linear Oklab units)
+                if moved > 0.0001 {
                     let reDecomposed = PigmentDecomposer.decompose(
                         targetColors: [newCentroids[i]],
                         pigments: selectedTubes,
                         database: database,
                         maxPigments: maxPigments,
                         minConcentration: minConcentration,
-                        concurrent: false
+                        concurrent: false,
+                        lookupTable: lookupTable
                     )
                     if let recipe = reDecomposed.first {
                         updatedRecipes[i] = recipe
@@ -268,35 +307,38 @@ enum PaintPaletteBuilder {
                 }
             }
 
-            currentRecipes = updatedRecipes
+            currentRecipes   = updatedRecipes
             currentCentroids = currentRecipes.map { $0.predictedColor }
         }
 
-        // Final reassignment to ensure labels align with recipe predicted colors
-        let finalLabels = ColorRegionsProcessor.reassignLabels(
-            pixelLab: pixelLab,
-            centroids: currentCentroids,
+        // Final assignment: O(K × r) centroid-level mapping — no per-pixel work.
+        let finalCentroidToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
+            quantizedCentroids: qCentroids,
+            recipeCentroids: currentCentroids,
             lWeight: 0.3
         )
-        let (_, finalCounts) = ColorRegionsProcessor.computeCentroidsAndCounts(
-            pixelLab: pixelLab,
-            labels: finalLabels,
-            k: currentCentroids.count
+        let (_, finalCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+            quantizedCentroids: qCentroids,
+            quantizedPixelCounts: qCounts,
+            centroidToRecipe: finalCentroidToRecipe,
+            recipeCount: currentCentroids.count
         )
 
-        return (currentRecipes, finalLabels, finalCounts)
+        return (currentRecipes, finalCentroidToRecipe, finalCounts)
     }
 
     private static func adaptivePrune(
         recipes: [PigmentRecipe],
         counts: [Int],
         labels: inout [Int32],
-        anchors: Set<Int>
+        anchors: Set<Int>,
+        minShades: Int
     ) -> [PigmentRecipe] {
         let totalPixels = max(1, counts.reduce(0, +))
         var survivors = Array(0..<recipes.count)
+        let targetMax = max(2, minShades)
 
-        while survivors.count > 2 {
+        while survivors.count > targetMax {
             // Find weakest non-anchor by pixel count
             var weakestIdx = -1
             var weakestCount = Int.max

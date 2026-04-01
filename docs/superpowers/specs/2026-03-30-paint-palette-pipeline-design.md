@@ -62,7 +62,9 @@ Use the existing color-region pipeline to generate more working centroids than t
 Notes:
 
 - This is not a brand-new clustering system. It is the existing histogram-seeded centroid selection plus assignment/recompute pass in `ColorRegionsProcessor`.
-- Keep `lWeight = 1.0` and keep using `paletteSpread` as the histogram seeding bias.
+- Use `lWeight = 0.3` for the overclustering step. With `lWeight = 1.0`, k-means forms clusters dominated by luminance bands (light-beige, mid-beige, dark-neutral) because real images have more luminance variation than chroma variation. Small vivid areas (flowers, accents) get absorbed into luminance-matched neutral clusters. A lower lWeight prioritizes hue separation, ensuring those accents survive as distinct clusters that later stages can evaluate.
+- Apply chroma-aware weighting in the histogram candidate construction: `effectiveWeight = count × (1 + chromaBoost × chroma)` with `chromaBoost ≈ 2.0`. This makes vivid histogram bins "louder" during centroid seeding, so high-chroma minority colors compete with large neutral areas even before overclustering begins.
+- Keep using `paletteSpread` as the histogram seeding bias.
 - Stage 1 only overclusters. It does not try to enforce the final tube budget yet.
 
 Required output:

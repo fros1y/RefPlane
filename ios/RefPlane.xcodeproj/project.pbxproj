@@ -54,6 +54,8 @@
 		B1C2D3E4F5A6B7C8D9E0F205 /* KubelkaMunkMixerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */; };
 		B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */; };
 		B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F208 /* PigmentLookupTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F108 /* PigmentLookupTable.swift */; };
+		B1C2D3E4F5A6B7C8D9E0F209 /* PigmentLookup.bin in Resources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6B7C8D9E0F109 /* PigmentLookup.bin */; };
 		B741A149437E482EAFF0AAB4 /* UIImageExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */; };
 		BE4EBBE37D1B43FFBB5F78B1 /* PaletteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3EA40383874CE288B53828 /* PaletteView.swift */; };
 		BF40722118FF4AE6A73E5141 /* RegionCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 632255DE24DC47B99F2567C2 /* RegionCleaner.swift */; };
@@ -132,6 +134,8 @@
 		B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KubelkaMunkMixerTests.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PigmentDecomposer.swift; path = Processing/PigmentDecomposer.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecipeView.swift; path = Views/RecipeView.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F108 /* PigmentLookupTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PigmentLookupTable.swift; path = Processing/PigmentLookupTable.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F109 /* PigmentLookup.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = PigmentLookup.bin; sourceTree = "<group>"; };
 		B8B5E61D8D7B47A4AEB29906 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ControlPanelView.swift; path = Views/ControlPanelView.swift; sourceTree = "<group>"; };
 		C80B3D2D0E20405194A6C9B5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = Views/ContentView.swift; sourceTree = "<group>"; };
 		CA3EA40383874CE288B53828 /* PaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaletteView.swift; path = Views/PaletteView.swift; sourceTree = "<group>"; };
@@ -245,8 +249,7 @@
 				AA11BB22CC334455DD66778B /* Shaders.metal */,
 				B1C2D3E4F5A6B7C8D9E0F102 /* SpectralDataStore.swift */,
 				B1C2D3E4F5A6B7C8D9E0F103 /* KubelkaMunkMixer.swift */,
-				B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */,
-			);
+				B1C2D3E4F5A6B7C8D9E0F106 /* PigmentDecomposer.swift */,					B1C2D3E4F5A6B7C8D9E0F108 /* PigmentLookupTable.swift */,			);
 			name = Processing;
 			sourceTree = "<group>";
 		};
@@ -280,8 +283,7 @@
 				37937B61A6B54EDB80118D8C /* Views */,
 				F160D00F80954B0C9211E7F6 /* Assets.xcassets */,
 				A2B3C4D5E6F74819C0BCDE02 /* APISR_GRL_x4.mlpackage */,
-				B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */,
-				8B62BEE22E8D4E52A4A9828D /* Products */,
+				B1C2D3E4F5A6B7C8D9E0F104 /* GoldenAcrylicsKS.json */,					B1C2D3E4F5A6B7C8D9E0F109 /* PigmentLookup.bin */,				8B62BEE22E8D4E52A4A9828D /* Products */,
 			);
 			path = RefPlane;
 			sourceTree = "<group>";
@@ -375,8 +377,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				54865C4DBC864140A2C83A6E /* Assets.xcassets in Resources */,
-				B1C2D3E4F5A6B7C8D9E0F204 /* GoldenAcrylicsKS.json in Resources */,
-			);
+				B1C2D3E4F5A6B7C8D9E0F204 /* GoldenAcrylicsKS.json in Resources */,					B1C2D3E4F5A6B7C8D9E0F209 /* PigmentLookup.bin in Resources */,			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -447,8 +448,7 @@
 				B1C2D3E4F5A6B7C8D9E0F201 /* SpectralData.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F202 /* SpectralDataStore.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F203 /* KubelkaMunkMixer.swift in Sources */,
-				B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */,
-				B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */,
+				B1C2D3E4F5A6B7C8D9E0F206 /* PigmentDecomposer.swift in Sources */,					B1C2D3E4F5A6B7C8D9E0F208 /* PigmentLookupTable.swift in Sources */,				B1C2D3E4F5A6B7C8D9E0F207 /* RecipeView.swift in Sources */,
 				899C43C6C828A9B141031349 /* PaintPaletteBuilder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

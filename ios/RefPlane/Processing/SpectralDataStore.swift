@@ -37,4 +37,31 @@ enum SpectralDataStore {
     static func pigment(byId id: String) -> PigmentData? {
         shared.pigments.first { $0.id == id }
     }
+
+    /// Pre-computed KM lookup table for all 78 pigments.
+    /// Loaded lazily from PigmentLookup.bin in the app bundle.
+    /// Returns nil if the binary asset is absent (falls back to runtime computation).
+    static let sharedLookupTable: PigmentLookupTable? = {
+        guard let url = Bundle.main.url(forResource: "PigmentLookup", withExtension: "bin") else {
+            print("[SpectralDataStore] PigmentLookup.bin not found – falling back to runtime table build")
+            return nil
+        }
+        do {
+            let table = try PigmentLookupTable(url: url)
+            print("[SpectralDataStore] Loaded PigmentLookup.bin: \(table.pairCount) pairs, \(table.tripletCount) triplets")
+            return table
+        } catch {
+            print("[SpectralDataStore] Failed to load PigmentLookup.bin: \(error)")
+            return nil
+        }
+    }()
+
+    /// Map every pigment in `subset` to its global index in `shared.pigments`.
+    /// Returns indices in ascending order.
+    static func globalIndices(for subset: [PigmentData]) -> [Int] {
+        let all = shared.pigments
+        return subset.compactMap { pig in
+            all.firstIndex(where: { $0.id == pig.id })
+        }.sorted()
+    }
 }

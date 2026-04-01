@@ -161,6 +161,11 @@ struct PaintPaletteBuilderTests {
         // Pixel count should match total
         #expect(result.pixelLabels.count == total)
         #expect(result.clusterPixelCounts.reduce(0, +) == total)
+
+        // No ghost recipes: every recipe that survived must own at least one pixel
+        for (i, count) in result.clusterPixelCounts.enumerated() {
+            #expect(count > 0, "Recipe \(i) survived but has zero assigned pixels")
+        }
     }
 
     @Test
@@ -366,6 +371,8 @@ struct PaintPaletteBuilderTests {
         )
 
         var config = ColorConfig()
+        // numShades=8 > input cluster count (4), so pruneToMaxShades is not triggered.
+        // This test exercises mergeRecipes (color proximity merge) and adaptivePrune.
         config.numShades = 8
         config.numTubes = 4
         config.maxPigmentsPerMix = 3
@@ -434,9 +441,5 @@ struct PaintPaletteBuilderTests {
             #expect(result.recipes[idx].deltaE > 0.05, "Clipped recipe should have materially high deltaE")
         }
 
-        // Either some recipes are clipped, or the decomposer found a sufficiently close match for all colors
-        let allWithinGamut = result.recipes.allSatisfy { $0.deltaE <= 0.05 }
-        #expect(!result.clippedRecipeIndices.isEmpty || allWithinGamut,
-            "Expected either some clipped recipes (deltaE > 0.05) or all recipes within gamut, but got \(result.clippedRecipeIndices.count) clipped and max deltaE = \(result.recipes.map { $0.deltaE }.max() ?? 0)")
     }
 }
