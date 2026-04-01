@@ -82,6 +82,26 @@ struct ControlPanelView: View {
                         }
                     }
                 }
+
+                LabeledSlider(
+                    label: "Kuwahara",
+                    value: $state.kuwaharaStrength,
+                    range: 0...1,
+                    step: 0.125,
+                    displayFormat: { value in
+                        guard value > 0 else { return "Off" }
+                        return "R\(Int((value * 8).rounded()))"
+                    },
+                    onEditingChanged: { editing in
+                        if !editing {
+                            if state.abstractionIsEnabled {
+                                state.applyAbstraction()
+                            } else {
+                                state.applyKuwahara()
+                            }
+                        }
+                    }
+                )
             }
 
             Section("Mode") {
