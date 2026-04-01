@@ -82,6 +82,13 @@ class AppState: ObservableObject {
         abstractionStrength > 0
     }
 
+    /// Kuwahara neighbourhood radius derived from `kuwaharaStrength`.
+    /// Returns 0 when the filter is off, and a value clamped to 1…8 otherwise.
+    var kuwaharaRadius: Int {
+        guard kuwaharaStrength > 0 else { return 0 }
+        return min(max(Int((kuwaharaStrength * 8).rounded()), 1), 8)
+    }
+
     var availableAbstractionMethods: [AbstractionMethod] {
         AbstractionMethod.allCases.filter { method in
             switch method.processingKind {
@@ -120,10 +127,8 @@ class AppState: ObservableObject {
             )
         }
         self.kuwaharaOperation = kuwaharaOperation ?? { image, radius in
-            await Task.detached(priority: .userInitiated) {
-                guard let ctx = MetalContext.shared, let cg = image.cgImage else { return nil }
-                return ctx.anisotropicKuwahara(cg, radius: radius)
-            }.value
+            guard let ctx = MetalContext.shared, let cg = image.cgImage else { return nil }
+            return ctx.anisotropicKuwahara(cg, radius: radius)
         }
 
         NotificationCenter.default.addObserver(
@@ -356,7 +361,7 @@ class AppState: ObservableObject {
         let rawDownscale = 2.0 + abstractionStrength * 10.0
         let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
         let method = abstractionMethod
-        let kuwaharaRadius = Int((kuwaharaStrength * 8).rounded())
+        let kuwaharaRadius = self.kuwaharaRadius
 
         isProcessing = true
         processingProgress = 0
@@ -379,6 +384,11 @@ class AppState: ObservableObject {
                 // Apply Kuwahara post-filter if enabled
                 var filteredImage: UIImage? = nil
                 if kuwaharaRadius > 0 {
+                    await MainActor.run {
+                        guard self.abstractionGeneration == generation else { return }
+                        self.processingLabel = "Filtering…"
+                        self.processingIsIndeterminate = true
+                    }
                     filteredImage = await kuwaharaOperation(abstracted, kuwaharaRadius)
                 }
                 try Task.checkCancellation()
@@ -438,7 +448,7 @@ class AppState: ObservableObject {
             return
         }
 
-        let radius = Int((kuwaharaStrength * 8).rounded())
+        let radius = kuwaharaRadius
 
         isProcessing = true
         processingProgress = 0
