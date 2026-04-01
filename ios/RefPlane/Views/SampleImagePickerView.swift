@@ -31,7 +31,7 @@ private let sampleImages: [SampleItem] = [
 struct SampleImagePickerView: View {
     let onImageSelected: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var showLoadError = false
+    @State private var failedSample: SampleItem?
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 16)]
 
@@ -40,13 +40,12 @@ struct SampleImagePickerView: View {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(sampleImages) { sample in
-                        let image = UIImage(named: sample.assetName)
-                        SampleThumbnailButton(sample: sample, image: image) {
-                            if let image {
+                        SampleThumbnailButton(sample: sample) {
+                            if let image = UIImage(named: sample.assetName) {
                                 onImageSelected(image)
                                 dismiss()
                             } else {
-                                showLoadError = true
+                                failedSample = sample
                             }
                         }
                     }
@@ -60,10 +59,20 @@ struct SampleImagePickerView: View {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .alert("Unable to Load Sample", isPresented: $showLoadError) {
-                Button("OK", role: .cancel) {}
+            .alert(
+                "Unable to Load Sample",
+                isPresented: Binding(
+                    get: { failedSample != nil },
+                    set: { if !$0 { failedSample = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { failedSample = nil }
             } message: {
-                Text("The sample image could not be loaded. Please try a different one.")
+                if let name = failedSample?.displayName {
+                    Text("\"\(name)\" could not be loaded. Please try a different sample.")
+                } else {
+                    Text("The sample image could not be loaded. Please try a different one.")
+                }
             }
         }
     }
@@ -71,28 +80,17 @@ struct SampleImagePickerView: View {
 
 private struct SampleThumbnailButton: View {
     let sample: SampleItem
-    let image: UIImage?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
-                if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(height: 110)
-                        .clipped()
-                        .cornerRadius(10)
-                } else {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(.secondarySystemBackground))
-                        .frame(height: 110)
-                        .overlay {
-                            Image(systemName: "photo")
-                                .foregroundStyle(.secondary)
-                        }
-                }
+                Image(sample.assetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 110)
+                    .clipped()
+                    .cornerRadius(10)
 
                 Text(sample.displayName)
                     .font(.subheadline.weight(.medium))
