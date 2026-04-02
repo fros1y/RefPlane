@@ -1,4 +1,5 @@
 import UIKit
+import Metal
 
 // MARK: - Depth effect application coordinator
 
@@ -110,7 +111,32 @@ enum DepthProcessor {
 
     /// Generate a preview image that shows the depth map with zone coloring:
     /// foreground tinted orange, midground shown as gray depth, background tinted blue.
-    static func thresholdPreview(depthMap: UIImage, foregroundCutoff: Double, backgroundCutoff: Double) -> UIImage? {
+    /// Uses GPU path when available, falls back to CPU.
+    static func thresholdPreview(
+        depthMap: UIImage,
+        foregroundCutoff: Double,
+        backgroundCutoff: Double,
+        cachedDepthTexture: AnyObject? = nil
+    ) -> UIImage? {
+        // GPU path: use cached Metal texture if available
+        if let ctx = MetalContext.shared,
+           let tex = cachedDepthTexture as? MTLTexture {
+            return ctx.depthThresholdPreview(
+                depthTexture: tex,
+                foregroundCutoff: Float(foregroundCutoff),
+                backgroundCutoff: Float(backgroundCutoff)
+            )
+        }
+
+        // CPU fallback
+        return cpuThresholdPreview(
+            depthMap: depthMap,
+            foregroundCutoff: foregroundCutoff,
+            backgroundCutoff: backgroundCutoff
+        )
+    }
+
+    private static func cpuThresholdPreview(depthMap: UIImage, foregroundCutoff: Double, backgroundCutoff: Double) -> UIImage? {
         guard let cg = depthMap.cgImage else { return nil }
         let w = cg.width, h = cg.height
         guard w > 0, h > 0 else { return nil }

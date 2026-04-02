@@ -69,6 +69,8 @@ class AppState: ObservableObject {
     @Published var isEditingDepthThreshold: Bool = false
     /// Cached depth-threshold preview image, regenerated as cutoffs change.
     @Published var depthThresholdPreview: UIImage? = nil
+    /// Cached Metal texture of the depth map, reused across preview updates for speed.
+    var cachedDepthTexture: AnyObject? = nil
     /// Abstraction strength 0–1. `0` disables abstraction; positive values map
     /// to the existing downscale-based abstraction range.
     @Published var abstractionStrength: Double  = 0.5
@@ -253,6 +255,7 @@ class AppState: ObservableObject {
         depthMap                  = nil
         depthProcessedImage       = nil
         depthThresholdPreview     = nil
+        cachedDepthTexture        = nil
         depthRange                = 0...1
         processedPixelBands       = []
         paletteColors             = []
@@ -684,7 +687,9 @@ class AppState: ObservableObject {
         depthGeneration += 1
         depthMap = nil
         depthProcessedImage = nil
+        isEditingDepthThreshold = false
         depthThresholdPreview = nil
+        cachedDepthTexture = nil
         depthRange = 0...1
     }
 
@@ -695,12 +700,17 @@ class AppState: ObservableObject {
             depthThresholdPreview = nil
             return
         }
+        // Create the Metal texture once and cache it for the drag session
+        if cachedDepthTexture == nil {
+            cachedDepthTexture = MetalContext.shared?.makeDepthTexture(from: depth)
+        }
         let fg = depthConfig.foregroundCutoff
         let bg = depthConfig.backgroundCutoff
         depthThresholdPreview = DepthProcessor.thresholdPreview(
             depthMap: depth,
             foregroundCutoff: fg,
-            backgroundCutoff: bg
+            backgroundCutoff: bg,
+            cachedDepthTexture: cachedDepthTexture
         )
     }
 }

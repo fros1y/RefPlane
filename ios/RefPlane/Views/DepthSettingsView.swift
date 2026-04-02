@@ -43,6 +43,7 @@ struct DepthSettingsView: View {
                             state.updateDepthThresholdPreview()
                         } else {
                             state.depthThresholdPreview = nil
+                            state.cachedDepthTexture = nil
                             state.applyDepthEffects()
                         }
                     }
@@ -70,6 +71,7 @@ struct DepthSettingsView: View {
                             state.updateDepthThresholdPreview()
                         } else {
                             state.depthThresholdPreview = nil
+                            state.cachedDepthTexture = nil
                             state.applyDepthEffects()
                         }
                     }
