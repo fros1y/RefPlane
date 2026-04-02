@@ -109,6 +109,7 @@ class AppState: ObservableObject {
     private var depthEffectTask: Task<Void, Never>? = nil
     private var depthPreviewDismissTask: Task<Void, Never>? = nil
     private var depthGeneration: Int = 0
+    private var depthEffectGeneration: Int = 0
 
     private var contourTask: Task<Void, Never>? = nil
     private var contourGeneration: Int = 0
@@ -369,8 +370,10 @@ class AppState: ObservableObject {
                 }
             }
             // Only clear the flag if we are still the most-recent processing task
+            // and depth-effect rendering hasn't taken ownership of the indicator.
             await MainActor.run {
-                if self.processingGeneration == myGeneration {
+                if self.processingGeneration == myGeneration &&
+                   !(self.depthConfig.enabled && self.depthMap != nil) {
                     self.isProcessing = false
                 }
             }
@@ -683,13 +686,19 @@ class AppState: ObservableObject {
 
         let config = depthConfig
 
+        depthEffectGeneration += 1
+        let gen = depthEffectGeneration
+
+        isProcessing = true
         processingLabel = "Applying depth…"
         processingIsIndeterminate = true
 
         depthEffectTask = Task {
             let result = depthEffectOperation(sourceImage, depth, config)
-            guard !Task.isCancelled else { return }
             await MainActor.run {
+                guard self.depthEffectGeneration == gen else { return }
+                self.isProcessing = false
+                guard !Task.isCancelled else { return }
                 self.depthProcessedImage = result
                 self.processingIsIndeterminate = false
                 self.processingLabel = "Processing…"
