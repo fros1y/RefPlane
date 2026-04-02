@@ -56,7 +56,9 @@ struct ImageCanvasView: View {
 
         return ZStack {
             StudyImageLayer(image: image, showsGrid: state.gridConfig.enabled,
-                            showsContours: state.contourConfig.enabled && state.depthConfig.enabled)
+                            showsContours: state.contourConfig.enabled
+                                && state.depthConfig.enabled
+                                && !state.isEditingDepthThreshold)
         }
         .scaleEffect(combinedScale)
         .offset(combinedOffset)

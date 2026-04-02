@@ -12,7 +12,9 @@ struct CompareSliderView: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 StudyImageLayer(image: afterImage, showsGrid: state.gridConfig.enabled,
-                                showsContours: state.contourConfig.enabled && state.depthConfig.enabled)
+                                showsContours: state.contourConfig.enabled
+                                    && state.depthConfig.enabled
+                                    && !state.isEditingDepthThreshold)
                     .frame(width: geo.size.width, height: geo.size.height)
 
                 StudyImageLayer(image: beforeImage, showsGrid: false, showsContours: false)

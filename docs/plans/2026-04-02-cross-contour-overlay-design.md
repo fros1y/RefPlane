@@ -8,11 +8,12 @@ This document replaces the earlier draft and is the single source of truth for a
 
 ## 1. Overview
 
-Add a non-destructive "Surface Contours" overlay inside the existing depth workflow. The overlay traces isolines from the current depth map, clips them to the fitted image rect, and draws them above the image in the same way the grid overlay does today.
+Add a non-destructive "Surface Contours" overlay inside the existing depth workflow. The overlay supports two contour modes: depth isolines from the current depth map, and a projected-grid mode that warps a regular image-space grid by depth as if draped over the surface. In both modes, generated segments are clipped to the fitted image rect and drawn above the image in the same way the grid overlay does today.
 
 The feature is intentionally an overlay, not a new processed image mode:
 
 - contour geometry comes from the depth map
+- contour mode is selectable between `Isolines` and `Projected Grid`
 - contour color comes from the same line-style system used by the grid
 - contour visibility is controlled from the depth section
 - export bakes the overlay into the output image when enabled
@@ -49,6 +50,7 @@ The earlier draft was directionally correct, but several implementation assumpti
 ### 5.1 User-facing behavior
 
 - A new `Surface Contours` toggle appears inside the existing depth section, below `Intensity`.
+- When contours are enabled, a `Contour Mode` picker selects `Isolines` or `Projected Grid`.
 - The controls appear only when depth effects are enabled and a depth map exists.
 - When enabled, contours draw over the current image on the canvas and on the processed side of compare mode.
 - Contours do not appear on the "before" side of compare mode.
@@ -103,7 +105,10 @@ Add `ContourConfig` to [ios/RefPlane/Models/AppModels.swift](/Users/martingalese
 ```swift
 struct ContourConfig {
     var enabled: Bool = false
+    var mode: ContourMode = .isolines
     var levels: Int = 5
+    var depthScale: Double = 2.0
+    var showOrthogonal: Bool = false
     var lineStyle: LineStyle = .autoContrast
     var customColor: Color = .white
     var opacity: Double = 0.7
@@ -122,11 +127,13 @@ private var contourGeneration: Int = 0
 
 ### 6.2 Generation inputs
 
-Contour geometry depends on only three things:
+Contour geometry depends on:
 
 - the current depth map
 - `depthConfig.backgroundCutoff`
+- `contourConfig.mode`
 - `contourConfig.levels`
+- `contourConfig.depthScale` in `Projected Grid` mode
 
 It does not depend on:
 
@@ -168,9 +175,9 @@ Create [ios/RefPlane/Support/ContourGenerator.swift](/Users/martingalese/Documen
 Responsibilities:
 
 - resample the depth map to a fixed `(gridWidth + 1) x (gridHeight + 1)` scalar field
-- compute evenly spaced thresholds inside `depthRange.lowerBound..<backgroundCutoff`
-- run marching squares for each threshold
-- skip fully background cells
+- in `Isolines` mode, compute evenly spaced thresholds inside `depthRange.lowerBound..<backgroundCutoff` and run marching squares
+- in `Projected Grid` mode, trace regular horizontal/vertical image-space lines and reproject each sampled point through a simple perspective camera using foreground-relative depth as `z`
+- skip or clip background spans where sampled depth is `>= backgroundCutoff`
 - output normalized `GridLineSegment` values in `[0, 1]`
 
 Recommended defaults:

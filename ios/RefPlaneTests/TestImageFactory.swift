@@ -29,4 +29,26 @@ enum TestImageFactory {
 
         return UIImage.fromPixelData(data, width: width, height: height) ?? makeSolid(width: width, height: height, color: .white)
     }
+
+    static func makeHorizontalDepthRamp(width: Int, height: Int) -> UIImage {
+        guard width > 1, height > 0 else {
+            return makeSolid(width: max(width, 1), height: max(height, 1), color: .black)
+        }
+
+        var data: [UInt8] = []
+        data.reserveCapacity(width * height * 4)
+
+        for _ in 0..<height {
+            for x in 0..<width {
+                let value = UInt8((Double(x) / Double(width - 1) * 255).rounded())
+                data.append(value)
+                data.append(value)
+                data.append(value)
+                data.append(255)
+            }
+        }
+
+        return UIImage.fromPixelData(data, width: width, height: height)
+            ?? makeSolid(width: width, height: height, color: .black)
+    }
 }

@@ -21,6 +21,7 @@
 		0A11B22C33D44E55F6677103 /* PaletteSectionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */; };
 		0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */; };
 		0A11B22C33D44E55F6677107 /* AppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677108 /* AppStateTests.swift */; };
+		0A11B22C33D44E55F6677120 /* ContourGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677121 /* ContourGeneratorTests.swift */; };
 		0A11B22C33D44E55F6677109 /* ExportContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667710A /* ExportContractTests.swift */; };
 		0A11B22C33D44E55F667710B /* TestImageFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667710C /* TestImageFactory.swift */; };
 		0A11B22C33D44E55F667710E /* PropertyTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */; };
@@ -105,6 +106,7 @@
 		0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaletteSectionsTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridLineColorResolverTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677108 /* AppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677121 /* ContourGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContourGeneratorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667710A /* ExportContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportContractTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667710C /* TestImageFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestImageFactory.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertyTestSupport.swift; sourceTree = "<group>"; };
@@ -204,6 +206,7 @@
 				0A11B22C33D44E55F6677115 /* AppModelsTests.swift */,
 				0A11B22C33D44E55F6677108 /* AppStateTests.swift */,
 				0A11B22C33D44E55F6677111 /* BandIsolationRendererTests.swift */,
+				0A11B22C33D44E55F6677121 /* ContourGeneratorTests.swift */,
 				0A11B22C33D44E55F667710A /* ExportContractTests.swift */,
 				0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */,
 				0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */,
@@ -416,6 +419,7 @@
 				0A11B22C33D44E55F6677114 /* AppModelsTests.swift in Sources */,
 				0A11B22C33D44E55F6677107 /* AppStateTests.swift in Sources */,
 				0A11B22C33D44E55F6677110 /* BandIsolationRendererTests.swift in Sources */,
+				0A11B22C33D44E55F6677120 /* ContourGeneratorTests.swift in Sources */,
 				0A11B22C33D44E55F6677109 /* ExportContractTests.swift in Sources */,
 				0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */,
 				0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */,

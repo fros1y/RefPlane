@@ -195,9 +195,17 @@ struct DepthConfig {
     var backgroundMode: BackgroundMode = .depthEffects
 }
 
+enum ContourMode: String, CaseIterable {
+    case isolines = "Isolines"
+    case projectedGrid = "Projected Grid"
+}
+
 struct ContourConfig {
     var enabled: Bool        = false
+    var mode: ContourMode    = .isolines
     var levels: Int          = 5          // number of isoline levels (2–64)
+    var depthScale: Double   = 2.0        // projected-grid depth in image-width units
+    var showOrthogonal: Bool = false      // show perpendicular flow lines
     var lineStyle: LineStyle = .autoContrast
     var customColor: Color   = .white
     var opacity: Double      = 0.7

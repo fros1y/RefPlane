@@ -250,9 +250,10 @@ struct LabeledSlider: View {
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.primary)
             }
-            Slider(
+            TouchEventSlider(
+                label: label,
                 value: $value,
-                in: range,
+                range: range,
                 step: step,
                 onEditingChanged: { editing in
                     if editing {
@@ -264,6 +265,134 @@ struct LabeledSlider: View {
                     }
                 }
             )
+        }
+    }
+}
+
+private struct TouchEventSlider: UIViewRepresentable {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let onEditingChanged: ((Bool) -> Void)?
+
+    func makeUIView(context: Context) -> UISlider {
+        let slider = UISlider(frame: .zero)
+        slider.minimumValue = Float(range.lowerBound)
+        slider.maximumValue = Float(range.upperBound)
+        slider.value = Float(snappedValue(value))
+        slider.isContinuous = true
+
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.touchDown(_:)),
+            for: .touchDown
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.touchDragInside(_:)),
+            for: .touchDragInside
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.touchDragOutside(_:)),
+            for: .touchDragOutside
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.touchUpInside(_:)),
+            for: .touchUpInside
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.touchUpOutside(_:)),
+            for: .touchUpOutside
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.touchCancel(_:)),
+            for: .touchCancel
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:)),
+            for: .valueChanged
+        )
+
+        return slider
+    }
+
+    func updateUIView(_ uiView: UISlider, context: Context) {
+        context.coordinator.parent = self
+        uiView.minimumValue = Float(range.lowerBound)
+        uiView.maximumValue = Float(range.upperBound)
+
+        let snapped = Float(snappedValue(value))
+        if !uiView.isTracking, abs(uiView.value - snapped) > 0.000_001 {
+            uiView.setValue(snapped, animated: false)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    private func snappedValue(_ rawValue: Double) -> Double {
+        guard step > 0 else {
+            return min(range.upperBound, max(range.lowerBound, rawValue))
+        }
+
+        let bounded = min(range.upperBound, max(range.lowerBound, rawValue))
+        let steps = ((bounded - range.lowerBound) / step).rounded()
+        let snapped = range.lowerBound + steps * step
+        return min(range.upperBound, max(range.lowerBound, snapped))
+    }
+
+    final class Coordinator: NSObject {
+        var parent: TouchEventSlider
+        private var isEditing = false
+
+        init(parent: TouchEventSlider) {
+            self.parent = parent
+        }
+
+        @objc func touchDown(_ sender: UISlider) {
+            setEditing(true)
+        }
+
+        @objc func touchDragInside(_ sender: UISlider) {}
+
+        @objc func touchDragOutside(_ sender: UISlider) {}
+
+        @objc func touchUpInside(_ sender: UISlider) {
+            setEditing(false)
+        }
+
+        @objc func touchUpOutside(_ sender: UISlider) {
+            setEditing(false)
+        }
+
+        @objc func touchCancel(_ sender: UISlider) {
+            setEditing(false)
+        }
+
+        @objc func valueChanged(_ sender: UISlider) {
+            let snapped = parent.snappedValue(Double(sender.value))
+            if abs(Double(sender.value) - snapped) > 0.000_001 {
+                sender.setValue(Float(snapped), animated: false)
+            }
+            parent.value = snapped
+
+            if !sender.isTracking {
+                setEditing(false)
+            }
+        }
+
+        private func setEditing(_ editing: Bool) {
+            guard editing != isEditing else { return }
+
+            isEditing = editing
+            parent.onEditingChanged?(editing)
         }
     }
 }

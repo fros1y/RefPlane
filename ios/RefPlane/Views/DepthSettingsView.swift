@@ -26,10 +26,7 @@ struct DepthSettingsView: View {
                     value: Binding(
                         get: { state.depthConfig.foregroundCutoff },
                         set: { newValue in
-                            let clamped = min(newValue, state.depthConfig.backgroundCutoff - step)
-                            guard clamped != state.depthConfig.foregroundCutoff else { return }
-                            state.depthConfig.foregroundCutoff = clamped
-                            state.updateDepthThresholdPreview()
+                            state.updateForegroundDepthCutoff(newValue, minimumGap: step)
                         }
                     ),
                     range: range.lowerBound...range.upperBound,
@@ -50,10 +47,7 @@ struct DepthSettingsView: View {
                     value: Binding(
                         get: { state.depthConfig.backgroundCutoff },
                         set: { newValue in
-                            let clamped = max(newValue, state.depthConfig.foregroundCutoff + step)
-                            guard clamped != state.depthConfig.backgroundCutoff else { return }
-                            state.depthConfig.backgroundCutoff = clamped
-                            state.updateDepthThresholdPreview()
+                            state.updateBackgroundDepthCutoff(newValue, minimumGap: step)
                         }
                     ),
                     range: range.lowerBound...range.upperBound,

@@ -198,6 +198,60 @@ func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
     #expect(state.compareAfterImage === state.currentDisplayImage)
 }
 
+// MARK: - Depth threshold preview
+
+@MainActor
+@Test
+func updatingDepthCutoffWhileDraggingShowsThresholdPreview() {
+    let sourceImage = TestImageFactory.makeSolid(width: 8, height: 8, color: .red)
+    let depthMap = TestImageFactory.makeSolid(width: 8, height: 8, color: .gray)
+    let processedImage = TestImageFactory.makeSolid(width: 8, height: 8, color: .blue)
+
+    let state = AppState()
+    state.sourceImage = sourceImage
+    state.depthConfig.enabled = true
+    state.depthMap = depthMap
+    state.depthProcessedImage = processedImage
+    state.depthSliderActive = true
+
+    state.updateBackgroundDepthCutoff(0.8, minimumGap: 0.01)
+
+    #expect(state.isEditingDepthThreshold)
+    #expect(state.depthThresholdPreview != nil)
+    #expect(state.currentDisplayImage === state.depthThresholdPreview)
+}
+
+@MainActor
+@Test
+func updatingDepthCutoffAfterDragEndsDoesNotReenterThresholdPreview() {
+    let sourceImage = TestImageFactory.makeSolid(width: 8, height: 8, color: .red)
+    let depthMap = TestImageFactory.makeSolid(width: 8, height: 8, color: .gray)
+    let processedImage = TestImageFactory.makeSolid(width: 8, height: 8, color: .blue)
+
+    let state = AppState(
+        depthEffectOperation: { _, _, _ in processedImage }
+    )
+    state.sourceImage = sourceImage
+    state.depthConfig.enabled = true
+    state.depthMap = depthMap
+    state.depthProcessedImage = processedImage
+
+    state.depthSliderActive = true
+    state.updateBackgroundDepthCutoff(0.8, minimumGap: 0.01)
+    #expect(state.isEditingDepthThreshold)
+
+    state.depthSliderActive = false
+    state.dismissDepthThresholdPreview()
+    #expect(!state.isEditingDepthThreshold)
+    #expect(state.depthThresholdPreview == nil)
+
+    state.updateBackgroundDepthCutoff(0.81, minimumGap: 0.01)
+
+    #expect(!state.isEditingDepthThreshold)
+    #expect(state.depthThresholdPreview == nil)
+    #expect(state.currentDisplayImage === processedImage)
+}
+
 // MARK: - Kuwahara tests
 
 @MainActor

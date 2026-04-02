@@ -713,11 +713,31 @@ class AppState: ObservableObject {
         contourSegments = []
     }
 
+    func updateForegroundDepthCutoff(_ newValue: Double, minimumGap: Double) {
+        let clamped = min(newValue, depthConfig.backgroundCutoff - minimumGap)
+        guard clamped != depthConfig.foregroundCutoff else {
+            return
+        }
+        depthConfig.foregroundCutoff = clamped
+        refreshDepthThresholdOutput()
+    }
+
+    func updateBackgroundDepthCutoff(_ newValue: Double, minimumGap: Double) {
+        let clamped = max(newValue, depthConfig.foregroundCutoff + minimumGap)
+        guard clamped != depthConfig.backgroundCutoff else {
+            return
+        }
+        depthConfig.backgroundCutoff = clamped
+        refreshDepthThresholdOutput()
+    }
+
     /// Regenerate the depth-threshold preview image showing which pixels
     /// fall into the background zone. Called while the user drags a cutoff slider.
     func updateDepthThresholdPreview() {
         guard let depth = depthMap else {
+            isEditingDepthThreshold = false
             depthThresholdPreview = nil
+            cachedDepthTexture = nil
             return
         }
         // Create the Metal texture once and cache it for the drag session
@@ -751,12 +771,25 @@ class AppState: ObservableObject {
     func dismissDepthThresholdPreview() {
         depthPreviewDismissTask?.cancel()
         depthSliderActive = false
-        guard isEditingDepthThreshold else { return }
+        guard isEditingDepthThreshold else {
+            return
+        }
         isEditingDepthThreshold = false
         depthThresholdPreview = nil
         cachedDepthTexture = nil
         applyDepthEffects()
         recomputeContours()
+    }
+
+    private func refreshDepthThresholdOutput() {
+        if depthSliderActive {
+            updateDepthThresholdPreview()
+        } else if isEditingDepthThreshold || depthThresholdPreview != nil {
+            dismissDepthThresholdPreview()
+        } else {
+            applyDepthEffects()
+            recomputeContours()
+        }
     }
 
     // MARK: - Contour line generation
@@ -774,12 +807,24 @@ class AppState: ObservableObject {
         let range = depthRange
         contourTask = Task {
             let segs = await Task.detached(priority: .userInitiated) {
-                ContourGenerator.generateSegments(
-                    depthMap: depth,
-                    levels: cfg.levels,
-                    depthRange: range,
-                    backgroundCutoff: depthCfg.backgroundCutoff
-                )
+                switch cfg.mode {
+                case .isolines:
+                    ContourGenerator.generateSegments(
+                        depthMap: depth,
+                        levels: cfg.levels,
+                        depthRange: range,
+                        backgroundCutoff: depthCfg.backgroundCutoff,
+                        includeOrthogonal: cfg.showOrthogonal
+                    )
+                case .projectedGrid:
+                    ContourGenerator.generateProjectedGridSegments(
+                        depthMap: depth,
+                        levels: cfg.levels,
+                        depthRange: range,
+                        backgroundCutoff: depthCfg.backgroundCutoff,
+                        depthScale: cfg.depthScale
+                    )
+                }
             }.value
             guard !Task.isCancelled else { return }
             await MainActor.run {
@@ -824,4 +869,5 @@ class AppState: ObservableObject {
             }
         }
     }
+
 }
