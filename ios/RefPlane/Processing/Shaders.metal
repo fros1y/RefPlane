@@ -585,3 +585,223 @@ kernel void kuwahara_filter(
 
     dst.write(float4(bestMean, 1.0f), gid);
 }
+
+
+// ──────────────────────────────────────────────────────────────
+// MARK: - Depth-based painterly effects
+// ──────────────────────────────────────────────────────────────
+
+struct DepthEffectParams {
+    uint width;
+    uint height;
+    float foregroundCutoff;
+    float backgroundCutoff;
+    float intensity;
+    uint backgroundMode; // 0=effects, 1=blur, 2=remove
+};
+
+/// Main depth painterly effects kernel.
+/// Applies atmospheric perspective: foreground gets boosted contrast/saturation/warmth,
+/// background gets reduced contrast/saturation with cool shift.
+/// Operates in Oklab perceptual space for natural-looking results.
+kernel void depth_painterly_effects(
+    texture2d<float, access::sample>  src       [[texture(0)]],
+    texture2d<float, access::sample>  depthTex  [[texture(1)]],
+    texture2d<float, access::write>   dst       [[texture(2)]],
+    constant DepthEffectParams&       p         [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= p.width || gid.y >= p.height) return;
+
+    constexpr sampler s(coord::pixel, filter::nearest, address::clamp_to_edge);
+
+    float4 srcColor = src.sample(s, float2(gid));
+    float depth = depthTex.sample(s, float2(gid)).r;  // 0=near, 1=far
+
+    float fg = p.foregroundCutoff;
+    float bg = p.backgroundCutoff;
+    float intensity = p.intensity;
+
+    // Convert to linear RGB then Oklab
+    float3 srgb = srcColor.rgb;
+    float3 lin = float3(linearize_srgb(srgb.x),
+                        linearize_srgb(srgb.y),
+                        linearize_srgb(srgb.z));
+    float3 lab = linear_rgb_to_oklab(lin);
+
+    float L = lab.x;  // luminance 0-1
+    float a = lab.y;  // green-red
+    float b = lab.z;  // blue-yellow
+
+    // Zone classification with smooth transitions
+    // fgBlend: 1 at depth=0, 0 at depth=fg
+    float fgBlend = 1.0f - smoothstep(0.0f, fg, depth);
+    // bgBlend: 0 at depth=bg, 1 at depth=1
+    float bgBlend = smoothstep(bg, 1.0f, depth);
+
+    // Foreground effects: boost contrast, increase chroma, warm shift
+    if (fgBlend > 0.0f) {
+        float strength = fgBlend * intensity;
+
+        // Boost contrast: expand L around 0.5
+        float contrastL = 0.5f + (L - 0.5f) * (1.0f + 0.4f * strength);
+        L = mix(L, contrastL, fgBlend);
+
+        // Increase chroma (scale a, b away from 0)
+        float chromaScale = 1.0f + 0.3f * strength;
+        a *= mix(1.0f, chromaScale, fgBlend);
+        b *= mix(1.0f, chromaScale, fgBlend);
+
+        // Warm shift: push b positive (yellow), slight a positive (red)
+        b += 0.015f * strength;
+        a += 0.005f * strength;
+    }
+
+    // Background effects: reduce contrast, decrease chroma, cool shift
+    if (bgBlend > 0.0f) {
+        float strength = bgBlend * intensity;
+
+        // Reduce contrast: compress L toward 0.5
+        float compressL = 0.5f + (L - 0.5f) * (1.0f - 0.5f * strength);
+        L = mix(L, compressL, bgBlend);
+
+        // Decrease chroma
+        float chromaScale = 1.0f - 0.5f * strength;
+        a *= mix(1.0f, chromaScale, bgBlend);
+        b *= mix(1.0f, chromaScale, bgBlend);
+
+        // Cool shift: push b negative (blue), slight a positive (violet/atmospheric)
+        b -= 0.02f * strength;
+        a += 0.003f * strength;
+
+        // Desaturate further into background
+        float desat = 0.3f * strength;
+        a *= (1.0f - desat);
+        b *= (1.0f - desat);
+    }
+
+    // Clamp L
+    L = clamp(L, 0.0f, 1.0f);
+
+    float3 resultLab = float3(L, a, b);
+    float3 resultLin = oklab_to_linear_rgb(resultLab);
+    float3 resultSRGB = float3(delinearize_srgb(clamp(resultLin.x, 0.0f, 1.0f)),
+                               delinearize_srgb(clamp(resultLin.y, 0.0f, 1.0f)),
+                               delinearize_srgb(clamp(resultLin.z, 0.0f, 1.0f)));
+
+    dst.write(float4(resultSRGB, srcColor.a), gid);
+}
+
+/// Depth-weighted Gaussian blur (horizontal pass).
+/// Blur radius scales with normalized depth beyond backgroundCutoff.
+/// Only affects pixels in the background zone.
+kernel void depth_gaussian_blur_h(
+    texture2d<float, access::sample>  src       [[texture(0)]],
+    texture2d<float, access::sample>  depthTex  [[texture(1)]],
+    texture2d<float, access::write>   dst       [[texture(2)]],
+    constant DepthEffectParams&       p         [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= p.width || gid.y >= p.height) return;
+
+    constexpr sampler s(coord::pixel, filter::nearest, address::clamp_to_edge);
+
+    float depth = depthTex.sample(s, float2(gid)).r;
+    float bg = p.backgroundCutoff;
+
+    if (depth <= bg) {
+        dst.write(src.sample(s, float2(gid)), gid);
+        return;
+    }
+
+    // Scale blur radius based on how far into background
+    float t = clamp((depth - bg) / (1.0f - bg + 1e-6f), 0.0f, 1.0f);
+    float maxRadius = 12.0f * p.intensity;
+    int radius = int(t * maxRadius);
+    if (radius < 1) {
+        dst.write(src.sample(s, float2(gid)), gid);
+        return;
+    }
+
+    float sigma = float(radius) * 0.5f;
+    float invSigma2 = 1.0f / (2.0f * sigma * sigma);
+
+    float4 sum = float4(0.0f);
+    float weightSum = 0.0f;
+
+    for (int dx = -radius; dx <= radius; dx++) {
+        float w = exp(-float(dx * dx) * invSigma2);
+        sum += w * src.sample(s, float2(int2(gid) + int2(dx, 0)));
+        weightSum += w;
+    }
+
+    dst.write(sum / weightSum, gid);
+}
+
+/// Depth-weighted Gaussian blur (vertical pass).
+kernel void depth_gaussian_blur_v(
+    texture2d<float, access::sample>  src       [[texture(0)]],
+    texture2d<float, access::sample>  depthTex  [[texture(1)]],
+    texture2d<float, access::write>   dst       [[texture(2)]],
+    constant DepthEffectParams&       p         [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= p.width || gid.y >= p.height) return;
+
+    constexpr sampler s(coord::pixel, filter::nearest, address::clamp_to_edge);
+
+    float depth = depthTex.sample(s, float2(gid)).r;
+    float bg = p.backgroundCutoff;
+
+    if (depth <= bg) {
+        dst.write(src.sample(s, float2(gid)), gid);
+        return;
+    }
+
+    float t = clamp((depth - bg) / (1.0f - bg + 1e-6f), 0.0f, 1.0f);
+    float maxRadius = 12.0f * p.intensity;
+    int radius = int(t * maxRadius);
+    if (radius < 1) {
+        dst.write(src.sample(s, float2(gid)), gid);
+        return;
+    }
+
+    float sigma = float(radius) * 0.5f;
+    float invSigma2 = 1.0f / (2.0f * sigma * sigma);
+
+    float4 sum = float4(0.0f);
+    float weightSum = 0.0f;
+
+    for (int dy = -radius; dy <= radius; dy++) {
+        float w = exp(-float(dy * dy) * invSigma2);
+        sum += w * src.sample(s, float2(int2(gid) + int2(0, dy)));
+        weightSum += w;
+    }
+
+    dst.write(sum / weightSum, gid);
+}
+
+/// Remove background pixels (replace with white) based on depth.
+/// Uses smoothstep at the boundary for soft edges.
+kernel void depth_remove_background(
+    texture2d<float, access::sample>  src       [[texture(0)]],
+    texture2d<float, access::sample>  depthTex  [[texture(1)]],
+    texture2d<float, access::write>   dst       [[texture(2)]],
+    constant DepthEffectParams&       p         [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= p.width || gid.y >= p.height) return;
+
+    constexpr sampler s(coord::pixel, filter::nearest, address::clamp_to_edge);
+
+    float4 color = src.sample(s, float2(gid));
+    float depth = depthTex.sample(s, float2(gid)).r;
+
+    // Smooth transition zone around backgroundCutoff
+    float edgeWidth = 0.03f;
+    float bg = p.backgroundCutoff;
+    float blend = smoothstep(bg - edgeWidth, bg + edgeWidth, depth) * p.intensity;
+
+    float4 white = float4(1.0f, 1.0f, 1.0f, 1.0f);
+    dst.write(mix(color, white, blend), gid);
+}

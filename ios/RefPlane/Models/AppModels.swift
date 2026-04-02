@@ -177,3 +177,20 @@ enum AbstractionMethod: String, CaseIterable, Identifiable {
         return "APISR_GRL_x4"
     }
 }
+
+// MARK: - Depth-based painterly effects
+
+enum BackgroundMode: String, CaseIterable, Identifiable {
+    case depthEffects = "Depth Effects"
+    case blur = "Blur"
+    case remove = "Remove"
+    var id: String { rawValue }
+}
+
+struct DepthConfig {
+    var enabled: Bool = false
+    var foregroundCutoff: Double = 0.33   // 0 = nearest, 1 = farthest
+    var backgroundCutoff: Double = 0.66
+    var effectIntensity: Double = 0.5     // global intensity multiplier
+    var backgroundMode: BackgroundMode = .depthEffects
+}

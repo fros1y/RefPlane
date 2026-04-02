@@ -21,6 +21,9 @@ class AppState: ObservableObject {
     /// Apply the Kuwahara post-filter. Returns the filtered image, or nil on failure.
     typealias KuwaharaOperation = @Sendable (UIImage, Int) async -> UIImage?
 
+    typealias DepthMapOperation = @Sendable (UIImage) async throws -> UIImage
+    typealias DepthEffectOperation = @Sendable (UIImage, UIImage, DepthConfig) -> UIImage?
+
     // Source images
     @Published var fullResolutionOriginalImage: UIImage? = nil
     @Published var originalImage: UIImage?  = nil
@@ -54,6 +57,11 @@ class AppState: ObservableObject {
     @Published var gridConfig: GridConfig   = GridConfig()
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
+    @Published var depthConfig: DepthConfig = DepthConfig()
+
+    // Depth results
+    @Published var depthMap: UIImage? = nil
+    @Published var depthProcessedImage: UIImage? = nil
     /// Abstraction strength 0–1. `0` disables abstraction; positive values map
     /// to the existing downscale-based abstraction range.
     @Published var abstractionStrength: Double  = 0.5
@@ -81,6 +89,12 @@ class AppState: ObservableObject {
 
     private var loadingTask: Task<Void, Never>? = nil
     private var processedPixelBands: [Int] = []
+
+    private let depthMapOperation: DepthMapOperation
+    private let depthEffectOperation: DepthEffectOperation
+    private var depthTask: Task<Void, Never>? = nil
+    private var depthEffectTask: Task<Void, Never>? = nil
+    private var depthGeneration: Int = 0
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
@@ -110,7 +124,9 @@ class AppState: ObservableObject {
     init(
         processOperation: ProcessOperation? = nil,
         abstractionOperation: AbstractionOperation? = nil,
-        kuwaharaOperation: KuwaharaOperation? = nil
+        kuwaharaOperation: KuwaharaOperation? = nil,
+        depthMapOperation: DepthMapOperation? = nil,
+        depthEffectOperation: DepthEffectOperation? = nil
     ) {
         let processor = ImageProcessor()
         self.processOperation = processOperation ?? { image, mode, valueConfig, colorConfig, onProgress in
@@ -168,6 +184,12 @@ class AppState: ObservableObject {
             return UIGraphicsImageRenderer(size: CGSize(width: origW, height: origH), format: fmt)
                 .image { _ in filtered.draw(in: CGRect(x: 0, y: 0, width: origW, height: origH)) }
         }
+        self.depthMapOperation = depthMapOperation ?? { image in
+            try await DepthEstimator.estimateDepth(from: image)
+        }
+        self.depthEffectOperation = depthEffectOperation ?? { image, depthMap, config in
+            DepthProcessor.applyEffects(to: image, depthMap: depthMap, config: config)
+        }
 
         NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
@@ -175,13 +197,20 @@ class AppState: ObservableObject {
             queue: .main
         ) { _ in
             ImageAbstractor.clearModelCache()
+            DepthEstimator.clearModelCache()
         }
     }
 
     var displayBaseImage: UIImage? { kuwaharaFilteredImage ?? abstractedImage ?? sourceImage }
 
     var currentDisplayImage: UIImage? {
-        activeMode == .original ? displayBaseImage : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
+        let modeResult = activeMode == .original
+            ? displayBaseImage
+            : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
+        if depthConfig.enabled, let depthResult = depthProcessedImage {
+            return depthResult
+        }
+        return modeResult
     }
 
     var compareBeforeImage: UIImage? {
@@ -198,6 +227,8 @@ class AppState: ObservableObject {
         processingTask?.cancel()
         abstractionTask?.cancel()
         kuwaharaTask?.cancel()
+        depthTask?.cancel()
+        depthEffectTask?.cancel()
 
         // Show the picked image immediately, then swap in the scaled version
         // once preprocessing finishes so the canvas never blanks out.
@@ -208,6 +239,8 @@ class AppState: ObservableObject {
         kuwaharaFilteredImage     = nil
         processedImage            = nil
         isolatedProcessedImage    = nil
+        depthMap                  = nil
+        depthProcessedImage       = nil
         processedPixelBands       = []
         paletteColors             = []
         paletteBands              = []
@@ -258,6 +291,9 @@ class AppState: ObservableObject {
             processedPixelBands = []
             isProcessing = false
             processingProgress = 0
+            if depthConfig.enabled && depthMap != nil {
+                applyDepthEffects()
+            }
             return
         }
 
@@ -294,6 +330,9 @@ class AppState: ObservableObject {
                     self.clippedRecipeIndices = result.clippedRecipeIndices
                     self.processingProgress  = 1
                     self.refreshIsolatedProcessedImage()
+                    if self.depthConfig.enabled && self.depthMap != nil {
+                        self.applyDepthEffects()
+                    }
                 }
             } catch is CancellationError {
                 // Mode switched or new image loaded — new task will update state
@@ -441,6 +480,9 @@ class AppState: ObservableObject {
                     self.isSimplifying   = false
                     self.isProcessing    = false
                     self.processingLabel = "Processing…"
+                    if self.depthConfig.enabled {
+                        self.computeDepthMap()
+                    }
                     self.triggerProcessing()
                 }
             } catch is CancellationError {
@@ -507,6 +549,9 @@ class AppState: ObservableObject {
                 self.isProcessing = false
                 self.processingIsIndeterminate = false
                 self.processingLabel = "Processing…"
+                if self.depthConfig.enabled {
+                    self.computeDepthMap()
+                }
                 self.triggerProcessing()
             }
         }
@@ -530,5 +575,94 @@ class AppState: ObservableObject {
             pixelBands: processedPixelBands,
             selectedBand: isolatedBand
         )
+    }
+
+    // MARK: - Depth processing
+
+    func computeDepthMap() {
+        depthTask?.cancel()
+
+        guard depthConfig.enabled, let source = displayBaseImage else {
+            depthMap = nil
+            depthProcessedImage = nil
+            return
+        }
+
+        depthGeneration += 1
+        let generation = depthGeneration
+
+        isProcessing = true
+        processingLabel = "Estimating depth…"
+        processingIsIndeterminate = true
+
+        depthTask = Task {
+            do {
+                let result = try await depthMapOperation(source)
+                try Task.checkCancellation()
+
+                await MainActor.run {
+                    guard self.depthGeneration == generation else { return }
+                    self.depthMap = result
+                    self.processingIsIndeterminate = false
+                    self.processingLabel = "Processing…"
+                    self.isProcessing = false
+                    self.applyDepthEffects()
+                }
+            } catch is CancellationError {
+                // superseded
+            } catch {
+                await MainActor.run {
+                    guard self.depthGeneration == generation else { return }
+                    self.isProcessing = false
+                    self.processingIsIndeterminate = false
+                    self.processingLabel = "Processing…"
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func applyDepthEffects() {
+        depthEffectTask?.cancel()
+
+        guard depthConfig.enabled, let depth = depthMap else {
+            depthProcessedImage = nil
+            return
+        }
+
+        // Determine source: mode-processed output, or displayBaseImage in original mode
+        let source: UIImage?
+        if activeMode == .original {
+            source = displayBaseImage
+        } else {
+            source = isolatedProcessedImage ?? processedImage ?? displayBaseImage
+        }
+        guard let sourceImage = source else {
+            depthProcessedImage = nil
+            return
+        }
+
+        let config = depthConfig
+
+        processingLabel = "Applying depth…"
+        processingIsIndeterminate = true
+
+        depthEffectTask = Task {
+            let result = depthEffectOperation(sourceImage, depth, config)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self.depthProcessedImage = result
+                self.processingIsIndeterminate = false
+                self.processingLabel = "Processing…"
+            }
+        }
+    }
+
+    func resetDepthProcessing() {
+        depthTask?.cancel()
+        depthEffectTask?.cancel()
+        depthGeneration += 1
+        depthMap = nil
+        depthProcessedImage = nil
     }
 }

@@ -18,7 +18,7 @@ final class MetalContext {
         if ctx == nil {
             print("[MetalContext] ⚠️ MetalContext init failed (library or pipeline error)")
         } else {
-            print("[MetalContext] ✅ All 11 compute pipelines compiled successfully")
+            print("[MetalContext] ✅ All 15 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -39,6 +39,10 @@ final class MetalContext {
     let valueRemapPipeline: MTLComputePipelineState
     let kuwaharaStructureTensorPipeline: MTLComputePipelineState
     let kuwaharaFilterPipeline: MTLComputePipelineState
+    let depthEffectsPipeline: MTLComputePipelineState
+    let depthGaussianBlurHPipeline: MTLComputePipelineState
+    let depthGaussianBlurVPipeline: MTLComputePipelineState
+    let depthRemoveBackgroundPipeline: MTLComputePipelineState
 
     private init?(device: MTLDevice) {
         self.device = device
@@ -59,6 +63,10 @@ final class MetalContext {
             valueRemapPipeline             = try Self.makePipeline(device: device, library: lib, name: "value_remap")
             kuwaharaStructureTensorPipeline = try Self.makePipeline(device: device, library: lib, name: "kuwahara_structure_tensor")
             kuwaharaFilterPipeline          = try Self.makePipeline(device: device, library: lib, name: "kuwahara_filter")
+            depthEffectsPipeline            = try Self.makePipeline(device: device, library: lib, name: "depth_painterly_effects")
+            depthGaussianBlurHPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_h")
+            depthGaussianBlurVPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_v")
+            depthRemoveBackgroundPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_remove_background")
         } catch {
             print("[MetalContext] Pipeline creation failed: \(error)")
             return nil
@@ -472,6 +480,193 @@ final class MetalContext {
         return uiImageFromTexture(dstTex, width: width, height: height)
     }
 
+    // MARK: - Depth-based painterly effects (texture-based)
+
+    /// Apply depth-based atmospheric perspective effects to a source image.
+    /// - Parameters:
+    ///   - source: The mode-processed (or original) image.
+    ///   - depthMap: Single-channel grayscale depth map (0=near, 1=far), same dimensions.
+    ///   - config: Depth effect configuration (cutoffs, intensity, mode).
+    /// - Returns: Composited UIImage with depth effects applied, or nil on failure.
+    func applyDepthEffects(_ source: CGImage, depthMap: CGImage, config: DepthConfig) -> UIImage? {
+        let width  = source.width
+        let height = source.height
+        guard width > 0, height > 0 else { return nil }
+
+        guard let srcTex = makeTextureFromCGImage(source),
+              let depthTex = makeGrayscaleTexture(depthMap, width: width, height: height) else { return nil }
+
+        // BGRA unorm descriptor for intermediate + output
+        let rgbaDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm,
+            width: width, height: height,
+            mipmapped: false
+        )
+        rgbaDesc.usage = [.shaderRead, .shaderWrite]
+        rgbaDesc.storageMode = .shared
+
+        var params = DepthEffectParamsSwift(
+            width: UInt32(width),
+            height: UInt32(height),
+            foregroundCutoff: Float(config.foregroundCutoff),
+            backgroundCutoff: Float(config.backgroundCutoff),
+            intensity: Float(config.effectIntensity),
+            backgroundMode: UInt32(backgroundModeRaw(config.backgroundMode))
+        )
+        guard let paramBuf = device.makeBuffer(
+            bytes: &params,
+            length: MemoryLayout<DepthEffectParamsSwift>.stride,
+            options: .storageModeShared
+        ) else { return nil }
+
+        let tgs = MTLSize(width: 8, height: 8, depth: 1)
+        let grd = MTLSize(
+            width:  (width  + 7) / 8,
+            height: (height + 7) / 8,
+            depth:  1
+        )
+
+        // Choose processing path based on background mode
+        switch config.backgroundMode {
+        case .blur:
+            // Step 1: Horizontal blur pass
+            guard let tmpTex = device.makeTexture(descriptor: rgbaDesc),
+                  let dstTex = device.makeTexture(descriptor: rgbaDesc) else { return nil }
+
+            guard let cmdBuf = commandQueue.makeCommandBuffer() else { return nil }
+
+            if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                encoder.setComputePipelineState(depthGaussianBlurHPipeline)
+                encoder.setTexture(srcTex,   index: 0)
+                encoder.setTexture(depthTex, index: 1)
+                encoder.setTexture(tmpTex,   index: 2)
+                encoder.setBuffer(paramBuf, offset: 0, index: 0)
+                encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+                encoder.endEncoding()
+            }
+
+            // Step 2: Vertical blur pass
+            guard let blurredTex = device.makeTexture(descriptor: rgbaDesc) else { return nil }
+
+            if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                encoder.setComputePipelineState(depthGaussianBlurVPipeline)
+                encoder.setTexture(tmpTex,   index: 0)
+                encoder.setTexture(depthTex, index: 1)
+                encoder.setTexture(blurredTex, index: 2)
+                encoder.setBuffer(paramBuf, offset: 0, index: 0)
+                encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+                encoder.endEncoding()
+            }
+
+            // Step 3: Apply painterly effects on blurred result
+            if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                encoder.setComputePipelineState(depthEffectsPipeline)
+                encoder.setTexture(blurredTex, index: 0)
+                encoder.setTexture(depthTex,   index: 1)
+                encoder.setTexture(dstTex,     index: 2)
+                encoder.setBuffer(paramBuf, offset: 0, index: 0)
+                encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+                encoder.endEncoding()
+            }
+
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+            return uiImageFromTexture(dstTex, width: width, height: height)
+
+        case .remove:
+            // Step 1: Remove background (white fill)
+            guard let removedTex = device.makeTexture(descriptor: rgbaDesc),
+                  let dstTex = device.makeTexture(descriptor: rgbaDesc) else { return nil }
+
+            guard let cmdBuf = commandQueue.makeCommandBuffer() else { return nil }
+
+            if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                encoder.setComputePipelineState(depthRemoveBackgroundPipeline)
+                encoder.setTexture(srcTex,   index: 0)
+                encoder.setTexture(depthTex, index: 1)
+                encoder.setTexture(removedTex, index: 2)
+                encoder.setBuffer(paramBuf, offset: 0, index: 0)
+                encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+                encoder.endEncoding()
+            }
+
+            // Step 2: Apply painterly effects on remaining foreground
+            if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                encoder.setComputePipelineState(depthEffectsPipeline)
+                encoder.setTexture(removedTex, index: 0)
+                encoder.setTexture(depthTex,   index: 1)
+                encoder.setTexture(dstTex,     index: 2)
+                encoder.setBuffer(paramBuf, offset: 0, index: 0)
+                encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+                encoder.endEncoding()
+            }
+
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+            return uiImageFromTexture(dstTex, width: width, height: height)
+
+        case .depthEffects:
+            // Single pass: painterly effects only
+            guard let dstTex = device.makeTexture(descriptor: rgbaDesc) else { return nil }
+            guard let cmdBuf = commandQueue.makeCommandBuffer() else { return nil }
+
+            if let encoder = cmdBuf.makeComputeCommandEncoder() {
+                encoder.setComputePipelineState(depthEffectsPipeline)
+                encoder.setTexture(srcTex,   index: 0)
+                encoder.setTexture(depthTex, index: 1)
+                encoder.setTexture(dstTex,   index: 2)
+                encoder.setBuffer(paramBuf, offset: 0, index: 0)
+                encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
+                encoder.endEncoding()
+            }
+
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+            return uiImageFromTexture(dstTex, width: width, height: height)
+        }
+    }
+
+    private func backgroundModeRaw(_ mode: BackgroundMode) -> Int {
+        switch mode {
+        case .depthEffects: return 0
+        case .blur:         return 1
+        case .remove:       return 2
+        }
+    }
+
+    /// Create a single-channel (R8Unorm) texture from a grayscale CGImage,
+    /// resizing if necessary to match the target dimensions.
+    private func makeGrayscaleTexture(_ cgImage: CGImage, width: Int, height: Int) -> MTLTexture? {
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r8Unorm,
+            width: width, height: height,
+            mipmapped: false
+        )
+        desc.usage = [.shaderRead]
+        desc.storageMode = .shared
+
+        guard let texture = device.makeTexture(descriptor: desc) else { return nil }
+
+        // Draw into single-channel buffer
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        texture.replace(
+            region: MTLRegionMake2D(0, 0, width, height),
+            mipmapLevel: 0,
+            withBytes: pixels,
+            bytesPerRow: width
+        )
+        return texture
+    }
+
     // MARK: - Texture helpers
 
     private func makeTextureFromCGImage(_ cgImage: CGImage) -> MTLTexture? {
@@ -591,6 +786,15 @@ private struct KuwaharaParamsSwift {
     var width:  UInt32
     var height: UInt32
     var radius: Int32
+}
+
+private struct DepthEffectParamsSwift {
+    var width: UInt32
+    var height: UInt32
+    var foregroundCutoff: Float
+    var backgroundCutoff: Float
+    var intensity: Float
+    var backgroundMode: UInt32
 }
 
 // MARK: - Errors

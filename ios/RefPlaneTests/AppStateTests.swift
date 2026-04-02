@@ -312,12 +312,6 @@ func abstractionAppliesKuwaharaPostFilter() async throws {
     let abstractor = AbstractionOperationProbe()
     let kuwaharaProbe = KuwaharaOperationProbe(result: filteredImage)
 
-// MARK: - isSimplifying
-
-@MainActor
-@Test
-func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
-    let abstractor = AbstractionOperationProbe()
     let state = AppState(
         processOperation: { image, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
@@ -331,10 +325,16 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     )
 
     let source = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.sourceImage      = source
-    state.kuwaharaStrength = 0.5
+    state.sourceImage          = source
+    state.abstractionStrength  = 0.5
+    state.kuwaharaStrength     = 0.5
 
     state.applyAbstraction()
+    // Yield to let the Task start and reach the continuation
+    for _ in 0..<50 {
+        await Task.yield()
+        if await abstractor.hasContinuation { break }
+    }
     await abstractor.resume(with: abstractedImage)
     for _ in 0..<50 where state.isProcessing { await Task.yield() }
 
@@ -343,6 +343,19 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     #expect(state.abstractedImage === abstractedImage)
     #expect(state.kuwaharaFilteredImage === filteredImage)
     #expect(state.displayBaseImage === filteredImage)
+}
+
+// MARK: - isSimplifying
+
+@MainActor
+@Test
+func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
+    let abstractor = AbstractionOperationProbe()
+    let state = AppState(
+        processOperation: { image, _, _, _, _ in
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
+        },
+        abstractionOperation: { image, downscale, method, onProgress in
             try await abstractor.abstract(
                 image: image,
                 downscale: downscale,
@@ -352,7 +365,8 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
         }
     )
 
-    state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
+    state.sourceImage         = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
+    state.abstractionStrength  = 0.5
 
     state.applyAbstraction()
 
@@ -360,6 +374,11 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     #expect(state.isSimplifying == true)
 
     let result = TestImageFactory.makeSolid(width: 20, height: 20, color: .blue)
+    // Yield to let the Task start and reach the continuation
+    for _ in 0..<50 {
+        await Task.yield()
+        if await abstractor.hasContinuation { break }
+    }
     await abstractor.resume(with: result)
     // Allow the MainActor continuation to run
     for _ in 0..<50 where state.isSimplifying { await Task.yield() }
@@ -371,7 +390,6 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
 @MainActor
 @Test
 func resetAbstractionClearsKuwaharaFilteredImage() {
-func isSimplifyingIsFalseAfterResetAbstraction() {
     let state = AppState(
         processOperation: { image, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
@@ -390,6 +408,17 @@ func isSimplifyingIsFalseAfterResetAbstraction() {
 
     #expect(state.abstractedImage == nil)
     #expect(state.kuwaharaFilteredImage == nil)
+}
+
+@MainActor
+@Test
+func isSimplifyingIsFalseAfterResetAbstraction() {
+    let state = AppState(
+        processOperation: { image, _, _, _, _ in
+            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
+        }
+    )
+
     state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
     state.abstractionStrength = 0.5
     state.applyAbstraction()
@@ -404,6 +433,8 @@ func isSimplifyingIsFalseAfterResetAbstraction() {
 
 private actor AbstractionOperationProbe {
     private var continuation: CheckedContinuation<UIImage, Error>?
+
+    var hasContinuation: Bool { continuation != nil }
 
     func abstract(
         image: UIImage,

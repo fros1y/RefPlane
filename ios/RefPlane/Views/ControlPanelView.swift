@@ -110,6 +110,10 @@ struct ControlPanelView: View {
                 )
             }
 
+            Section("Depth") {
+                DepthSettingsView()
+            }
+
             Section("Mode") {
                 ModeBarView()
             }
