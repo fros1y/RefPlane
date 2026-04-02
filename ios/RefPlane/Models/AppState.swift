@@ -62,6 +62,13 @@ class AppState: ObservableObject {
     // Depth results
     @Published var depthMap: UIImage? = nil
     @Published var depthProcessedImage: UIImage? = nil
+    /// Actual min/max depth values found in the current depth map (0–1 scale).
+    @Published var depthRange: ClosedRange<Double> = 0...1
+    /// When true, the canvas shows a depth-threshold preview instead of the
+    /// processed image. Set while the user drags a depth cutoff slider.
+    @Published var isEditingDepthThreshold: Bool = false
+    /// Cached depth-threshold preview image, regenerated as cutoffs change.
+    @Published var depthThresholdPreview: UIImage? = nil
     /// Abstraction strength 0–1. `0` disables abstraction; positive values map
     /// to the existing downscale-based abstraction range.
     @Published var abstractionStrength: Double  = 0.5
@@ -204,6 +211,10 @@ class AppState: ObservableObject {
     var displayBaseImage: UIImage? { kuwaharaFilteredImage ?? abstractedImage ?? sourceImage }
 
     var currentDisplayImage: UIImage? {
+        // While adjusting depth thresholds, show the threshold preview
+        if isEditingDepthThreshold, let preview = depthThresholdPreview {
+            return preview
+        }
         let modeResult = activeMode == .original
             ? displayBaseImage
             : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
@@ -241,6 +252,8 @@ class AppState: ObservableObject {
         isolatedProcessedImage    = nil
         depthMap                  = nil
         depthProcessedImage       = nil
+        depthThresholdPreview     = nil
+        depthRange                = 0...1
         processedPixelBands       = []
         paletteColors             = []
         paletteBands              = []
@@ -600,9 +613,16 @@ class AppState: ObservableObject {
                 let result = try await depthMapOperation(source)
                 try Task.checkCancellation()
 
+                let range = DepthEstimator.depthRange(from: result)
+
                 await MainActor.run {
                     guard self.depthGeneration == generation else { return }
                     self.depthMap = result
+                    self.depthRange = range
+                    // Reset cutoffs to span the actual depth range
+                    let span = range.upperBound - range.lowerBound
+                    self.depthConfig.foregroundCutoff = range.lowerBound + span / 3.0
+                    self.depthConfig.backgroundCutoff = range.lowerBound + span * 2.0 / 3.0
                     self.processingIsIndeterminate = false
                     self.processingLabel = "Processing…"
                     self.isProcessing = false
@@ -664,5 +684,23 @@ class AppState: ObservableObject {
         depthGeneration += 1
         depthMap = nil
         depthProcessedImage = nil
+        depthThresholdPreview = nil
+        depthRange = 0...1
+    }
+
+    /// Regenerate the depth-threshold preview image showing which pixels
+    /// fall into the background zone. Called while the user drags a cutoff slider.
+    func updateDepthThresholdPreview() {
+        guard let depth = depthMap else {
+            depthThresholdPreview = nil
+            return
+        }
+        let fg = depthConfig.foregroundCutoff
+        let bg = depthConfig.backgroundCutoff
+        depthThresholdPreview = DepthProcessor.thresholdPreview(
+            depthMap: depth,
+            foregroundCutoff: fg,
+            backgroundCutoff: bg
+        )
     }
 }

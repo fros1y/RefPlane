@@ -257,10 +257,10 @@ struct LabeledSlider: View {
                 onEditingChanged: { editing in
                     if editing {
                         valueAtDragStart = value
-                    } else {
-                        let changed = valueAtDragStart.map { $0 != value } ?? true
+                    }
+                    onEditingChanged?(editing)
+                    if !editing {
                         valueAtDragStart = nil
-                        if changed { onEditingChanged?(false) }
                     }
                 }
             )

@@ -3,8 +3,6 @@ import SwiftUI
 struct DepthSettingsView: View {
     @EnvironmentObject private var state: AppState
 
-    @State private var intensityAtDragStart: Double? = nil
-
     var body: some View {
         Group {
             Toggle("Depth Effects", isOn: Binding(
@@ -20,37 +18,67 @@ struct DepthSettingsView: View {
             ))
 
             if state.depthConfig.enabled {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Depth Zones")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.primary)
+                let range = state.depthRange
+                let step = max(0.01, (range.upperBound - range.lowerBound) / 100.0)
 
-                    ThresholdSliderView(
-                        thresholds: Binding(
-                            get: { [state.depthConfig.foregroundCutoff, state.depthConfig.backgroundCutoff] },
-                            set: { newThresholds in
-                                guard newThresholds.count >= 2 else { return }
-                                state.depthConfig.foregroundCutoff = newThresholds[0]
-                                state.depthConfig.backgroundCutoff = newThresholds[1]
+                LabeledSlider(
+                    label: "Foreground",
+                    value: Binding(
+                        get: { state.depthConfig.foregroundCutoff },
+                        set: { newValue in
+                            let clamped = min(newValue, state.depthConfig.backgroundCutoff - step)
+                            guard clamped != state.depthConfig.foregroundCutoff else { return }
+                            state.depthConfig.foregroundCutoff = clamped
+                            if state.isEditingDepthThreshold {
+                                state.updateDepthThresholdPreview()
                             }
-                        ),
-                        levels: 3,
-                        colorForLevel: { level, _ in
-                            switch level {
-                            case 0:  return Color.orange.opacity(0.8)   // foreground (warm)
-                            case 1:  return Color.gray.opacity(0.5)     // midground
-                            default: return Color.blue.opacity(0.6)     // background (cool)
-                            }
-                        },
-                        onEditingEnded: {
+                        }
+                    ),
+                    range: range.lowerBound...range.upperBound,
+                    step: step,
+                    displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
+                    onEditingChanged: { editing in
+                        state.isEditingDepthThreshold = editing
+                        if editing {
+                            state.updateDepthThresholdPreview()
+                        } else {
+                            state.depthThresholdPreview = nil
                             state.applyDepthEffects()
                         }
-                    )
-                }
+                    }
+                )
+
+                LabeledSlider(
+                    label: "Background",
+                    value: Binding(
+                        get: { state.depthConfig.backgroundCutoff },
+                        set: { newValue in
+                            let clamped = max(newValue, state.depthConfig.foregroundCutoff + step)
+                            guard clamped != state.depthConfig.backgroundCutoff else { return }
+                            state.depthConfig.backgroundCutoff = clamped
+                            if state.isEditingDepthThreshold {
+                                state.updateDepthThresholdPreview()
+                            }
+                        }
+                    ),
+                    range: range.lowerBound...range.upperBound,
+                    step: step,
+                    displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
+                    onEditingChanged: { editing in
+                        state.isEditingDepthThreshold = editing
+                        if editing {
+                            state.updateDepthThresholdPreview()
+                        } else {
+                            state.depthThresholdPreview = nil
+                            state.applyDepthEffects()
+                        }
+                    }
+                )
 
                 Picker("Background", selection: Binding(
                     get: { state.depthConfig.backgroundMode },
                     set: { newMode in
+                        guard newMode != state.depthConfig.backgroundMode else { return }
                         state.depthConfig.backgroundMode = newMode
                         state.applyDepthEffects()
                     }
