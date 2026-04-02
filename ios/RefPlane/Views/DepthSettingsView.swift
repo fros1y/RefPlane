@@ -36,7 +36,10 @@ struct DepthSettingsView: View {
                     step: step,
                     displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
                     onEditingChanged: { editing in
-                        if !editing {
+                        state.depthSliderActive = editing
+                        if editing {
+                            state.updateDepthThresholdPreview()
+                        } else {
                             state.dismissDepthThresholdPreview()
                         }
                     }
@@ -57,7 +60,10 @@ struct DepthSettingsView: View {
                     step: step,
                     displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
                     onEditingChanged: { editing in
-                        if !editing {
+                        state.depthSliderActive = editing
+                        if editing {
+                            state.updateDepthThresholdPreview()
+                        } else {
                             state.dismissDepthThresholdPreview()
                         }
                     }
@@ -91,6 +97,10 @@ struct DepthSettingsView: View {
                         }
                     }
                 )
+
+                if state.depthMap != nil {
+                    ContourSettingsView()
+                }
             }
         }
     }

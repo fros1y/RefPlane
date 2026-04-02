@@ -11,10 +11,11 @@ struct CompareSliderView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                StudyImageLayer(image: afterImage, showsGrid: state.gridConfig.enabled)
+                StudyImageLayer(image: afterImage, showsGrid: state.gridConfig.enabled,
+                                showsContours: state.contourConfig.enabled && state.depthConfig.enabled)
                     .frame(width: geo.size.width, height: geo.size.height)
 
-                StudyImageLayer(image: beforeImage, showsGrid: false)
+                StudyImageLayer(image: beforeImage, showsGrid: false, showsContours: false)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
                     .mask(

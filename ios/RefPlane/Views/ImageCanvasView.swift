@@ -55,7 +55,8 @@ struct ImageCanvasView: View {
         )
 
         return ZStack {
-            StudyImageLayer(image: image, showsGrid: state.gridConfig.enabled)
+            StudyImageLayer(image: image, showsGrid: state.gridConfig.enabled,
+                            showsContours: state.contourConfig.enabled && state.depthConfig.enabled)
         }
         .scaleEffect(combinedScale)
         .offset(combinedOffset)
@@ -216,6 +217,7 @@ struct ImageCanvasView: View {
 struct StudyImageLayer: View {
     let image: UIImage
     let showsGrid: Bool
+    var showsContours: Bool = false
 
     var body: some View {
         ZStack {
@@ -226,6 +228,9 @@ struct StudyImageLayer: View {
 
             if showsGrid {
                 GridOverlayView(image: image)
+            }
+            if showsContours {
+                ContourOverlayView(image: image)
             }
         }
     }

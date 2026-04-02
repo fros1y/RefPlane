@@ -13,6 +13,10 @@
 		0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677004 /* PaletteSections.swift */; };
 		0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */; };
 		0A11B22C33D44E55F6677010 /* BandIsolationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */; };
+		0A11B22C33D44E55F6677020 /* ContourGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677021 /* ContourGenerator.swift */; };
+		0A11B22C33D44E55F6677022 /* ContourLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677023 /* ContourLineColorResolver.swift */; };
+		0A11B22C33D44E55F6677024 /* ContourOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677025 /* ContourOverlayView.swift */; };
+		0A11B22C33D44E55F6677026 /* ContourSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677027 /* ContourSettingsView.swift */; };
 		0A11B22C33D44E55F6677101 /* ThresholdUtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677102 /* ThresholdUtilitiesTests.swift */; };
 		0A11B22C33D44E55F6677103 /* PaletteSectionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */; };
 		0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */; };
@@ -93,6 +97,10 @@
 		0A11B22C33D44E55F6677004 /* PaletteSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaletteSections.swift; path = Support/PaletteSections.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridLineColorResolver.swift; path = Support/GridLineColorResolver.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BandIsolationRenderer.swift; path = Support/BandIsolationRenderer.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677021 /* ContourGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourGenerator.swift; path = Support/ContourGenerator.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677023 /* ContourLineColorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourLineColorResolver.swift; path = Support/ContourLineColorResolver.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677025 /* ContourOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourOverlayView.swift; path = Views/ContourOverlayView.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677027 /* ContourSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourSettingsView.swift; path = Views/ContourSettingsView.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677102 /* ThresholdUtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdUtilitiesTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaletteSectionsTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridLineColorResolverTests.swift; sourceTree = "<group>"; };
@@ -184,6 +192,8 @@
 				0A11B22C33D44E55F6677004 /* PaletteSections.swift */,
 				0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */,
 				0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */,
+				0A11B22C33D44E55F6677021 /* ContourGenerator.swift */,
+				0A11B22C33D44E55F6677023 /* ContourLineColorResolver.swift */,
 			);
 			name = Support;
 			sourceTree = "<group>";
@@ -241,6 +251,8 @@
 				0493CA914D0B4273902F650E /* ErrorToastView.swift */,
 				9960E48DDC404E14A65578E6 /* ThresholdSliderView.swift */,
 				DE01DE01DE01DE01DE010005 /* DepthSettingsView.swift */,
+				0A11B22C33D44E55F6677025 /* ContourOverlayView.swift */,
+				0A11B22C33D44E55F6677027 /* ContourSettingsView.swift */,
 			);
 			name = Views;
 			sourceTree = "<group>";
@@ -469,6 +481,10 @@
 				DE01DE01DE01DE01DE010002 /* DepthEstimator.swift in Sources */,
 				DE01DE01DE01DE01DE010004 /* DepthProcessor.swift in Sources */,
 				DE01DE01DE01DE01DE010006 /* DepthSettingsView.swift in Sources */,
+				0A11B22C33D44E55F6677020 /* ContourGenerator.swift in Sources */,
+				0A11B22C33D44E55F6677022 /* ContourLineColorResolver.swift in Sources */,
+				0A11B22C33D44E55F6677024 /* ContourOverlayView.swift in Sources */,
+				0A11B22C33D44E55F6677026 /* ContourSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

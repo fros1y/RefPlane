@@ -194,3 +194,11 @@ struct DepthConfig {
     var effectIntensity: Double = 0.5     // global intensity multiplier
     var backgroundMode: BackgroundMode = .depthEffects
 }
+
+struct ContourConfig {
+    var enabled: Bool        = false
+    var levels: Int          = 5          // number of isoline levels (2–64)
+    var lineStyle: LineStyle = .autoContrast
+    var customColor: Color   = .white
+    var opacity: Double      = 0.7
+}

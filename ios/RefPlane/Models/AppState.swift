@@ -58,6 +58,8 @@ class AppState: ObservableObject {
     @Published var valueConfig: ValueConfig = ValueConfig()
     @Published var colorConfig: ColorConfig = ColorConfig()
     @Published var depthConfig: DepthConfig = DepthConfig()
+    @Published var contourConfig: ContourConfig = ContourConfig()
+    @Published var contourSegments: [GridLineSegment] = []
 
     // Depth results
     @Published var depthMap: UIImage? = nil
@@ -71,6 +73,8 @@ class AppState: ObservableObject {
     @Published var depthThresholdPreview: UIImage? = nil
     /// Cached Metal texture of the depth map, reused across preview updates for speed.
     var cachedDepthTexture: AnyObject? = nil
+    /// True while the user's finger is actively on a depth cutoff slider.
+    var depthSliderActive: Bool = false
     /// Abstraction strength 0–1. `0` disables abstraction; positive values map
     /// to the existing downscale-based abstraction range.
     @Published var abstractionStrength: Double  = 0.5
@@ -105,6 +109,9 @@ class AppState: ObservableObject {
     private var depthEffectTask: Task<Void, Never>? = nil
     private var depthPreviewDismissTask: Task<Void, Never>? = nil
     private var depthGeneration: Int = 0
+
+    private var contourTask: Task<Void, Never>? = nil
+    private var contourGeneration: Int = 0
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
@@ -258,6 +265,7 @@ class AppState: ObservableObject {
         depthThresholdPreview     = nil
         cachedDepthTexture        = nil
         depthRange                = 0...1
+        contourSegments           = []
         processedPixelBands       = []
         paletteColors             = []
         paletteBands              = []
@@ -392,8 +400,14 @@ class AppState: ObservableObject {
             base = currentDisplayImage
         }
         guard let image = base else { return nil }
-        guard gridConfig.enabled else { return image }
-        return renderGridOnto(image)
+        var rendered = image
+        if gridConfig.enabled {
+            rendered = renderGridOnto(rendered)
+        }
+        if contourConfig.enabled && !contourSegments.isEmpty {
+            rendered = renderContoursOnto(rendered)
+        }
+        return rendered
     }
 
     private func renderGridOnto(_ image: UIImage) -> UIImage {
@@ -631,6 +645,7 @@ class AppState: ObservableObject {
                     self.processingLabel = "Processing…"
                     self.isProcessing = false
                     self.applyDepthEffects()
+                    self.recomputeContours()
                 }
             } catch is CancellationError {
                 // superseded
@@ -686,18 +701,20 @@ class AppState: ObservableObject {
         depthTask?.cancel()
         depthEffectTask?.cancel()
         depthPreviewDismissTask?.cancel()
+        contourTask?.cancel()
         depthGeneration += 1
         depthMap = nil
         depthProcessedImage = nil
         isEditingDepthThreshold = false
+        depthSliderActive = false
         depthThresholdPreview = nil
         cachedDepthTexture = nil
         depthRange = 0...1
+        contourSegments = []
     }
 
     /// Regenerate the depth-threshold preview image showing which pixels
     /// fall into the background zone. Called while the user drags a cutoff slider.
-    /// Automatically dismisses after a short idle period.
     func updateDepthThresholdPreview() {
         guard let depth = depthMap else {
             depthThresholdPreview = nil
@@ -716,16 +733,16 @@ class AppState: ObservableObject {
             backgroundCutoff: bg,
             cachedDepthTexture: cachedDepthTexture
         )
-        schedulePreviewDismiss()
     }
 
-    /// Schedule auto-dismiss of the depth threshold preview after a brief idle.
-    /// Each call resets the timer so continuous dragging keeps the preview alive.
-    private func schedulePreviewDismiss() {
+    /// Schedule auto-dismiss of the depth threshold preview as a safety net
+    /// in case onEditingChanged(false) doesn't fire.
+    func schedulePreviewDismissSafetyNet() {
         depthPreviewDismissTask?.cancel()
         depthPreviewDismissTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s safety net
             guard !Task.isCancelled, let self else { return }
+            guard !self.depthSliderActive else { return }
             self.dismissDepthThresholdPreview()
         }
     }
@@ -733,10 +750,78 @@ class AppState: ObservableObject {
     /// Dismiss the depth threshold preview and apply the current depth effects.
     func dismissDepthThresholdPreview() {
         depthPreviewDismissTask?.cancel()
+        depthSliderActive = false
         guard isEditingDepthThreshold else { return }
         isEditingDepthThreshold = false
         depthThresholdPreview = nil
         cachedDepthTexture = nil
         applyDepthEffects()
+        recomputeContours()
+    }
+
+    // MARK: - Contour line generation
+
+    func recomputeContours() {
+        contourTask?.cancel()
+        guard contourConfig.enabled, let depth = depthMap else {
+            contourSegments = []
+            return
+        }
+        contourGeneration += 1
+        let gen = contourGeneration
+        let cfg = contourConfig
+        let depthCfg = depthConfig
+        let range = depthRange
+        contourTask = Task {
+            let segs = await Task.detached(priority: .userInitiated) {
+                ContourGenerator.generateSegments(
+                    depthMap: depth,
+                    levels: cfg.levels,
+                    depthRange: range,
+                    backgroundCutoff: depthCfg.backgroundCutoff
+                )
+            }.value
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self.contourGeneration == gen else { return }
+                self.contourSegments = segs
+            }
+        }
+    }
+
+    private func renderContoursOnto(_ image: UIImage) -> UIImage {
+        let size = image.size
+        let config = contourConfig
+        let segments = contourSegments
+        let lineWidth = max(1.0, min(size.width, size.height) / 1000.0)
+
+        let resolved = ContourLineColorResolver.resolvedSegments(
+            config: config,
+            image: image,
+            segments: segments
+        )
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { ctx in
+            image.draw(in: CGRect(origin: .zero, size: size))
+
+            let cg = ctx.cgContext
+            cg.setLineWidth(lineWidth)
+            cg.setLineCap(.round)
+            cg.clip(to: CGRect(origin: .zero, size: size))
+
+            for resolvedSegment in resolved {
+                let mappedSegment = resolvedSegment.segment.mapped(
+                    to: CGRect(origin: .zero, size: size)
+                )
+                let color = UIColor(resolvedSegment.color).withAlphaComponent(config.opacity)
+                cg.setStrokeColor(color.cgColor)
+                cg.move(to: mappedSegment.start)
+                cg.addLine(to: mappedSegment.end)
+                cg.strokePath()
+            }
+        }
     }
 }
