@@ -214,7 +214,7 @@ func updatingDepthCutoffWhileDraggingShowsThresholdPreview() {
     state.depthProcessedImage = processedImage
     state.depthSliderActive = true
 
-    state.updateBackgroundDepthCutoff(0.8, minimumGap: 0.01)
+    state.updateBackgroundDepthCutoff(0.8)
 
     #expect(state.isEditingDepthThreshold)
     #expect(state.depthThresholdPreview != nil)
@@ -237,7 +237,7 @@ func updatingDepthCutoffAfterDragEndsDoesNotReenterThresholdPreview() {
     state.depthProcessedImage = processedImage
 
     state.depthSliderActive = true
-    state.updateBackgroundDepthCutoff(0.8, minimumGap: 0.01)
+    state.updateBackgroundDepthCutoff(0.8)
     #expect(state.isEditingDepthThreshold)
 
     state.depthSliderActive = false
@@ -245,7 +245,7 @@ func updatingDepthCutoffAfterDragEndsDoesNotReenterThresholdPreview() {
     #expect(!state.isEditingDepthThreshold)
     #expect(state.depthThresholdPreview == nil)
 
-    state.updateBackgroundDepthCutoff(0.81, minimumGap: 0.01)
+    state.updateBackgroundDepthCutoff(0.81)
 
     #expect(!state.isEditingDepthThreshold)
     #expect(state.depthThresholdPreview == nil)
@@ -327,7 +327,7 @@ func applyKuwaharaCallsOperationAndStoresResult() async throws {
 
     let source = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
     state.sourceImage      = source
-    state.kuwaharaStrength = 0.5  // radius = Int(0.5 * 8) = 4
+    state.kuwaharaStrength = 0.5  // radius = Int(0.5 * 16) = 8
 
     state.applyKuwahara()
     for _ in 0..<50 where state.isProcessing { await Task.yield() }
@@ -335,7 +335,7 @@ func applyKuwaharaCallsOperationAndStoresResult() async throws {
     let callCount = await kuwaharaProbe.callCount
     let lastRadius = await kuwaharaProbe.lastRadius
     #expect(callCount == 1)
-    #expect(lastRadius == 4)
+    #expect(lastRadius == 8)
     #expect(state.kuwaharaFilteredImage === expectedImage)
 }
 

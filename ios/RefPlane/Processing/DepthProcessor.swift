@@ -48,7 +48,6 @@ enum DepthProcessor {
         ) else { return nil }
         depCtx.draw(depth, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-        let fgCutoff = Float(config.foregroundCutoff)
         let bgCutoff = Float(config.backgroundCutoff)
         let intensity = Float(config.effectIntensity)
         let isRemove = config.backgroundMode == .remove
@@ -72,14 +71,7 @@ enum DepthProcessor {
             // Simple luminance
             let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
 
-            if d < fgCutoff {
-                // Foreground: boost contrast + warm shift
-                let t = 1.0 - d / max(fgCutoff, 0.001)
-                let strength = t * intensity * 0.3
-                r = lum + (r - lum) * (1 + strength) + strength * 0.02
-                g = lum + (g - lum) * (1 + strength)
-                b = lum + (b - lum) * (1 + strength) - strength * 0.02
-            } else if d > bgCutoff && !isRemove {
+            if d > bgCutoff && !isRemove {
                 // Background: reduce contrast + cool shift
                 let t = min((d - bgCutoff) / max(0.05, 1.0 - bgCutoff), 1.0)
                 let strength = t * intensity * 0.3
@@ -110,11 +102,10 @@ enum DepthProcessor {
     // MARK: - Threshold preview
 
     /// Generate a preview image that shows the depth map with zone coloring:
-    /// foreground tinted orange, midground shown as gray depth, background tinted blue.
+    /// pixels below the background cutoff shown as gray depth, background tinted blue.
     /// Uses GPU path when available, falls back to CPU.
     static func thresholdPreview(
         depthMap: UIImage,
-        foregroundCutoff: Double,
         backgroundCutoff: Double,
         cachedDepthTexture: AnyObject? = nil
     ) -> UIImage? {
@@ -123,7 +114,7 @@ enum DepthProcessor {
            let tex = cachedDepthTexture as? MTLTexture {
             return ctx.depthThresholdPreview(
                 depthTexture: tex,
-                foregroundCutoff: Float(foregroundCutoff),
+                foregroundCutoff: 0,
                 backgroundCutoff: Float(backgroundCutoff)
             )
         }
@@ -131,12 +122,11 @@ enum DepthProcessor {
         // CPU fallback
         return cpuThresholdPreview(
             depthMap: depthMap,
-            foregroundCutoff: foregroundCutoff,
             backgroundCutoff: backgroundCutoff
         )
     }
 
-    private static func cpuThresholdPreview(depthMap: UIImage, foregroundCutoff: Double, backgroundCutoff: Double) -> UIImage? {
+    private static func cpuThresholdPreview(depthMap: UIImage, backgroundCutoff: Double) -> UIImage? {
         guard let cg = depthMap.cgImage else { return nil }
         let w = cg.width, h = cg.height
         guard w > 0, h > 0 else { return nil }
@@ -151,7 +141,6 @@ enum DepthProcessor {
         ) else { return nil }
         depCtx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
 
-        let fg = Float(foregroundCutoff)
         let bg = Float(backgroundCutoff)
 
         var output = [UInt8](repeating: 255, count: w * h * 4)
@@ -160,18 +149,13 @@ enum DepthProcessor {
             let gray = Float(depthPixels[i])
             let px = i * 4
 
-            if d <= fg {
-                // Foreground: orange tint over depth
-                output[px]     = UInt8(min(gray * 0.5 + 128, 255))  // R
-                output[px + 1] = UInt8(min(gray * 0.4 + 80, 255))   // G
-                output[px + 2] = UInt8(gray * 0.2)                   // B
-            } else if d >= bg {
+            if d >= bg {
                 // Background: blue tint over depth
                 output[px]     = UInt8(gray * 0.2)                   // R
                 output[px + 1] = UInt8(min(gray * 0.4 + 80, 255))   // G
                 output[px + 2] = UInt8(min(gray * 0.5 + 128, 255))  // B
             } else {
-                // Midground: neutral gray depth
+                // Non-background: neutral gray depth
                 let v = UInt8(gray)
                 output[px]     = v
                 output[px + 1] = v

@@ -119,10 +119,10 @@ class AppState: ObservableObject {
     }
 
     /// Kuwahara neighbourhood radius derived from `kuwaharaStrength`.
-    /// Returns 0 when the filter is off, and a value clamped to 1…8 otherwise.
+    /// Returns 0 when the filter is off, and a value clamped to 1…16 otherwise.
     var kuwaharaRadius: Int {
         guard kuwaharaStrength > 0 else { return 0 }
-        return min(max(Int((kuwaharaStrength * 8).rounded()), 1), 8)
+        return min(max(Int((kuwaharaStrength * 16).rounded()), 1), 16)
     }
 
     var availableAbstractionMethods: [AbstractionMethod] {
@@ -638,12 +638,16 @@ class AppState: ObservableObject {
 
                 await MainActor.run {
                     guard self.depthGeneration == generation else { return }
+                    let isFirstCompute = self.depthMap == nil
                     self.depthMap = result
                     self.depthRange = range
-                    // Reset cutoffs to span the actual depth range
-                    let span = range.upperBound - range.lowerBound
-                    self.depthConfig.foregroundCutoff = range.lowerBound + span / 3.0
-                    self.depthConfig.backgroundCutoff = range.lowerBound + span * 2.0 / 3.0
+                    // Only set default cutoff on the first depth compute;
+                    // subsequent re-computes (e.g. after simplification changes)
+                    // preserve the user’s chosen value.
+                    if isFirstCompute {
+                        let span = range.upperBound - range.lowerBound
+                        self.depthConfig.backgroundCutoff = range.lowerBound + span * 2.0 / 3.0
+                    }
                     self.processingIsIndeterminate = false
                     self.processingLabel = "Processing…"
                     self.isProcessing = false
@@ -722,21 +726,11 @@ class AppState: ObservableObject {
         contourSegments = []
     }
 
-    func updateForegroundDepthCutoff(_ newValue: Double, minimumGap: Double) {
-        let clamped = min(newValue, depthConfig.backgroundCutoff - minimumGap)
-        guard clamped != depthConfig.foregroundCutoff else {
+    func updateBackgroundDepthCutoff(_ newValue: Double) {
+        guard newValue != depthConfig.backgroundCutoff else {
             return
         }
-        depthConfig.foregroundCutoff = clamped
-        refreshDepthThresholdOutput()
-    }
-
-    func updateBackgroundDepthCutoff(_ newValue: Double, minimumGap: Double) {
-        let clamped = max(newValue, depthConfig.foregroundCutoff + minimumGap)
-        guard clamped != depthConfig.backgroundCutoff else {
-            return
-        }
-        depthConfig.backgroundCutoff = clamped
+        depthConfig.backgroundCutoff = newValue
         refreshDepthThresholdOutput()
     }
 
@@ -753,12 +747,10 @@ class AppState: ObservableObject {
         if cachedDepthTexture == nil {
             cachedDepthTexture = MetalContext.shared?.makeDepthTexture(from: depth)
         }
-        let fg = depthConfig.foregroundCutoff
         let bg = depthConfig.backgroundCutoff
         isEditingDepthThreshold = true
         depthThresholdPreview = DepthProcessor.thresholdPreview(
             depthMap: depth,
-            foregroundCutoff: fg,
             backgroundCutoff: bg,
             cachedDepthTexture: cachedDepthTexture
         )
@@ -816,24 +808,12 @@ class AppState: ObservableObject {
         let range = depthRange
         contourTask = Task {
             let segs = await Task.detached(priority: .userInitiated) {
-                switch cfg.mode {
-                case .isolines:
-                    ContourGenerator.generateSegments(
-                        depthMap: depth,
-                        levels: cfg.levels,
-                        depthRange: range,
-                        backgroundCutoff: depthCfg.backgroundCutoff,
-                        includeOrthogonal: cfg.showOrthogonal
-                    )
-                case .projectedGrid:
-                    ContourGenerator.generateProjectedGridSegments(
-                        depthMap: depth,
-                        levels: cfg.levels,
-                        depthRange: range,
-                        backgroundCutoff: depthCfg.backgroundCutoff,
-                        depthScale: cfg.depthScale
-                    )
-                }
+                ContourGenerator.generateSegments(
+                    depthMap: depth,
+                    levels: cfg.levels,
+                    depthRange: range,
+                    backgroundCutoff: depthCfg.backgroundCutoff
+                )
             }.value
             guard !Task.isCancelled else { return }
             await MainActor.run {

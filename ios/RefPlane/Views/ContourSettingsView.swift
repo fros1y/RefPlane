@@ -18,19 +18,6 @@ struct ContourSettingsView: View {
             ))
 
             if state.contourConfig.enabled {
-                LabeledPicker(
-                    title: "Contour Mode",
-                    selection: Binding(
-                        get: { state.contourConfig.mode },
-                        set: { newMode in
-                            state.contourConfig.mode = newMode
-                            state.recomputeContours()
-                        }
-                    ),
-                    options: ContourMode.allCases,
-                    label: { $0.rawValue }
-                )
-
                 LabeledSlider(
                     label: "Levels",
                     value: Binding(
@@ -46,32 +33,6 @@ struct ContourSettingsView: View {
                         }
                     }
                 )
-
-                if state.contourConfig.mode == .isolines {
-                    Toggle("Orthogonal Lines", isOn: Binding(
-                        get: { state.contourConfig.showOrthogonal },
-                        set: { newValue in
-                            state.contourConfig.showOrthogonal = newValue
-                            state.recomputeContours()
-                        }
-                    ))
-                } else {
-                    LabeledSlider(
-                        label: "Depth Scale",
-                        value: Binding(
-                            get: { state.contourConfig.depthScale },
-                            set: { state.contourConfig.depthScale = $0 }
-                        ),
-                        range: 0...12,
-                        step: 0.1,
-                        displayFormat: { String(format: "%.1f×", $0) },
-                        onEditingChanged: { editing in
-                            if !editing {
-                                state.recomputeContours()
-                            }
-                        }
-                    )
-                }
 
                 LabeledPicker(
                     title: "Line Style",

@@ -510,7 +510,7 @@ final class MetalContext {
         var params = DepthEffectParamsSwift(
             width: UInt32(width),
             height: UInt32(height),
-            foregroundCutoff: Float(config.foregroundCutoff),
+            foregroundCutoff: 0,
             backgroundCutoff: Float(config.backgroundCutoff),
             intensity: Float(config.effectIntensity),
             backgroundMode: UInt32(backgroundModeRaw(config.backgroundMode))

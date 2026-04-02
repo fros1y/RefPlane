@@ -22,32 +22,11 @@ struct DepthSettingsView: View {
                 let step = max(0.01, (range.upperBound - range.lowerBound) / 100.0)
 
                 LabeledSlider(
-                    label: "Foreground",
-                    value: Binding(
-                        get: { state.depthConfig.foregroundCutoff },
-                        set: { newValue in
-                            state.updateForegroundDepthCutoff(newValue, minimumGap: step)
-                        }
-                    ),
-                    range: range.lowerBound...range.upperBound,
-                    step: step,
-                    displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
-                    onEditingChanged: { editing in
-                        state.depthSliderActive = editing
-                        if editing {
-                            state.updateDepthThresholdPreview()
-                        } else {
-                            state.dismissDepthThresholdPreview()
-                        }
-                    }
-                )
-
-                LabeledSlider(
                     label: "Background",
                     value: Binding(
                         get: { state.depthConfig.backgroundCutoff },
                         set: { newValue in
-                            state.updateBackgroundDepthCutoff(newValue, minimumGap: step)
+                            state.updateBackgroundDepthCutoff(newValue)
                         }
                     ),
                     range: range.lowerBound...range.upperBound,

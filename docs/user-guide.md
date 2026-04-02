@@ -73,7 +73,58 @@ Use Simplify to strip away photographic noise and see underlying forms more clea
 - *Simplify Image* toggle — enables or disables the simplification pass
 - *Strength* slider — controls how aggressively texture is smoothed (0 = off, 1 = maximum)
 
+### Kuwahara Filter
+
+The **Kuwahara** slider applies an anisotropic Kuwahara filter that gives the image a painterly, flat-color look by averaging local color regions while preserving edges. The filter radius ranges from R1 (subtle) to R16 (very aggressive simplification).
+
+Use Kuwahara to:
+- reduce photographic detail to broad, painterly shapes
+- get a stylized version of your reference that looks closer to a painting
+- combine with Simplify for even stronger abstraction
+
 Processing takes a moment, especially on older devices. The canvas shows a progress indicator while the model runs.
+
+---
+
+## Depth Effects
+
+Enable **Depth Effects** to separate your scene into foreground and background using an on-device depth estimation model. Once enabled, you can selectively treat the background while leaving the foreground crisp — useful for isolating the subject you plan to paint.
+
+### Controls
+
+| Setting | Description |
+|---------|-------------|
+| *Depth Effects* toggle | Enables depth estimation and background processing |
+| *Background* slider | Sets the depth cutoff — everything further than this point is treated as background |
+| *Background* mode | How the background is treated (see modes below) |
+| *Intensity* slider | How strongly the background effect is applied (0–100%) |
+
+### Background Modes
+
+| Mode | Effect |
+|------|--------|
+| **Depth Effects** | Applies a painterly de-emphasis: reduced contrast, muted color, and a warm-to-cool atmospheric shift that pushes the background visually into the distance |
+| **Blur** | Gaussian blur that softens the background, simulating a shallow depth of field. The blur radius scales with intensity — at maximum, the background is heavily smoothed |
+| **Remove** | Replaces the background with a solid neutral tone, isolating the foreground subject entirely |
+
+### Surface Contours
+
+When depth effects are active, you can overlay **surface contour lines** (isolines) on the image. These trace lines of equal depth across your scene, revealing the three-dimensional form of objects.
+
+Use contours to:
+- understand the spatial structure of your reference
+- see how forms recede in space
+- guide your brushwork along the surface of objects
+
+**Contour controls**
+
+| Setting | Description |
+|---------|-------------|
+| *Surface Contours* toggle | Shows or hides the contour overlay |
+| *Levels* | Number of contour lines (2–64) |
+| *Line Style* | Auto (contrasts against the image), Black, White, or Custom |
+| *Color* | Custom line color (only visible when Line Style is Custom) |
+| *Opacity* | How transparent the contour lines are |
 
 ---
 
@@ -177,7 +228,7 @@ The current database includes 78 Golden Heavy Body Acrylic colors with full spec
 The recipes are physically meaningful approximations based on spectral pigment data, but paint behavior varies with medium, dilution, layering, and application technique. Treat the recipes as informed starting points, not exact formulas.
 
 **Why does processing take a moment?**
-The Value and Color modes run clustering algorithms across the full image. The Simplify pass runs an on-device machine-learning model. Both can take a few seconds depending on device and image size. The canvas shows a progress indicator while work is underway.
+The Value and Color modes run clustering algorithms across the full image. The Simplify pass and depth estimation both run on-device machine-learning models. The Kuwahara filter performs per-pixel region averaging. All of these can take a few seconds depending on device and image size. The canvas shows a progress indicator while work is underway.
 
 **The app asked for access to my photos. Why?**
 Underpaint needs photo library access to let you pick a reference image with the standard image picker. If you choose not to grant access, you can still use the app by sharing an image into it from Photos or another app.

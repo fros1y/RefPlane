@@ -600,8 +600,8 @@ struct DepthEffectParams {
     uint backgroundMode; // 0=effects, 1=blur, 2=remove
 };
 
-/// Depth threshold zone preview: foreground=orange, midground=gray, background=blue.
-/// Reads the depth map R channel and colorizes based on cutoff thresholds.
+/// Depth threshold zone preview: non-background=gray, background=blue.
+/// Reads the depth map R channel and colorizes based on cutoff threshold.
 kernel void depth_threshold_preview(
     texture2d<float, access::sample>  depthTex  [[texture(0)]],
     texture2d<float, access::write>   dst       [[texture(1)]],
@@ -615,14 +615,11 @@ kernel void depth_threshold_preview(
     float g = d;  // base gray
 
     float3 color;
-    if (d <= p.foregroundCutoff) {
-        // Foreground: orange tint
-        color = float3(g * 0.5f + 0.5f, g * 0.4f + 0.31f, g * 0.2f);
-    } else if (d >= p.backgroundCutoff) {
+    if (d >= p.backgroundCutoff) {
         // Background: blue tint
         color = float3(g * 0.2f, g * 0.4f + 0.31f, g * 0.5f + 0.5f);
     } else {
-        // Midground: neutral gray
+        // Non-background: neutral gray
         color = float3(g, g, g);
     }
 
@@ -647,7 +644,6 @@ kernel void depth_painterly_effects(
     float4 srcColor = src.sample(s, float2(gid));
     float depth = depthTex.sample(s, float2(gid)).r;  // 0=near, 1=far
 
-    float fg = p.foregroundCutoff;
     float bg = p.backgroundCutoff;
     float intensity = p.intensity;
 
@@ -662,29 +658,9 @@ kernel void depth_painterly_effects(
     float a = lab.y;  // green-red
     float b = lab.z;  // blue-yellow
 
-    // Zone classification with smooth transitions
-    // fgBlend: 1 at depth=0, 0 at depth=fg
-    float fgBlend = 1.0f - smoothstep(0.0f, fg, depth);
+    // Zone classification
     // bgBlend: 0 at depth=bg, 1 at depth=1
     float bgBlend = smoothstep(bg, 1.0f, depth);
-
-    // Foreground effects: boost contrast, increase chroma, warm shift
-    if (fgBlend > 0.0f) {
-        float strength = fgBlend * intensity;
-
-        // Boost contrast: expand L around 0.5
-        float contrastL = 0.5f + (L - 0.5f) * (1.0f + 0.4f * strength);
-        L = mix(L, contrastL, fgBlend);
-
-        // Increase chroma (scale a, b away from 0)
-        float chromaScale = 1.0f + 0.3f * strength;
-        a *= mix(1.0f, chromaScale, fgBlend);
-        b *= mix(1.0f, chromaScale, fgBlend);
-
-        // Warm shift: push b positive (yellow), slight a positive (red)
-        b += 0.015f * strength;
-        a += 0.005f * strength;
-    }
 
     // Background effects: reduce contrast, decrease chroma, cool shift
     // Skip when backgroundMode is remove (2) — those pixels are already white.
@@ -723,7 +699,7 @@ kernel void depth_painterly_effects(
 }
 
 /// Depth-weighted Gaussian blur (horizontal pass).
-/// Blur radius scales with normalized depth beyond backgroundCutoff.
+/// Blur radius scales with intensity. Allows aggressive blurring up to 32px.
 /// Only affects pixels in the background zone.
 kernel void depth_gaussian_blur_h(
     texture2d<float, access::sample>  src       [[texture(0)]],
@@ -744,8 +720,8 @@ kernel void depth_gaussian_blur_h(
         return;
     }
 
-    // Fixed blur radius for all background pixels
-    int radius = int(12.0f * p.intensity);
+    // Blur radius scales with intensity, up to 32px for aggressive blurring
+    int radius = int(32.0f * p.intensity);
     if (radius < 1) {
         dst.write(src.sample(s, float2(gid)), gid);
         return;
@@ -786,8 +762,8 @@ kernel void depth_gaussian_blur_v(
         return;
     }
 
-    // Fixed blur radius for all background pixels
-    int radius = int(12.0f * p.intensity);
+    // Blur radius scales with intensity, up to 32px for aggressive blurring
+    int radius = int(32.0f * p.intensity);
     if (radius < 1) {
         dst.write(src.sample(s, float2(gid)), gid);
         return;

@@ -93,10 +93,10 @@ struct ControlPanelView: View {
                     label: "Kuwahara",
                     value: $state.kuwaharaStrength,
                     range: 0...1,
-                    step: 0.125,
+                    step: 0.0625,
                     displayFormat: { value in
                         guard value > 0 else { return "Off" }
-                        return "R\(Int((value * 8).rounded()))"
+                        return "R\(Int((value * 16).rounded()))"
                     },
                     onEditingChanged: { editing in
                         if !editing {
