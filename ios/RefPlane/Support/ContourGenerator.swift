@@ -342,29 +342,45 @@ enum ContourGenerator {
                     end: projected
                 )
             case (true, false):
-                let crossing = backgroundCrossingPoint(
+                let crossingBase = backgroundCrossingPoint(
                     fromPoint: previousBase,
                     fromDepth: previousDepth,
                     toPoint: base,
                     toDepth: depth,
                     backgroundCutoff: backgroundCutoff
+                )
+                let crossingProjected = projectedPoint(
+                    basePoint: crossingBase,
+                    depth: backgroundCutoff,
+                    backgroundCutoff: backgroundCutoff,
+                    depthLowerBound: depthLowerBound,
+                    visibleDepthRange: visibleDepthRange,
+                    camera: camera
                 )
                 appendSegment(
                     &segments,
                     start: previousProjected,
-                    end: crossing
+                    end: crossingProjected
                 )
             case (false, true):
-                let crossing = backgroundCrossingPoint(
+                let crossingBase = backgroundCrossingPoint(
                     fromPoint: previousBase,
                     fromDepth: previousDepth,
                     toPoint: base,
                     toDepth: depth,
                     backgroundCutoff: backgroundCutoff
                 )
+                let crossingProjected = projectedPoint(
+                    basePoint: crossingBase,
+                    depth: backgroundCutoff,
+                    backgroundCutoff: backgroundCutoff,
+                    depthLowerBound: depthLowerBound,
+                    visibleDepthRange: visibleDepthRange,
+                    camera: camera
+                )
                 appendSegment(
                     &segments,
-                    start: crossing,
+                    start: crossingProjected,
                     end: projected
                 )
             case (false, false):
