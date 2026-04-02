@@ -29,22 +29,15 @@ struct DepthSettingsView: View {
                             let clamped = min(newValue, state.depthConfig.backgroundCutoff - step)
                             guard clamped != state.depthConfig.foregroundCutoff else { return }
                             state.depthConfig.foregroundCutoff = clamped
-                            if state.isEditingDepthThreshold {
-                                state.updateDepthThresholdPreview()
-                            }
+                            state.updateDepthThresholdPreview()
                         }
                     ),
                     range: range.lowerBound...range.upperBound,
                     step: step,
                     displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
                     onEditingChanged: { editing in
-                        state.isEditingDepthThreshold = editing
-                        if editing {
-                            state.updateDepthThresholdPreview()
-                        } else {
-                            state.depthThresholdPreview = nil
-                            state.cachedDepthTexture = nil
-                            state.applyDepthEffects()
+                        if !editing {
+                            state.dismissDepthThresholdPreview()
                         }
                     }
                 )
@@ -57,22 +50,15 @@ struct DepthSettingsView: View {
                             let clamped = max(newValue, state.depthConfig.foregroundCutoff + step)
                             guard clamped != state.depthConfig.backgroundCutoff else { return }
                             state.depthConfig.backgroundCutoff = clamped
-                            if state.isEditingDepthThreshold {
-                                state.updateDepthThresholdPreview()
-                            }
+                            state.updateDepthThresholdPreview()
                         }
                     ),
                     range: range.lowerBound...range.upperBound,
                     step: step,
                     displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
                     onEditingChanged: { editing in
-                        state.isEditingDepthThreshold = editing
-                        if editing {
-                            state.updateDepthThresholdPreview()
-                        } else {
-                            state.depthThresholdPreview = nil
-                            state.cachedDepthTexture = nil
-                            state.applyDepthEffects()
+                        if !editing {
+                            state.dismissDepthThresholdPreview()
                         }
                     }
                 )

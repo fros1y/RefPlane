@@ -103,6 +103,7 @@ class AppState: ObservableObject {
     private let depthEffectOperation: DepthEffectOperation
     private var depthTask: Task<Void, Never>? = nil
     private var depthEffectTask: Task<Void, Never>? = nil
+    private var depthPreviewDismissTask: Task<Void, Never>? = nil
     private var depthGeneration: Int = 0
 
     var abstractionIsEnabled: Bool {
@@ -684,6 +685,7 @@ class AppState: ObservableObject {
     func resetDepthProcessing() {
         depthTask?.cancel()
         depthEffectTask?.cancel()
+        depthPreviewDismissTask?.cancel()
         depthGeneration += 1
         depthMap = nil
         depthProcessedImage = nil
@@ -695,6 +697,7 @@ class AppState: ObservableObject {
 
     /// Regenerate the depth-threshold preview image showing which pixels
     /// fall into the background zone. Called while the user drags a cutoff slider.
+    /// Automatically dismisses after a short idle period.
     func updateDepthThresholdPreview() {
         guard let depth = depthMap else {
             depthThresholdPreview = nil
@@ -706,11 +709,34 @@ class AppState: ObservableObject {
         }
         let fg = depthConfig.foregroundCutoff
         let bg = depthConfig.backgroundCutoff
+        isEditingDepthThreshold = true
         depthThresholdPreview = DepthProcessor.thresholdPreview(
             depthMap: depth,
             foregroundCutoff: fg,
             backgroundCutoff: bg,
             cachedDepthTexture: cachedDepthTexture
         )
+        schedulePreviewDismiss()
+    }
+
+    /// Schedule auto-dismiss of the depth threshold preview after a brief idle.
+    /// Each call resets the timer so continuous dragging keeps the preview alive.
+    private func schedulePreviewDismiss() {
+        depthPreviewDismissTask?.cancel()
+        depthPreviewDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+            guard !Task.isCancelled, let self else { return }
+            self.dismissDepthThresholdPreview()
+        }
+    }
+
+    /// Dismiss the depth threshold preview and apply the current depth effects.
+    func dismissDepthThresholdPreview() {
+        depthPreviewDismissTask?.cancel()
+        guard isEditingDepthThreshold else { return }
+        isEditingDepthThreshold = false
+        depthThresholdPreview = nil
+        cachedDepthTexture = nil
+        applyDepthEffects()
     }
 }
