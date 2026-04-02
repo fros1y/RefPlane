@@ -1,328 +1,472 @@
-# Cross-Contour (Surface Contour) Line Overlay
+# Cross-Contour Overlay Plan
 
 **Date:** 2026-04-02
-**Status:** Planning
+**Status:** Canonical plan
+**Canonical Path:** `docs/plans/2026-04-02-cross-contour-overlay-design.md`
 
-## Context
+This document replaces the earlier draft and is the single source of truth for adding depth-driven cross-contour lines to the iOS app.
 
-Add depth-driven cross-contour/surface contour lines to the depth section of the app. Isolines are traced at evenly-spaced depth levels, revealing the 3D surface form of foreground objects. Lines overlay the image (like the existing grid) and only appear on non-background subjects. The feature mirrors the existing grid overlay pattern: normalized `GridLineSegment` arrays, `Canvas`-based rendering, auto-contrast coloring, and export support.
+## 1. Overview
 
----
+Add a non-destructive "Surface Contours" overlay inside the existing depth workflow. The overlay traces isolines from the current depth map, clips them to the fitted image rect, and draws them above the image in the same way the grid overlay does today.
 
-## Architecture Overview
+The feature is intentionally an overlay, not a new processed image mode:
 
+- contour geometry comes from the depth map
+- contour color comes from the same line-style system used by the grid
+- contour visibility is controlled from the depth section
+- export bakes the overlay into the output image when enabled
+
+## 2. Goals
+
+- Show evenly spaced contour lines over foreground and midground forms.
+- Reuse the existing overlay vocabulary: normalized line segments, `Canvas`, line styles, opacity, and auto-contrast.
+- Keep contour generation off the main thread.
+- Match current app behavior around depth recomputation, threshold preview, compare mode, and export.
+- Add unit coverage for generation, invalidation, and export behavior.
+
+## 3. Non-Goals
+
+- Do not add a new processed-image mode for contours.
+- Do not change the depth-estimation or depth-effects algorithms.
+- Do not add editable/vector contour paths or persistent contour caches.
+- Do not touch the web `src/components/CompareView.tsx`; this feature is implemented in the SwiftUI iOS app.
+- Do not widen the scope into a general "depth overlays" framework yet.
+
+## 4. Current Code Findings
+
+The earlier draft was directionally correct, but several implementation assumptions needed tightening against the current codebase.
+
+- `StudyImageLayer` in [ios/RefPlane/Views/ImageCanvasView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/ImageCanvasView.swift#L216) is the actual overlay seam. That is where contours should be inserted.
+- `CompareView` is SwiftUI in [ios/RefPlane/Views/CompareView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/CompareView.swift), not the web `CompareView.tsx`.
+- Depth lifecycle is already centralized in [ios/RefPlane/Models/AppState.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Models/AppState.swift). Contours should plug into that lifecycle instead of creating an unrelated pipeline.
+- Depth cutoff sliders in [ios/RefPlane/Views/DepthSettingsView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/DepthSettingsView.swift) show a threshold preview while dragging and only settle work on drag end. Contour recomputation must respect that interaction model.
+- Export currently only bakes the grid in [ios/RefPlane/Models/AppState.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Models/AppState.swift#L387). Contours need to follow the same export contract, including original-mode export preferring the full-resolution source image.
+- The project already has test patterns for `AppState`, export, and grid line resolution in `ios/RefPlaneTests`, so contour work should extend those tests instead of relying only on manual verification.
+
+## 5. Product Behavior
+
+### 5.1 User-facing behavior
+
+- A new `Surface Contours` toggle appears inside the existing depth section, below `Intensity`.
+- The controls appear only when depth effects are enabled and a depth map exists.
+- When enabled, contours draw over the current image on the canvas and on the processed side of compare mode.
+- Contours do not appear on the "before" side of compare mode.
+- If depth effects are disabled or the depth map is cleared, contours disappear immediately.
+
+### 5.2 Threshold-preview behavior
+
+Contours should be hidden while the user is actively dragging a depth cutoff slider.
+
+Reasoning:
+
+- the threshold preview is a diagnostic view and should stay legible
+- contour geometry is intentionally recomputed only after drag end
+- auto-contrast should not sample the temporary threshold-preview image
+
+This keeps the interaction consistent: drag shows the preview only, release restores the processed image and updated contour overlay.
+
+### 5.3 Overlay order
+
+Overlay stacking should be:
+
+1. image
+2. grid
+3. contours
+
+Contours should sit above the grid because they carry subject-form information and are visually harder to read when interrupted by grid lines. Export must preserve the same order.
+
+## 6. Architecture
+
+```text
+depth map settles or contour-driving config changes
+    -> AppState.recomputeContours()
+        -> build a small sendable depth sample buffer
+        -> ContourGenerator.generateSegments(...)
+        -> publish [GridLineSegment] on MainActor
+
+render
+    -> StudyImageLayer
+        -> GridOverlayView
+        -> ContourOverlayView
+
+export
+    -> AppState.exportCurrentImage()
+        -> renderGridOnto(...)
+        -> renderContoursOnto(...)
 ```
-depthMap changes / config changes
-    → AppState.recomputeContours()  [background Task]
-        → ContourGenerator.generateSegments()   [new file]
-            → sample depth map at 200×200 grid
-            → marching squares at N thresholds
-            → [GridLineSegment] in [0,1] coords
-        → contourSegments = segs  [MainActor]
 
-SwiftUI render
-    → StudyImageLayer → ContourOverlayView  [new file]
-        → ContourLineColorResolver.resolvedSegments()  [new file]
-        → Canvas draws segments
+### 6.1 Data model
 
-Export
-    → AppState.exportCurrentImage() → renderContoursOnto()
-```
-
----
-
-## Files to Create
-
-| File | Purpose |
-|------|---------|
-| `ios/RefPlane/Support/ContourGenerator.swift` | Marching squares algorithm |
-| `ios/RefPlane/Support/ContourLineColorResolver.swift` | Color resolution (reuses GridLineColorResolver) |
-| `ios/RefPlane/Views/ContourOverlayView.swift` | Canvas overlay (mirrors GridOverlayView) |
-| `ios/RefPlane/Views/ContourSettingsView.swift` | Settings UI (mirrors GridSettingsView) |
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `ios/RefPlane/Models/AppModels.swift` | Add `ContourConfig` struct |
-| `ios/RefPlane/Models/AppState.swift` | Add config, segments, `recomputeContours()`, `renderContoursOnto()`, update export |
-| `ios/RefPlane/Views/DepthSettingsView.swift` | Embed `ContourSettingsView` when depth + depthMap available |
-| `ios/RefPlane/Views/ImageCanvasView.swift` | Add `showsContours` to `StudyImageLayer`, pass at call site |
-| `ios/RefPlane/Views/CompareView.swift` | Update `StudyImageLayer` call |
-| `ios/RefPlane.xcodeproj/project.pbxproj` | Register 4 new source files |
-
----
-
-## Step 1 — `ContourConfig` in `AppModels.swift`
-
-Add after `struct DepthConfig` (line 196):
+Add `ContourConfig` to [ios/RefPlane/Models/AppModels.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Models/AppModels.swift):
 
 ```swift
 struct ContourConfig {
-    var enabled: Bool        = false
-    var levels: Int          = 5          // number of isoline levels (2–12)
+    var enabled: Bool = false
+    var levels: Int = 5
     var lineStyle: LineStyle = .autoContrast
-    var customColor: Color   = .white
-    var opacity: Double      = 0.7
+    var customColor: Color = .white
+    var opacity: Double = 0.7
 }
 ```
 
-`LineStyle` already exists and is shared with `GridConfig` — no new enum needed.
+Add to `AppState`:
 
----
-
-## Step 2 — `ContourGenerator.swift` (new file)
-
-**Algorithm:** Marching squares on a 200×200 cell grid sampled from the depth map.
-
-**Threshold computation** — contours span the visible (non-background) zone only:
-```swift
-let lo = depthRange.lowerBound
-let hi = min(backgroundCutoff, depthRange.upperBound)
-// levels thresholds evenly placed inside the open interval (lo, hi)
-threshold[i] = lo + (hi - lo) * Double(i + 1) / Double(levels + 1)
-// for i in 0..<levels
-```
-
-This mirrors how `defaultThresholds(for:)` distributes value levels — evenly spaced, never landing exactly on a boundary.
-
-**Depth sampling:**
-- Draw `depthMap` into a 201×201 single-channel `CGContext` (grayscale, `CGColorSpaceCreateDeviceGray()`)
-- Read the pixel buffer to produce a `[Double]` vertex grid of size (gridW+1) × (gridH+1)
-
-**Per-cell marching squares logic** (200×200 cells × N thresholds):
-- Skip cell if all 4 corners ≥ backgroundCutoff (background zone)
-- For each threshold `t`, compute 4-bit case index:
-  `(tl<t ? 8:0) | (tr<t ? 4:0) | (br<t ? 2:0) | (bl<t ? 1:0)`
-- Look up 16-case table → 0, 1, or 2 segment endpoints per cell
-- Use **linear interpolation** on each crossing edge for sub-cell precision:
-  e.g. top edge: `x = col + (t - tl) / (tr - tl)`
-- Saddle cases (5 and 10): disambiguate using avg of 4 corners to pick correct pair
-- Convert to normalized [0,1] coords: divide by gridW/gridH
-
-**Signature:**
-```swift
-enum ContourGenerator {
-    static func generateSegments(
-        depthMap: UIImage,
-        levels: Int,
-        depthRange: ClosedRange<Double>,
-        backgroundCutoff: Double
-    ) -> [GridLineSegment]
-}
-```
-
----
-
-## Step 3 — `ContourLineColorResolver.swift` (new file)
-
-For `.autoContrast`, use a proxy `GridConfig` to delegate to `GridLineColorResolver.resolvedSegments`. This reuses the private `ImageLuminanceSampler` without duplicating it. The `divisions` and `showDiagonals` fields are irrelevant to color resolution.
-
-```swift
-enum ContourLineColorResolver {
-    static func resolvedSegments(
-        config: ContourConfig,
-        image: UIImage?,
-        segments: [GridLineSegment]
-    ) -> [ResolvedGridLineSegment] {
-        switch config.lineStyle {
-        case .black:
-            return segments.map { ResolvedGridLineSegment(segment: $0, color: .black) }
-        case .white:
-            return segments.map { ResolvedGridLineSegment(segment: $0, color: .white) }
-        case .custom:
-            return segments.map { ResolvedGridLineSegment(segment: $0, color: config.customColor) }
-        case .autoContrast:
-            let proxy = GridConfig(enabled: true, divisions: 0, showDiagonals: false,
-                                   lineStyle: .autoContrast, customColor: config.customColor,
-                                   opacity: config.opacity)
-            return GridLineColorResolver.resolvedSegments(config: proxy, image: image, segments: segments)
-        }
-    }
-}
-```
-
----
-
-## Step 4 — `ContourOverlayView.swift` (new file)
-
-Mirrors `GridOverlayView.swift` exactly, replacing grid logic with contour logic:
-- Reads `state.contourSegments` (pre-computed — no heavy work in the Canvas closure)
-- Calls `ContourLineColorResolver.resolvedSegments()`
-- `StrokeStyle(lineWidth: 0.6, lineCap: .round)` — round caps suit organic contour lines
-- `.allowsHitTesting(false)`
-
----
-
-## Step 5 — `ContourSettingsView.swift` (new file)
-
-Mirrors `GridSettingsView.swift`:
-- `Toggle("Surface Contours", ...)` — calls `state.recomputeContours()` on change
-- `LabeledSlider("Levels", range: 2...12, step: 1)` — calls `state.recomputeContours()` on drag end
-- `Picker("Line Style", ...)` using `LineStyle.allCases`
-- `ColorPicker` shown only when `.custom`
-- `LabeledSlider("Opacity", range: 0...1)`
-
----
-
-## Step 6 — `AppState.swift` additions
-
-**New properties:**
 ```swift
 @Published var contourConfig: ContourConfig = ContourConfig()
 @Published var contourSegments: [GridLineSegment] = []
+
 private var contourTask: Task<Void, Never>? = nil
 private var contourGeneration: Int = 0
 ```
 
-**`recomputeContours()` method:**
+### 6.2 Generation inputs
+
+Contour geometry depends on only three things:
+
+- the current depth map
+- `depthConfig.backgroundCutoff`
+- `contourConfig.levels`
+
+It does not depend on:
+
+- `depthConfig.foregroundCutoff`
+- `depthConfig.effectIntensity`
+- `depthConfig.backgroundMode`
+- contour line style or opacity
+
+That distinction matters because it defines when recomputation is required.
+
+### 6.3 Concurrency rule
+
+Do not pass `UIImage` directly into a detached contour-generation task.
+
+Instead:
+
+- extract or resample the depth map into a small immutable grayscale buffer first
+- pass only sendable value data into the background worker
+- return normalized `[GridLineSegment]`
+
+This avoids actor-isolation and sendability problems while keeping the heavy work off the main actor.
+
+A practical shape is:
+
+```swift
+struct ContourDepthField: Sendable {
+    let width: Int
+    let height: Int
+    let samples: [UInt8]
+}
+```
+
+`ContourGenerator` can then work entirely on pure Swift value data.
+
+### 6.4 Contour generation
+
+Create [ios/RefPlane/Support/ContourGenerator.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Support/ContourGenerator.swift).
+
+Responsibilities:
+
+- resample the depth map to a fixed `(gridWidth + 1) x (gridHeight + 1)` scalar field
+- compute evenly spaced thresholds inside `depthRange.lowerBound..<backgroundCutoff`
+- run marching squares for each threshold
+- skip fully background cells
+- output normalized `GridLineSegment` values in `[0, 1]`
+
+Recommended defaults:
+
+- grid size: `200 x 200` cells
+- thresholds:
+
+```swift
+let lo = depthRange.lowerBound
+let hi = min(backgroundCutoff, depthRange.upperBound)
+guard hi > lo else { return [] }
+let thresholds = (0..<levels).map {
+    lo + (hi - lo) * Double($0 + 1) / Double(levels + 1)
+}
+```
+
+Per-cell rules:
+
+- skip the cell when all four corners are `>= backgroundCutoff`
+- compute the standard 4-bit marching-squares case for each threshold
+- use linear interpolation on crossing edges
+- handle saddle cases `5` and `10` with the cell-average disambiguation rule
+- discard degenerate segments
+
+### 6.5 Color resolution
+
+Create [ios/RefPlane/Support/ContourLineColorResolver.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Support/ContourLineColorResolver.swift).
+
+This should stay intentionally small and reuse `GridLineColorResolver` behavior rather than duplicating luminance sampling logic.
+
+Recommended implementation:
+
+- direct-map `.black`, `.white`, and `.custom`
+- for `.autoContrast`, build a proxy `GridConfig` and delegate to `GridLineColorResolver.resolvedSegments`
+
+This keeps contour color behavior aligned with grid behavior.
+
+### 6.6 Overlay rendering
+
+Create [ios/RefPlane/Views/ContourOverlayView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/ContourOverlayView.swift).
+
+The view should mirror `GridOverlayView` structurally, with these specifics:
+
+- accept the currently displayed image as an input for auto-contrast sampling
+- read precomputed `state.contourSegments`
+- clip drawing to the fitted image rect
+- use round line caps
+- use a slightly heavier stroke than the grid if needed, but keep it subtle
+
+Recommended starting stroke:
+
+```swift
+StrokeStyle(lineWidth: 0.6, lineCap: .round)
+```
+
+## 7. AppState Integration
+
+### 7.1 `recomputeContours()`
+
+Add `recomputeContours()` to [ios/RefPlane/Models/AppState.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Models/AppState.swift).
+
+Required behavior:
+
+- cancel any in-flight contour task
+- clear segments immediately when contours are disabled or depth is unavailable
+- increment a generation token before starting new work
+- build the sendable depth sample field
+- run `ContourGenerator.generateSegments(...)` off the main actor
+- publish only the latest generation result
+
+Pseudo-shape:
+
 ```swift
 func recomputeContours() {
     contourTask?.cancel()
+
     guard contourConfig.enabled, let depth = depthMap else {
         contourSegments = []
         return
     }
+
     contourGeneration += 1
-    let gen = contourGeneration
-    let cfg = contourConfig
-    let depthCfg = depthConfig
-    let range = depthRange
+    let generation = contourGeneration
+    let config = contourConfig
+    let depthRange = depthRange
+    let backgroundCutoff = depthConfig.backgroundCutoff
+    let field = ContourDepthField.make(from: depth, sampleWidth: 201, sampleHeight: 201)
+
     contourTask = Task {
-        let segs = await Task.detached(priority: .userInitiated) {
-            ContourGenerator.generateSegments(
-                depthMap: depth,
-                levels: cfg.levels,
-                depthRange: range,
-                backgroundCutoff: depthCfg.backgroundCutoff
-            )
-        }.value
+        let segments = await ContourGenerator.generateSegments(
+            field: field,
+            levels: config.levels,
+            depthRange: depthRange,
+            backgroundCutoff: backgroundCutoff
+        )
+
         guard !Task.isCancelled else { return }
         await MainActor.run {
-            guard self.contourGeneration == gen else { return }
-            self.contourSegments = segs
+            guard self.contourGeneration == generation else { return }
+            self.contourSegments = segments
         }
     }
 }
 ```
 
-**Invalidation call sites:**
-- `computeDepthMap()` — call `recomputeContours()` after `self.depthMap = result`
-- `resetDepthProcessing()` — set `contourSegments = []`
-- `loadImage(_:)` — set `contourSegments = []`
-- **Do NOT** call during threshold preview drag — only on drag end (matching the pattern of `applyDepthEffects()` in `DepthSettingsView`'s `onEditingChanged`)
+The exact helper split may vary, but the lifecycle rules should not.
 
-**`exportCurrentImage()` update:**
+### 7.2 Recompute triggers
+
+Contours should recompute in these cases:
+
+- after `computeDepthMap()` stores a new depth map and depth range
+- when `Surface Contours` is toggled on
+- when contour `Levels` changes and the slider drag ends
+- when the background cutoff slider drag ends
+
+Contours should be cleared in these cases:
+
+- `resetDepthProcessing()`
+- `loadImage(_:)`
+- disabling depth effects
+- toggling contours off
+
+Contours should not recompute for these changes:
+
+- foreground cutoff drag
+- background mode changes
+- intensity changes
+- contour line style changes
+- contour opacity changes
+- contour custom color changes
+
+Those settings affect either the processed image or the draw style, not contour geometry.
+
+### 7.3 Interaction with current depth flow
+
+The refined plan must preserve current depth behavior:
+
+- `computeDepthMap()` remains the source of truth for depth-map replacement
+- `applyDepthEffects()` remains responsible for the processed image
+- contour generation is a sibling computation, not a replacement for either
+
+The order after a new depth map lands should be:
+
+1. store `depthMap`
+2. store `depthRange`
+3. update default cutoffs
+4. trigger `recomputeContours()`
+5. trigger `applyDepthEffects()`
+
+## 8. View Integration
+
+### 8.1 Settings UI
+
+Create [ios/RefPlane/Views/ContourSettingsView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/ContourSettingsView.swift).
+
+This view should follow the same control vocabulary as `GridSettingsView`:
+
+- `Toggle("Surface Contours", ...)`
+- `LabeledSlider("Levels", range: 2...12, step: 1, ...)`
+- `LabeledPicker("Line Style", ...)`
+- conditional `ColorPicker`
+- `LabeledSlider("Opacity", ...)`
+
+Embed it in [ios/RefPlane/Views/DepthSettingsView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/DepthSettingsView.swift) only when:
+
+- `state.depthConfig.enabled`
+- `state.depthMap != nil`
+
+Placement:
+
+- immediately after the existing `Intensity` slider
+
+### 8.2 `StudyImageLayer`
+
+Update [ios/RefPlane/Views/ImageCanvasView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/ImageCanvasView.swift) so `StudyImageLayer` accepts:
+
+```swift
+let showsGrid: Bool
+let showsContours: Bool
+```
+
+Render order:
+
+```swift
+Image(...)
+if showsGrid { GridOverlayView(image: image) }
+if showsContours { ContourOverlayView(image: image) }
+```
+
+When wiring call sites, `showsContours` should be false while `state.isEditingDepthThreshold` is true.
+
+### 8.3 Compare mode
+
+Update [ios/RefPlane/Views/CompareView.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Views/CompareView.swift):
+
+- processed side: pass `showsContours: state.contourConfig.enabled && state.depthConfig.enabled && !state.isEditingDepthThreshold`
+- before side: always pass `showsContours: false`
+
+No additional compare-model changes are required for this feature.
+
+## 9. Export
+
+Extend [ios/RefPlane/Models/AppState.swift](/Users/martingalese/Documents/Projects/Programming/RefPlane/ios/RefPlane/Models/AppState.swift#L387).
+
+Export rules:
+
+- preserve the current contract where original mode prefers `fullResolutionOriginalImage`
+- bake grid first, then contours
+- if contours are enabled but no contour segments exist, skip contour rendering
+
+Target shape:
+
 ```swift
 func exportCurrentImage() -> UIImage? {
-    // existing base selection logic (unchanged)...
+    let base = ...
     guard let image = base else { return nil }
+
     var rendered = image
-    if gridConfig.enabled { rendered = renderGridOnto(rendered) }
+    if gridConfig.enabled {
+        rendered = renderGridOnto(rendered)
+    }
     if contourConfig.enabled && !contourSegments.isEmpty {
         rendered = renderContoursOnto(rendered)
     }
     return rendered
 }
-
-private func renderContoursOnto(_ image: UIImage) -> UIImage {
-    // Mirrors renderGridOnto — UIGraphicsImageRenderer + CoreGraphics
-    // Uses ContourLineColorResolver.resolvedSegments()
-    // lineCap: .round, lineWidth: max(1.0, min(size.width, size.height) / 1000.0)
-}
 ```
 
----
+`renderContoursOnto(_:)` should:
 
-## Step 7 — `DepthSettingsView.swift`
+- mirror `renderGridOnto(_:)`
+- map normalized segments into the export rect
+- use contour color resolution against the image being exported
+- use round caps
 
-Inside `if state.depthConfig.enabled { ... }`, after the Intensity slider:
+Using normalized segments means the same contour geometry can scale from the working-resolution depth map to the full-resolution export safely.
 
-```swift
-if state.depthMap != nil {
-    ContourSettingsView()
-}
-```
+## 10. File Map
 
-No changes to `ControlPanelView.swift` — contours inherit the existing `Section("Depth")`.
+### New files
 
----
+- `ios/RefPlane/Support/ContourGenerator.swift`
+- `ios/RefPlane/Support/ContourLineColorResolver.swift`
+- `ios/RefPlane/Views/ContourOverlayView.swift`
+- `ios/RefPlane/Views/ContourSettingsView.swift`
+- `ios/RefPlaneTests/ContourGeneratorTests.swift`
 
-## Step 8 — `ImageCanvasView.swift` + `CompareView.swift`
+### Modified files
 
-**`StudyImageLayer` signature change:**
-```swift
-struct StudyImageLayer: View {
-    let image: UIImage
-    let showsGrid: Bool
-    let showsContours: Bool   // new
+- `ios/RefPlane/Models/AppModels.swift`
+- `ios/RefPlane/Models/AppState.swift`
+- `ios/RefPlane/Views/DepthSettingsView.swift`
+- `ios/RefPlane/Views/ImageCanvasView.swift`
+- `ios/RefPlane/Views/CompareView.swift`
+- `ios/RefPlaneTests/AppStateTests.swift`
+- `ios/RefPlaneTests/ExportContractTests.swift`
+- `ios/RefPlane.xcodeproj/project.pbxproj`
 
-    var body: some View {
-        ZStack {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if showsGrid { GridOverlayView(image: image) }
-            if showsContours { ContourOverlayView(image: image) }  // new
-        }
-    }
-}
-```
+## 11. Test Plan
 
-**Call site in `ImageCanvasView.swift` (line ~58):**
-```swift
-StudyImageLayer(
-    image: image,
-    showsGrid: state.gridConfig.enabled,
-    showsContours: state.contourConfig.enabled && state.depthConfig.enabled
-)
-```
+### 11.1 Unit tests
 
-**Call sites in `CompareView.swift`:**
-```swift
-// after image:
-StudyImageLayer(image: afterImage, showsGrid: state.gridConfig.enabled,
-                showsContours: state.contourConfig.enabled && state.depthConfig.enabled)
-// before image:
-StudyImageLayer(image: beforeImage, showsGrid: false, showsContours: false)
-```
+Add contour-specific tests for:
 
----
+- threshold generation stays inside the foreground-to-background span
+- fully background cells emit no segments
+- simple synthetic depth ramps produce at least one contour segment
+- degenerate or zero-span inputs return no segments
 
-## Step 9 — Xcode project file (`project.pbxproj`)
+Extend `AppStateTests` for:
 
-Add `PBXFileReference` + `PBXBuildFile` entries for the 4 new Swift files. Add file references to their groups (Support, Views). Add build file refs to the main target's Sources build phase.
+- toggling contours off clears `contourSegments`
+- enabling contours with an existing depth map triggers recomputation
+- background cutoff recomputes on drag end, not on every intermediate change
+- foreground cutoff changes do not recompute contours
 
-Recommended approach: add the files to the Xcode project via the UI after creating them, which handles pbxproj edits automatically. Alternatively, edit pbxproj manually following the existing UUID naming conventions.
+Extend `ExportContractTests` for:
 
----
+- export still prefers the full-resolution original in original mode
+- export includes contours when enabled
+- export preserves overlay order when both grid and contours are enabled
 
-## Key Implementation Notes
+### 11.2 Manual verification
 
-1. **Marching squares saddle cases (5 and 10):** Average the 4 corner depth values. If average < threshold, connect top↔right and bottom↔left; otherwise connect top↔left and bottom↔right.
+- Enable depth effects and wait for a depth map to appear.
+- Verify `Surface Contours` appears only after a depth map exists.
+- Enable contours and confirm lines draw only over subject areas, not empty background.
+- Change `Levels` and verify contour density updates only after the drag ends.
+- Drag the background cutoff and verify the threshold preview hides contours during drag and restored contours reflect the new cutoff after release.
+- Change line style among Auto, Black, White, and Custom.
+- Verify compare mode shows contours only on the processed side.
+- Export an image with grid plus contours and verify both overlays are baked in with contours above the grid.
 
-2. **No recompute during slider drag:** `recomputeContours()` is expensive (background task). Call it only in `onEditingChanged: { editing in if !editing { ... } }` — never in the slider's `set:` closure during dragging.
+## 12. Risks And Guardrails
 
-3. **`GridLineSegment` is a value type (struct):** Safe to publish across tasks without additional synchronization.
-
-4. **Background zone exclusion:** Cells where all 4 corners ≥ `backgroundCutoff` are skipped entirely. Cells straddling the boundary are processed normally, producing a clean edge where contours meet the background.
-
-5. **Grid resolution (200×200):** Fine enough for meaningful detail on typical photos, fast enough to run in ~50 ms. The depth map is already full-res; we downsample to 200×200 only for the marching squares grid.
-
----
-
-## Verification Checklist
-
-- [ ] Enable Depth Effects → depth map computed
-- [ ] "Surface Contours" toggle appears below Intensity slider
-- [ ] Enable Surface Contours → contour lines appear as overlay on foreground/midground only
-- [ ] Levels slider (2–12) updates contour count after drag end
-- [ ] Line Style: Auto/Black/White/Custom all work correctly
-- [ ] Toggling off Depth Effects hides contour overlay
-- [ ] Background cutoff slider change → contours recompute correctly after release
-- [ ] Export → contour lines baked into the exported image
-- [ ] Compare mode → contours on "after" panel, not "before"
-- [ ] No contour lines bleed into letterbox/padding areas
+- The biggest implementation risk is crossing actor boundaries with UIKit image types. Keep background generation on pure value data.
+- The second risk is accidental over-recomputation. Only background cutoff, depth map replacement, contour enablement, and level changes should regenerate geometry.
+- Keep contour rendering visually quiet. If the first pass feels too dense, adjust line width before adding new settings.
