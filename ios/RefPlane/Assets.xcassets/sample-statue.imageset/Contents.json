@@ -1,0 +1,13 @@
+{
+  "images" : [
+    {
+      "filename" : "sample-statue.jpeg",
+      "idiom" : "universal",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

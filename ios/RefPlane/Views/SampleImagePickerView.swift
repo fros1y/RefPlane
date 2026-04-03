@@ -9,6 +9,24 @@ private struct SampleItem: Identifiable {
 
 private let sampleImages: [SampleItem] = [
     SampleItem(
+        id: "statue",
+        displayName: "Sculpture",
+        assetName: "sample-statue",
+        description: "Classical bust study for planes, edges, and form shadows"
+    ),
+    SampleItem(
+        id: "eye",
+        displayName: "Eye Close-Up",
+        assetName: "sample-eye",
+        description: "Macro reference for iris texture and subtle skin values"
+    ),
+    SampleItem(
+        id: "still-life",
+        displayName: "Still Life",
+        assetName: "sample-still-life",
+        description: "Studio setup with fruit and cloth for color and material studies"
+    ),
+    SampleItem(
         id: "colorchecker",
         displayName: "Color Checker",
         assetName: "sample-colorchecker",
@@ -16,9 +34,9 @@ private let sampleImages: [SampleItem] = [
     ),
     SampleItem(
         id: "portrait",
-        displayName: "Portrait",
+        displayName: "Reference Board",
         assetName: "sample-portrait",
-        description: "Real-world subject for tonal and value studies"
+        description: "Mixed image board for stress-testing value grouping and color extraction"
     ),
     SampleItem(
         id: "landscape",
@@ -58,9 +76,11 @@ struct SampleImagePickerView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Sample Images")
             .navigationBarTitleDisplayMode(.inline)
+            .accessibilityIdentifier("sample-picker.grid")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("sample-picker.cancel")
                 }
             }
             .alert(
@@ -123,6 +143,7 @@ private struct SampleThumbnailButton: View {
         .accessibilityLabel(sample.displayName)
         .accessibilityHint(sample.description)
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("sample-picker.\(sample.id)")
     }
 }
 

@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var isInspectorCollapsed = true
     @State private var selectedInspectorSection: StudioInspectorSection = .study
     @State private var didSetInitialInspectorState = false
+    @State private var currentWorkspaceLayout: StudioWorkspaceLayout = .drawer
 
     var body: some View {
         NavigationStack {
@@ -26,11 +27,8 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black.ignoresSafeArea())
-                .onAppear {
-                    configureInitialInspectorState(for: layout, size: proxy.size)
-                }
-                .onChange(of: layout) { _, newLayout in
-                    reconcileInspectorState(for: newLayout, size: proxy.size)
+                .onChange(of: proxy.size, initial: true) { _, newSize in
+                    synchronizeInspectorState(for: newSize)
                 }
                 .onChange(of: state.originalImage?.size) {
                     selectedInspectorSection = preferredInspectorSection
@@ -158,6 +156,7 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show studio controls")
+        .accessibilityIdentifier("studio.sidebar-reveal")
     }
 
     private var collapsedDrawerHandle: some View {
@@ -175,6 +174,7 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show studio controls")
+        .accessibilityIdentifier("studio.drawer-reveal")
     }
 
     private var drawerDragHandle: some View {
@@ -188,6 +188,7 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Hide studio controls")
         .accessibilityHidden(true)
+        .accessibilityIdentifier("studio.drawer-close")
     }
 
     @ViewBuilder
@@ -227,20 +228,16 @@ struct ContentView: View {
         return .drawer
     }
 
-    private func configureInitialInspectorState(
-        for layout: StudioWorkspaceLayout,
-        size: CGSize
-    ) {
-        guard !didSetInitialInspectorState else { return }
+    private func synchronizeInspectorState(for size: CGSize) {
+        let layout = workspaceLayout(for: size)
+        currentWorkspaceLayout = layout
 
-        didSetInitialInspectorState = true
-        isInspectorCollapsed = !(layout == .sidebar && size.width >= 700)
-    }
+        guard didSetInitialInspectorState else {
+            didSetInitialInspectorState = true
+            isInspectorCollapsed = !(layout == .sidebar && size.width >= 700)
+            return
+        }
 
-    private func reconcileInspectorState(
-        for layout: StudioWorkspaceLayout,
-        size: CGSize
-    ) {
         if layout == .sidebar, size.width >= 700, state.currentDisplayImage == nil {
             isInspectorCollapsed = false
         }
@@ -280,8 +277,7 @@ struct ContentView: View {
         state.loadImage(image)
         selectedInspectorSection = .study
 
-        let screenSize = UIScreen.main.bounds.size
-        if workspaceLayout(for: screenSize) == .sidebar, screenSize.width >= 700 {
+        if currentWorkspaceLayout == .sidebar {
             isInspectorCollapsed = false
         }
     }
@@ -367,15 +363,14 @@ private struct StudioCanvasStage: View {
 
                 Spacer(minLength: 0)
 
-                if layout == .drawer {
+                if showsModeDock {
                     StudioModeDock()
-                        .opacity(state.currentDisplayImage == nil ? 0 : 1)
-                        .accessibilityHidden(state.currentDisplayImage == nil)
+                        .padding(.bottom, layout == .sidebar ? 0 : 4)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
-            .padding(.bottom, layout == .drawer && !isInspectorCollapsed ? 20 : 16)
+            .padding(.bottom, canvasBottomPadding)
         }
         .onChange(of: showImagePicker) { _, isPresented in
             if isPresented {
@@ -389,6 +384,20 @@ private struct StudioCanvasStage: View {
                 onOpenSamples()
             }
         }
+    }
+
+    private var showsModeDock: Bool {
+        state.currentDisplayImage != nil && (layout == .sidebar || isInspectorCollapsed)
+    }
+
+    private var canvasBottomPadding: CGFloat {
+        guard layout == .drawer else { return 16 }
+
+        if state.currentDisplayImage != nil, isInspectorCollapsed {
+            return 84
+        }
+
+        return isInspectorCollapsed ? 16 : 20
     }
 
     private var inspectorIconName: String {
@@ -436,12 +445,14 @@ private struct StudioCanvasChrome: View {
                 chromeButton(
                     title: "Library",
                     systemImage: "photo.on.rectangle",
+                    accessibilityID: "chrome.library",
                     action: onOpenPhoto
                 )
 
                 chromeButton(
                     title: "Samples",
                     systemImage: "sparkles.rectangle.stack",
+                    accessibilityID: "chrome.samples",
                     action: onOpenSamples
                 )
             }
@@ -453,6 +464,7 @@ private struct StudioCanvasChrome: View {
                     title: state.compareMode ? "Hide compare" : "Compare",
                     systemImage: state.compareMode ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
                     isEnabled: state.displayBaseImage != nil,
+                    accessibilityID: "chrome.compare",
                     action: toggleCompare
                 )
 
@@ -460,18 +472,21 @@ private struct StudioCanvasChrome: View {
                     title: "Export",
                     systemImage: "square.and.arrow.up",
                     isEnabled: state.currentDisplayImage != nil,
+                    accessibilityID: "chrome.export",
                     action: onExport
                 )
 
                 chromeButton(
                     title: isInspectorCollapsed ? "Show studio" : "Hide studio",
                     systemImage: inspectorIcon,
+                    accessibilityID: "chrome.studio",
                     action: onToggleInspector
                 )
 
                 chromeButton(
                     title: "About",
                     systemImage: "info.circle",
+                    accessibilityID: "chrome.about",
                     action: onShowAbout
                 )
             }
@@ -492,6 +507,7 @@ private struct StudioCanvasChrome: View {
         title: String,
         systemImage: String,
         isEnabled: Bool = true,
+        accessibilityID: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -504,6 +520,7 @@ private struct StudioCanvasChrome: View {
         .foregroundStyle(isEnabled ? .white : .white.opacity(0.25))
         .disabled(!isEnabled)
         .accessibilityLabel(title)
+        .accessibilityIdentifier(accessibilityID)
     }
 }
 
@@ -511,21 +528,29 @@ private struct StudioModeDock: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             ForEach(RefPlaneMode.allCases) { mode in
                 Button {
                     state.setMode(mode)
                 } label: {
-                    Label(mode.label, systemImage: mode.iconName)
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(state.activeMode == mode ? Color.black : Color.white.opacity(0.85))
-                        .frame(width: 52, height: 44)
-                        .background(modeBackground(isSelected: state.activeMode == mode))
+                    VStack(spacing: 4) {
+                        Image(systemName: mode.iconName)
+                            .font(.system(size: 15, weight: .semibold))
+
+                        Text(mode.label)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .foregroundStyle(state.activeMode == mode ? Color.black : Color.white.opacity(0.9))
+                    .frame(minWidth: 72)
+                    .frame(height: 52)
+                    .background(modeBackground(isSelected: state.activeMode == mode))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(mode.label) study")
                 .accessibilityAddTraits(state.activeMode == mode ? .isSelected : [])
+                .accessibilityIdentifier("mode-dock.\(mode.rawValue)")
             }
         }
         .padding(8)
@@ -534,6 +559,8 @@ private struct StudioModeDock: View {
             Capsule()
                 .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("studio.mode-dock")
     }
 
     private func modeBackground(isSelected: Bool) -> some View {

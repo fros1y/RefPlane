@@ -42,14 +42,17 @@ struct CompareSliderView: View {
             .background(Color.black)
         }
         .environment(\.colorScheme, .dark)
+        .accessibilityIdentifier("compare.canvas")
     }
 
     private var compareLabels: some View {
         VStack {
             HStack {
                 CompareTag(title: "Original", icon: "photo")
+                    .accessibilityIdentifier("compare.label.original")
                 Spacer()
                 CompareTag(title: "Processed", icon: "wand.and.stars")
+                    .accessibilityIdentifier("compare.label.processed")
             }
             .padding(.horizontal, 20)
             .padding(.top, 86)
@@ -73,7 +76,7 @@ struct CompareSliderView: View {
                         .frame(width: 188)
                 }
 
-                Text(state.processingLabel)
+                Text(processingDisplayLabel)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.9))
             }
@@ -87,7 +90,30 @@ struct CompareSliderView: View {
         }
         .ignoresSafeArea()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(state.processingLabel)
+        .accessibilityLabel(processingDisplayLabel)
+        .accessibilityIdentifier("compare.processing-overlay")
+    }
+
+    private var processingDisplayLabel: String {
+        switch state.processingLabel {
+        case "Loading…":
+            return "Preparing image"
+        case "Abstracting…":
+            return "Abstracting image"
+        case "Processing…":
+            switch state.activeMode {
+            case .original:
+                return "Preparing image"
+            case .tonal:
+                return "Generating tonal study"
+            case .value:
+                return "Generating value study"
+            case .color:
+                return "Generating color study"
+            }
+        default:
+            return state.processingLabel
+        }
     }
 }
 
@@ -145,6 +171,7 @@ private struct CompareDividerHandle: View {
         .accessibilityElement()
         .accessibilityLabel("Comparison divider")
         .accessibilityValue("\(Int(splitFraction * 100)) percent")
+        .accessibilityIdentifier("compare.divider")
         .accessibilityAdjustableAction { direction in
             switch direction {
             case .increment:

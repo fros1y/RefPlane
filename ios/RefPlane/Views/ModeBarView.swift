@@ -9,7 +9,9 @@ struct ModeBarView: View {
             set: { state.setMode($0) }
         )) {
             ForEach(RefPlaneMode.allCases) { mode in
-                Text(mode.label).tag(mode)
+                Text(mode.label)
+                    .tag(mode)
+                    .accessibilityIdentifier("inspector-mode.\(mode.rawValue)")
             }
         }
         .pickerStyle(.segmented)

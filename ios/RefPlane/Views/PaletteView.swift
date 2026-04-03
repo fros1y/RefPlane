@@ -21,6 +21,7 @@ struct PaletteView: View {
                 ForEach(Array(sections.enumerated()), id: \.element.band) { index, section in
                     PaletteMixCard(
                         mixNumber: index + 1,
+                        bandID: section.band,
                         section: section,
                         colors: colors(for: section),
                         recipes: recipes(for: section),
@@ -74,6 +75,7 @@ struct PaletteView: View {
 
 private struct PaletteMixCard: View {
     let mixNumber: Int
+    let bandID: Int
     let section: PaletteBandSection
     let colors: [Color]
     let recipes: [PigmentRecipe]
@@ -90,7 +92,10 @@ private struct PaletteMixCard: View {
 
                     Spacer(minLength: 8)
 
-                    Label(isIsolated ? "Isolated" : "Show", systemImage: isIsolated ? "scope" : "circle.dashed")
+                    Label(
+                        isIsolated ? "Focused" : "Show Mix",
+                        systemImage: isIsolated ? "scope" : "circle.dashed"
+                    )
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(isIsolated ? Color.accentColor : Color.secondary)
                         .labelStyle(.titleAndIcon)
@@ -101,7 +106,7 @@ private struct PaletteMixCard: View {
                         ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(color)
-                                .frame(width: 40, height: 32)
+                                .frame(width: 52, height: 44)
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                                         .stroke(
@@ -143,6 +148,7 @@ private struct PaletteMixCard: View {
         .accessibilityLabel("Mix \(mixNumber), \(colors.count) colors")
         .accessibilityValue(isIsolated ? "Isolated on canvas" : "Showing all mixes")
         .accessibilityHint(isIsolated ? "Double tap to show all mixes" : "Double tap to isolate this mix")
+        .accessibilityIdentifier("mix-card.\(bandID)")
     }
 }
 

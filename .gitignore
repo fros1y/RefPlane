@@ -25,3 +25,6 @@ IDEWorkspaceChecks.plist
 
 # Scripts
 ios/scripts/.venv/
+
+# Generated UX review screenshots
+artifacts/ux-screenshots/

@@ -66,6 +66,10 @@ struct ControlPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerView
+            if state.currentDisplayImage != nil {
+                inspectorModeStrip
+                Divider().opacity(0.18)
+            }
             sectionSwitcher
             Divider().opacity(0.18)
             ScrollView {
@@ -80,6 +84,8 @@ struct ControlPanelView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("studio.inspector")
     }
 
     private var headerView: some View {
@@ -106,10 +112,24 @@ struct ControlPanelView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Hide studio controls")
+                .accessibilityIdentifier("studio.inspector-close")
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, presentation == .bottomPanel ? 26 : 18)
+        .padding(.bottom, 14)
+    }
+
+    private var inspectorModeStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Study Mode")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            ModeBarView()
+                .accessibilityIdentifier("studio.inspector-mode")
+        }
+        .padding(.horizontal, 20)
         .padding(.bottom, 14)
     }
 
@@ -130,6 +150,7 @@ struct ControlPanelView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
+                    .accessibilityIdentifier("studio.section.\(section.rawValue)")
                 }
             }
             .padding(.horizontal, 20)
@@ -155,18 +176,22 @@ struct ControlPanelView: View {
 
     private var studyPanel: some View {
         VStack(spacing: 16) {
-            StudioPanelCard(
-                title: "Mode",
-                subtitle: "Choose which study layer is shown on the canvas.",
-                systemImage: "slider.horizontal.below.rectangle"
-            ) {
-                ModeBarView()
+            if state.currentDisplayImage == nil {
+                StudioPanelCard(
+                    title: "Mode",
+                    subtitle: "Choose which study layer is shown on the canvas.",
+                    systemImage: "slider.horizontal.below.rectangle",
+                    accessibilityID: "studio.card.mode"
+                ) {
+                    ModeBarView()
+                }
             }
 
             StudioPanelCard(
                 title: "Simplify",
                 subtitle: "Reduce photo noise and local texture so large shapes read more clearly.",
-                systemImage: "wand.and.stars"
+                systemImage: "wand.and.stars",
+                accessibilityID: "studio.card.simplify"
             ) {
                 abstractionControls
             }
@@ -179,7 +204,8 @@ struct ControlPanelView: View {
                 StudioPanelCard(
                     title: "Value Bands",
                     subtitle: "Set the number and spacing of value steps for a stronger notan read.",
-                    systemImage: "square.stack.3d.up"
+                    systemImage: "square.stack.3d.up",
+                    accessibilityID: "studio.card.value-bands"
                 ) {
                     ValueSettingsView()
                 }
@@ -187,7 +213,8 @@ struct ControlPanelView: View {
                 StudioPanelCard(
                     title: "Value Bands",
                     subtitle: "Switch to Value mode to edit thresholds and tonal grouping.",
-                    systemImage: "square.stack.3d.up"
+                    systemImage: "square.stack.3d.up",
+                    accessibilityID: "studio.card.value-bands"
                 ) {
                     ModeBarView()
                 }
@@ -196,7 +223,8 @@ struct ControlPanelView: View {
             StudioPanelCard(
                 title: "Drawing Grid",
                 subtitle: "Overlay proportional guides, diagonals, and adaptive line colors for transfer work.",
-                systemImage: "square.grid.3x3"
+                systemImage: "square.grid.3x3",
+                accessibilityID: "studio.card.grid"
             ) {
                 GridSettingsView()
             }
@@ -207,7 +235,8 @@ struct ControlPanelView: View {
         StudioPanelCard(
             title: "Depth Separation",
             subtitle: "Push backgrounds back, remove distractions, and trace surface contours from estimated depth.",
-            systemImage: "camera.aperture"
+            systemImage: "camera.aperture",
+            accessibilityID: "studio.card.depth"
         ) {
             DepthSettingsView()
         }
@@ -219,7 +248,8 @@ struct ControlPanelView: View {
                 StudioPanelCard(
                     title: "Pigment Palette",
                     subtitle: "Choose tubes, limit pigments per mix, and control how broadly regions spread across hue and mass.",
-                    systemImage: "paintpalette"
+                    systemImage: "paintpalette",
+                    accessibilityID: "studio.card.palette"
                 ) {
                     ColorSettingsView()
                 }
@@ -229,7 +259,8 @@ struct ControlPanelView: View {
                     subtitle: state.paletteColors.isEmpty
                         ? "Run a Color study to generate pigment recipes from the current image."
                         : "Tap a mix to isolate that band on canvas and inspect the recipe ratios below.",
-                    systemImage: "eyedropper.halffull"
+                    systemImage: "eyedropper.halffull",
+                    accessibilityID: "studio.card.recipes"
                 ) {
                     PaletteView()
                 }
@@ -237,7 +268,8 @@ struct ControlPanelView: View {
                 StudioPanelCard(
                     title: "Mix Recipes",
                     subtitle: "Switch to Color mode to extract palette groups and Golden acrylic recipes.",
-                    systemImage: "paintpalette"
+                    systemImage: "paintpalette",
+                    accessibilityID: "studio.card.recipes"
                 ) {
                     ModeBarView()
                 }
@@ -250,7 +282,8 @@ struct ControlPanelView: View {
             StudioPanelCard(
                 title: "Output",
                 subtitle: "Export the visible study with grid and contour overlays baked in.",
-                systemImage: "square.and.arrow.up"
+                systemImage: "square.and.arrow.up",
+                accessibilityID: "studio.card.export"
             ) {
                 VStack(alignment: .leading, spacing: 12) {
                     Button(action: { onExport?() }) {
@@ -260,6 +293,7 @@ struct ControlPanelView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(state.currentDisplayImage == nil)
+                    .accessibilityIdentifier("studio.export-current")
 
                     if state.currentDisplayImage == nil {
                         Text("Load a photo or sample image to enable export.")
@@ -272,7 +306,8 @@ struct ControlPanelView: View {
             StudioPanelCard(
                 title: "Source Images",
                 subtitle: "Start from your library or a bundled sample set tuned for checking values and color behavior.",
-                systemImage: "photo.stack"
+                systemImage: "photo.stack",
+                accessibilityID: "studio.card.sources"
             ) {
                 VStack(spacing: 12) {
                     Button(action: { onOpenPhoto?() }) {
@@ -280,12 +315,14 @@ struct ControlPanelView: View {
                             .frame(maxWidth: .infinity, minHeight: 50)
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityIdentifier("studio.choose-library")
 
                     Button(action: { onOpenSamples?() }) {
                         Label("Browse Sample Images", systemImage: "sparkles.rectangle.stack")
                             .frame(maxWidth: .infinity, minHeight: 50)
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityIdentifier("studio.choose-samples")
                 }
                 .font(.subheadline.weight(.semibold))
             }
@@ -389,17 +426,20 @@ private struct StudioPanelCard<Content: View>: View {
     let title: String
     let subtitle: String
     let systemImage: String
+    var accessibilityID: String? = nil
     private let content: Content
 
     init(
         title: String,
         subtitle: String,
         systemImage: String,
+        accessibilityID: String? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.subtitle = subtitle
         self.systemImage = systemImage
+        self.accessibilityID = accessibilityID
         self.content = content()
     }
 
@@ -433,8 +473,22 @@ private struct StudioPanelCard<Content: View>: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         }
+        .studioAccessibilityIdentifier(accessibilityID)
     }
 
+}
+
+private extension View {
+    @ViewBuilder
+    func studioAccessibilityIdentifier(_ accessibilityID: String?) -> some View {
+        if let accessibilityID {
+            self
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier(accessibilityID)
+        } else {
+            self
+        }
+    }
 }
 
 private struct ControlPanelPreviewHarness: View {

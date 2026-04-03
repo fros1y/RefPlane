@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ImageCanvasView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var showImagePicker: Bool
     @Binding var showSamplePicker: Bool
@@ -36,6 +37,7 @@ struct ImageCanvasView: View {
                         onOpenSamples: openSamplePicker
                     )
                     .onAppear {
+                        guard !reduceMotion else { return }
                         isBreathing = true
                     }
                 }
@@ -110,6 +112,7 @@ struct ImageCanvasView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(state.activeMode.label) study canvas")
         .accessibilityHint("Pinch to zoom, drag to pan, and double tap to reset.")
+        .accessibilityIdentifier("canvas.image")
     }
 
     private func clampedOffset(_ offset: CGSize, scale: CGFloat, image: UIImage, container: CGSize) -> CGSize {
@@ -164,6 +167,7 @@ struct ImageCanvasView: View {
         .ignoresSafeArea()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(processingDisplayLabel)
+        .accessibilityIdentifier("canvas.processing-overlay")
     }
 
     private var processingDisplayLabel: String {
@@ -233,6 +237,8 @@ struct StudyImageLayer: View {
 }
 
 private struct CanvasEmptyStateCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let isBreathing: Bool
     let onOpenPhoto: () -> Void
     let onOpenSamples: () -> Void
@@ -244,7 +250,7 @@ private struct CanvasEmptyStateCard: View {
                 .foregroundStyle(.white.opacity(0.88))
                 .scaleEffect(isBreathing ? 1.06 : 0.98)
                 .animation(
-                    .easeInOut(duration: 4.0).repeatForever(autoreverses: true),
+                    reduceMotion ? nil : .easeInOut(duration: 4.0).repeatForever(autoreverses: true),
                     value: isBreathing
                 )
 
@@ -253,7 +259,7 @@ private struct CanvasEmptyStateCard: View {
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white)
 
-                Text("Open a photo, simplify the big shapes, compare versions, and extract value maps or pigment mixes.")
+                Text("Choose a photo or sample, simplify the big shapes, compare versions, and extract value maps or pigment mixes.")
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.74))
                     .multilineTextAlignment(.center)
@@ -267,6 +273,7 @@ private struct CanvasEmptyStateCard: View {
                         .frame(maxWidth: .infinity, minHeight: 52)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("canvas.empty.library")
 
                 Button(action: onOpenSamples) {
                     Label("Browse Samples", systemImage: "sparkles.rectangle.stack")
@@ -275,6 +282,7 @@ private struct CanvasEmptyStateCard: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.white)
+                .accessibilityIdentifier("canvas.empty.samples")
             }
         }
         .frame(maxWidth: 390)
@@ -285,6 +293,8 @@ private struct CanvasEmptyStateCard: View {
                 .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         }
         .padding(24)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("canvas.empty-state")
     }
 }
 
