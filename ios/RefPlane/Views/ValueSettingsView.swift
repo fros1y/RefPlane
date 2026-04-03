@@ -12,10 +12,10 @@ struct ValueSettingsView: View {
                     set: { newVal in
                         let level = Int(newVal.rounded())
                         state.valueConfig.levels = level
-                        state.valueConfig.thresholds = defaultThresholds(for: level)
+                        state.valueConfig.thresholds = state.valueConfig.distribution.thresholds(for: level)
                     }
                 ),
-                range: 2...8,
+                range: 2...16,
                 step: 1,
                 displayFormat: { "\(Int($0))" },
                 onEditingChanged: { editing in
@@ -25,6 +25,21 @@ struct ValueSettingsView: View {
                 }
             )
 
+            Picker("Distribution", selection: Binding(
+                get: { state.valueConfig.distribution },
+                set: { newDist in
+                    state.valueConfig.distribution = newDist
+                    if newDist != .custom {
+                        state.valueConfig.thresholds = newDist.thresholds(for: state.valueConfig.levels)
+                        state.triggerProcessing()
+                    }
+                }
+            )) {
+                ForEach(ThresholdDistribution.allCases) { dist in
+                    Text(dist.rawValue).tag(dist)
+                }
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Thresholds")
                     .font(.footnote.weight(.medium))
@@ -33,7 +48,13 @@ struct ValueSettingsView: View {
                 ThresholdSliderView(
                     thresholds: Binding(
                         get: { state.valueConfig.thresholds },
-                        set: { state.valueConfig.thresholds = $0 }
+                        set: {
+                            state.valueConfig.thresholds = $0
+                            // Any manual adjustment switches to Custom
+                            if state.valueConfig.distribution != .custom {
+                                state.valueConfig.distribution = .custom
+                            }
+                        }
                     ),
                     levels: state.valueConfig.levels,
                     colorForLevel: { level, total in

@@ -53,9 +53,40 @@ struct GridConfig {
     var opacity: Double        = 0.7
 }
 
+// MARK: - Value threshold distribution
+
+enum ThresholdDistribution: String, CaseIterable, Identifiable {
+    case even     = "Even"
+    case shadows  = "Shadows"
+    case lights   = "Lights"
+    case custom   = "Custom"
+
+    var id: String { rawValue }
+
+    /// Compute thresholds for the given number of levels using this distribution.
+    func thresholds(for levels: Int) -> [Double] {
+        guard levels > 1 else { return [] }
+        let n = levels
+        switch self {
+        case .even:
+            return (1..<n).map { Double($0) / Double(n) }
+        case .shadows:
+            // Power curve (exponent > 1) compresses breakpoints toward the dark end.
+            return (1..<n).map { pow(Double($0) / Double(n), 0.6) }
+        case .lights:
+            // Inverse power curve compresses breakpoints toward the light end.
+            return (1..<n).map { pow(Double($0) / Double(n), 1.667) }
+        case .custom:
+            // Custom returns even as a starting point; user adjusts manually.
+            return (1..<n).map { Double($0) / Double(n) }
+        }
+    }
+}
+
 struct ValueConfig {
-    var levels: Int              = 3
-    var thresholds: [Double]     = defaultThresholds(for: 3)
+    var levels: Int                        = 3
+    var thresholds: [Double]               = defaultThresholds(for: 3)
+    var distribution: ThresholdDistribution = .even
 }
 
 // MARK: - Pigment palette presets

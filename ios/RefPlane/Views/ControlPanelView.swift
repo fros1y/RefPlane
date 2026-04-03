@@ -128,7 +128,7 @@ struct ControlPanelView: View {
                 }
             }
 
-            if (state.activeMode == .value || state.activeMode == .color) && !state.paletteColors.isEmpty {
+            if state.activeMode == .color && !state.paletteColors.isEmpty {
                 Section("Palette") {
                     PaletteView()
                 }
