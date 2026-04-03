@@ -1,54 +1,73 @@
 import SwiftUI
 
-struct ColorSettingsView: View {
+struct ColorQuantizationSettingsView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(spacing: 14) {
+            LabeledSlider(
+                label: "Colors",
+                value: Binding(
+                    get: { Double(state.colorConfig.numShades) },
+                    set: { state.colorConfig.numShades = Int($0.rounded()) }
+                ),
+                range: 2...24,
+                step: 1,
+                displayFormat: { "\(Int($0))" },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.scheduleProcessing()
+                    }
+                }
+            )
+
+            Picker("Band Bias", selection: Binding(
+                get: { state.colorConfig.quantizationBias },
+                set: { newBias in
+                    state.colorConfig.quantizationBias = newBias
+                    state.scheduleProcessing()
+                }
+            )) {
+                ForEach(ColorQuantizationBias.allCases) { bias in
+                    Text(bias.rawValue).tag(bias)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            LabeledSlider(
+                label: "Group By",
+                value: Binding(
+                    get: { state.colorConfig.paletteSpread },
+                    set: { state.colorConfig.paletteSpread = $0 }
+                ),
+                range: 0...1,
+                step: 0.01,
+                displayFormat: { value in
+                    if value <= 0.01 { return "Mass" }
+                    if value >= 0.99 { return "Hue" }
+                    return String(format: "%.2f", value)
+                },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.scheduleProcessing()
+                    }
+                }
+            )
+        }
+    }
+}
+
+struct PaletteApproximationSettingsView: View {
     @Environment(AppState.self) private var state
     @State private var pigmentListExpanded: Bool = false
 
     var body: some View {
-        LabeledSlider(
-            label: "Shades",
-            value: Binding(
-                get: { Double(state.colorConfig.numShades) },
-                set: { state.colorConfig.numShades = Int($0.rounded()) }
-            ),
-            range: 2...24,
-            step: 1,
-            displayFormat: { "\(Int($0))" },
-            onEditingChanged: { editing in
-                if !editing {
-                    state.scheduleProcessing()
-                }
-            }
-        )
-
-        LabeledSlider(
-            label: "Palette Spread",
-            value: Binding(
-                get: { state.colorConfig.paletteSpread },
-                set: { state.colorConfig.paletteSpread = $0 }
-            ),
-            range: 0...1,
-            step: 0.01,
-            displayFormat: { value in
-                if value <= 0.01 { return "Mass" }
-                if value >= 0.99 { return "Hue" }
-                return String(format: "%.2f", value)
-            },
-            onEditingChanged: { editing in
-                if !editing {
-                    state.scheduleProcessing()
-                }
-            }
-        )
-
-        if state.activeMode == .color {
-            Divider()
-
-            // Preset palette picker
+        VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Palette")
                     .font(.subheadline)
                     .foregroundStyle(.primary)
+
                 Picker("Palette", selection: presetBinding) {
                     ForEach(PigmentPreset.allCases) { preset in
                         Text(preset.rawValue).tag(preset)
@@ -59,7 +78,6 @@ struct ColorSettingsView: View {
                 .labelsHidden()
             }
 
-            // Pigment checklist
             DisclosureGroup(
                 isExpanded: $pigmentListExpanded,
                 content: {
@@ -93,6 +111,7 @@ struct ColorSettingsView: View {
                     }
                 }
             )
+            .accessibilityIdentifier("studio.palette-tubes")
 
             LabeledSlider(
                 label: "Max Pigments",
@@ -144,6 +163,21 @@ struct ColorSettingsView: View {
             state.colorConfig.saveCustomPigmentIDs()
         }
         state.scheduleProcessing()
+    }
+}
+
+struct ColorSettingsView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ColorQuantizationSettingsView()
+
+            if state.activeMode == .color {
+                Divider()
+                PaletteApproximationSettingsView()
+            }
+        }
     }
 }
 

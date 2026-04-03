@@ -30,15 +30,15 @@ final class RefPlaneStudioUITests: XCTestCase {
         openStudioIfNeeded()
 
         XCTAssertTrue(app.otherElements["studio.inspector"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["studio.section.study"].exists)
-        XCTAssertTrue(app.buttons["studio.section.structure"].exists)
-        XCTAssertTrue(app.buttons["studio.section.depth"].exists)
-        XCTAssertTrue(app.buttons["studio.section.mixing"].exists)
-        XCTAssertTrue(app.buttons["studio.section.export"].exists)
+        XCTAssertTrue(app.otherElements["studio.card.background"].exists)
+        XCTAssertTrue(app.otherElements["studio.card.simplify"].exists)
+        XCTAssertTrue(app.otherElements["studio.card.tonal"].exists)
+        XCTAssertTrue(app.otherElements["studio.card.quantize"].exists)
     }
 
     func testModeDockContainsAllStudyModesWhenAvailable() {
         openSculptureSampleAndWaitForCanvas()
+        hideStudioIfNeeded()
 
         XCTAssertTrue(app.buttons["mode-dock.original"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["mode-dock.tonal"].exists)
@@ -58,41 +58,56 @@ final class RefPlaneStudioUITests: XCTestCase {
         waitForProcessingToSettle()
         try captureScreenshot("03-original-sculpture")
 
-        selectStudyMode(identifier: "value", title: "Value")
+        openStudioIfNeeded()
+        setBackgroundProcessingEnabled(true)
+        waitForProcessingToSettle(timeout: 14)
+
+        setGrayscaleRenderingEnabled(true)
+        setQuantizationEnabled(true)
         waitForProcessingToSettle()
         try captureScreenshot("04-value-study")
 
-        openStudioIfNeeded()
-
-        XCTAssertTrue(app.buttons["studio.section.structure"].waitForExistence(timeout: 3))
-        app.buttons["studio.section.structure"].tap()
-        XCTAssertTrue(app.switches["Show Grid"].waitForExistence(timeout: 3))
-        app.switches["Show Grid"].tap()
+        let showGridSwitch = app.switches["Show Grid"]
+        scrollInspector(to: showGridSwitch, direction: .down)
+        XCTAssertTrue(showGridSwitch.waitForExistence(timeout: 3))
+        if showGridSwitch.value as? String != "1" {
+            tapSwitch(showGridSwitch)
+            waitForSwitch(showGridSwitch, enabled: true)
+        }
         try captureScreenshot("05-grid-overlay")
 
         app.buttons["chrome.compare"].tap()
         XCTAssertTrue(app.otherElements["compare.canvas"].waitForExistence(timeout: 3))
         try captureScreenshot("06-compare-value")
-
-        selectStudyMode(identifier: "color", title: "Color")
-        waitForProcessingToSettle(timeout: 14)
         app.buttons["chrome.compare"].tap()
-        XCTAssertTrue(app.buttons["studio.section.mixing"].waitForExistence(timeout: 3))
-        app.buttons["studio.section.mixing"].tap()
+
+        setGrayscaleRenderingEnabled(false)
+        waitForProcessingToSettle(timeout: 14)
+
+        let paletteCard = app.otherElements["studio.card.palette"]
+        scrollInspector(to: paletteCard, direction: .down)
+        XCTAssertTrue(paletteCard.waitForExistence(timeout: 3))
         let firstMixCard = app.buttons.matching(identifier: "mix-card.0").firstMatch
         if firstMixCard.waitForExistence(timeout: 8) {
+            scrollInspector(to: firstMixCard, direction: .down)
             firstMixCard.tap()
         }
         try captureScreenshot("07-color-mixing")
 
-        app.buttons["studio.section.depth"].tap()
-        XCTAssertTrue(app.switches["Depth Effects"].waitForExistence(timeout: 3))
-        app.switches["Depth Effects"].tap()
+        let contourSwitch = app.switches["Surface Contours"]
+        scrollInspector(to: contourSwitch, direction: .down)
+        if contourSwitch.waitForExistence(timeout: 3),
+           contourSwitch.value as? String != "1" {
+            tapSwitch(contourSwitch)
+            waitForSwitch(contourSwitch, enabled: true)
+        }
         waitForProcessingToSettle(timeout: 14)
         try captureScreenshot("08-depth-effects")
     }
 
     private func waitForProcessingToSettle(timeout: TimeInterval = 10) {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+
         let canvasOverlay = app.otherElements["canvas.processing-overlay"]
         let compareOverlay = app.otherElements["compare.processing-overlay"]
 
@@ -129,6 +144,12 @@ final class RefPlaneStudioUITests: XCTestCase {
         }
     }
 
+    private func hideStudioIfNeeded() {
+        if app.otherElements["studio.inspector"].exists {
+            app.buttons["studio.inspector-close"].tap()
+        }
+    }
+
     private func openSculptureSampleAndWaitForCanvas() {
         app.buttons["canvas.empty.samples"].tap()
         XCTAssertTrue(app.buttons["sample-picker.statue"].waitForExistence(timeout: 3))
@@ -137,26 +158,68 @@ final class RefPlaneStudioUITests: XCTestCase {
         waitForProcessingToSettle()
     }
 
-    private func selectStudyMode(identifier: String, title: String) {
-        let dockButton = app.buttons["mode-dock.\(identifier)"]
-        if dockButton.waitForExistence(timeout: 2) {
-            dockButton.tap()
-            return
+    private func setBackgroundProcessingEnabled(_ enabled: Bool) {
+        let toggle = app.switches["Process Background"]
+        scrollInspector(to: toggle, direction: .up)
+        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        if toggle.value as? String != (enabled ? "1" : "0") {
+            tapSwitch(toggle)
         }
+        waitForSwitch(toggle, enabled: enabled)
+    }
 
-        let inspectorSegment = app.buttons["inspector-mode.\(identifier)"]
-        if inspectorSegment.waitForExistence(timeout: 2) {
-            inspectorSegment.tap()
-            return
+    private func setGrayscaleRenderingEnabled(_ enabled: Bool) {
+        let button = app.buttons[enabled ? "Grayscale" : "Color"]
+        scrollInspector(to: button, direction: .up)
+        XCTAssertTrue(button.waitForExistence(timeout: 3))
+        button.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    }
+
+    private func setQuantizationEnabled(_ enabled: Bool) {
+        let toggle = app.switches["Limit Palette"]
+        scrollInspector(to: toggle, direction: .down)
+        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        if toggle.value as? String != (enabled ? "1" : "0") {
+            tapSwitch(toggle)
         }
+        waitForSwitch(toggle, enabled: enabled)
+    }
 
-        let labeledButton = app.buttons[title]
-        if labeledButton.waitForExistence(timeout: 2) {
-            labeledButton.tap()
-            return
+    private enum ScrollDirection {
+        case up
+        case down
+    }
+
+    private func scrollInspector(to element: XCUIElement, direction: ScrollDirection) {
+        let scrollView = app.scrollViews.firstMatch
+        guard scrollView.waitForExistence(timeout: 2) else { return }
+
+        for _ in 0..<8 {
+            if element.isHittable {
+                return
+            }
+
+            switch direction {
+            case .up:
+                scrollView.swipeDown()
+            case .down:
+                scrollView.swipeUp()
+            }
         }
+    }
 
-        XCTFail("No visible mode control for \(title).")
+    private func waitForSwitch(_ toggle: XCUIElement, enabled: Bool) {
+        let expectedValue = enabled ? "1" : "0"
+        let predicate = NSPredicate(format: "value == %@", expectedValue)
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: toggle)
+        _ = XCTWaiter.wait(for: [expectation], timeout: 2)
+        XCTAssertEqual(toggle.value as? String, expectedValue)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    }
+
+    private func tapSwitch(_ toggle: XCUIElement) {
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
     }
 }
 

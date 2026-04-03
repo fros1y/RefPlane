@@ -9,7 +9,6 @@ struct ContentView: View {
     @State private var exportDocument: ExportImageDocument?
     @State private var showExportFileExporter = false
     @State private var isInspectorCollapsed = true
-    @State private var selectedInspectorSection: StudioInspectorSection = .study
     @State private var didSetInitialInspectorState = false
     @State private var currentWorkspaceLayout: StudioWorkspaceLayout = .drawer
 
@@ -29,12 +28,6 @@ struct ContentView: View {
                 .background(Color.black.ignoresSafeArea())
                 .onChange(of: proxy.size, initial: true) { _, newSize in
                     synchronizeInspectorState(for: newSize)
-                }
-                .onChange(of: state.originalImage?.size) {
-                    selectedInspectorSection = preferredInspectorSection
-                }
-                .onChange(of: state.activeMode) { _, _ in
-                    selectedInspectorSection = preferredInspectorSection
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -89,11 +82,7 @@ struct ContentView: View {
 
                     ControlPanelView(
                         presentation: .sidebar,
-                        selectedSection: $selectedInspectorSection,
-                        onClose: collapseInspector,
-                        onOpenPhoto: openPhotoLibrary,
-                        onOpenSamples: openSampleLibrary,
-                        onExport: exportImage
+                        onClose: collapseInspector
                     )
                     .frame(width: 392)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -114,11 +103,7 @@ struct ContentView: View {
             } else {
                 ControlPanelView(
                     presentation: .bottomPanel,
-                    selectedSection: $selectedInspectorSection,
-                    onClose: collapseInspector,
-                    onOpenPhoto: openPhotoLibrary,
-                    onOpenSamples: openSampleLibrary,
-                    onExport: exportImage
+                    onClose: collapseInspector
                 )
                 .frame(maxWidth: .infinity)
                 .frame(height: min(maxHeight * 0.72, 560))
@@ -205,16 +190,6 @@ struct ContentView: View {
         }
     }
 
-    private var preferredInspectorSection: StudioInspectorSection {
-        if state.activeMode == .color {
-            return .mixing
-        }
-        if state.depthConfig.enabled {
-            return .depth
-        }
-        return .study
-    }
-
     private var workspaceAnimation: Animation {
         reduceMotion
             ? .linear(duration: 0.2)
@@ -275,7 +250,6 @@ struct ContentView: View {
 
     private func loadImage(_ image: UIImage) {
         state.loadImage(image)
-        selectedInspectorSection = .study
 
         if currentWorkspaceLayout == .sidebar {
             isInspectorCollapsed = false
@@ -387,7 +361,7 @@ private struct StudioCanvasStage: View {
     }
 
     private var showsModeDock: Bool {
-        state.currentDisplayImage != nil && (layout == .sidebar || isInspectorCollapsed)
+        state.currentDisplayImage != nil && isInspectorCollapsed
     }
 
     private var canvasBottomPadding: CGFloat {

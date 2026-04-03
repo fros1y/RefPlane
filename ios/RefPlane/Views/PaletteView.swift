@@ -12,7 +12,7 @@ struct PaletteView: View {
         )
 
         if sections.isEmpty {
-            Text("Palette swatches and recipes appear here after a Color study finishes.")
+            Text("Palette swatches appear here after quantization finishes. Pigment recipes are added for color studies.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

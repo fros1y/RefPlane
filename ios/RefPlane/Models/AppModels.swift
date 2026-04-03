@@ -57,8 +57,8 @@ struct GridConfig {
 
 enum ThresholdDistribution: String, CaseIterable, Identifiable {
     case even     = "Even"
-    case shadows  = "Shadows"
-    case lights   = "Lights"
+    case shadows  = "Compress Darks"
+    case lights   = "Compress Lights"
     case custom   = "Custom"
 
     var id: String { rawValue }
@@ -71,10 +71,10 @@ enum ThresholdDistribution: String, CaseIterable, Identifiable {
         case .even:
             return (1..<n).map { Double($0) / Double(n) }
         case .shadows:
-            // Power curve (exponent > 1) compresses breakpoints toward the dark end.
+            // Larger low-end intervals merge neighboring shadow values together.
             return (1..<n).map { pow(Double($0) / Double(n), 0.6) }
         case .lights:
-            // Inverse power curve compresses breakpoints toward the light end.
+            // Larger high-end intervals merge neighboring highlight values together.
             return (1..<n).map { pow(Double($0) / Double(n), 1.667) }
         case .custom:
             // Custom returns even as a starting point; user adjusts manually.
@@ -139,6 +139,7 @@ struct ColorConfig {
             ?? Set(SpectralDataStore.essentialPigments.map(\.id))
     }()
     var paletteSpread: Double  = 0
+    var quantizationBias: ColorQuantizationBias = .neutral
     var maxPigmentsPerMix: Int = 3
     var minConcentration: Float = 0.02
 
@@ -173,6 +174,25 @@ struct ColorConfig {
         }
         let valid = Set(array).intersection(Set(SpectralDataStore.essentialPigments.map(\.id)))
         return valid.isEmpty ? Set(SpectralDataStore.essentialPigments.map(\.id)) : valid
+    }
+}
+
+enum ColorQuantizationBias: String, CaseIterable, Identifiable {
+    case neutral = "Even"
+    case compressDarks = "Compress Darks"
+    case compressLights = "Compress Lights"
+
+    var id: String { rawValue }
+
+    var luminanceExponent: Float {
+        switch self {
+        case .neutral:
+            return 1
+        case .compressDarks:
+            return 1.667
+        case .compressLights:
+            return 0.6
+        }
     }
 }
 

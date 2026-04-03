@@ -81,9 +81,27 @@ enum ColorRegionsProcessor {
     ) -> Result? {
         let total = width * height
         let numShades = overclusterK ?? max(2, config.numShades)
+        let luminanceExponent = config.quantizationBias.luminanceExponent
 
         var stepStart = CFAbsoluteTimeGetCurrent()
-        guard let (labArray, srcBuffer, labBuffer) = gpu.rgbToOklab(pixels: pixels, width: width, height: height) else {
+        guard let (displayLabArray, srcBuffer, displayLabBuffer) = gpu.rgbToOklab(
+            pixels: pixels,
+            width: width,
+            height: height
+        ) else {
+            return nil
+        }
+        let distanceLabArray = applyingLuminanceBias(
+            to: displayLabArray,
+            exponent: luminanceExponent
+        )
+        guard let distanceLabBuffer = luminanceExponent == 1
+            ? displayLabBuffer
+            : gpu.device.makeBuffer(
+                bytes: distanceLabArray,
+                length: distanceLabArray.count * MemoryLayout<Float>.stride,
+                options: .storageModeShared
+            ) else {
             return nil
         }
         print("[ColorStudy][GPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
@@ -92,7 +110,7 @@ enum ColorRegionsProcessor {
         let centroids: [OklabColor]
         if let gpuCentroids = selectFamilyCentroids(
             gpu: gpu,
-            labBuffer: labBuffer,
+            labBuffer: distanceLabBuffer,
             count: total,
             k: numShades,
             lWeight: 0.3,
@@ -102,7 +120,7 @@ enum ColorRegionsProcessor {
             print("[ColorStudy][GPU] choose_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         } else {
             centroids = selectFamilyCentroids(
-                labArray: labArray,
+                labArray: distanceLabArray,
                 k: numShades,
                 lWeight: 0.3,
                 spreadBias: Float(config.paletteSpread)
@@ -112,9 +130,9 @@ enum ColorRegionsProcessor {
 
         return processGPUWithCentroids(
             gpu: gpu,
-            labArray: labArray,
+            displayLabArray: displayLabArray,
             srcBuffer: srcBuffer,
-            labBuffer: labBuffer,
+            distanceLabBuffer: distanceLabBuffer,
             width: width,
             height: height,
             numShades: numShades,
@@ -125,9 +143,9 @@ enum ColorRegionsProcessor {
 
     private static func processGPUWithCentroids(
         gpu: MetalContext,
-        labArray: [Float],
+        displayLabArray: [Float],
         srcBuffer: MTLBuffer,
-        labBuffer: MTLBuffer,
+        distanceLabBuffer: MTLBuffer,
         width: Int,
         height: Int,
         numShades: Int,
@@ -140,7 +158,7 @@ enum ColorRegionsProcessor {
         var stepStart = CFAbsoluteTimeGetCurrent()
         let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
         guard let assignments = gpu.kmeansAssign(
-            pixelLabBuffer: labBuffer,
+            pixelLabBuffer: distanceLabBuffer,
             count: total,
             centroidLab: flatCentroids,
             k: centroids.count,
@@ -165,7 +183,11 @@ enum ColorRegionsProcessor {
         }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(pixelLab: labArray, labels: globalLabels, k: numShades)
+        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(
+            pixelLab: displayLabArray,
+            labels: globalLabels,
+            k: numShades
+        )
         let clusterSalience = computeSalience(centroids: quantizedCentroids, counts: clusterPixelCounts)
         print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
@@ -194,7 +216,7 @@ enum ColorRegionsProcessor {
             pixelBands: globalLabels.map { Int($0) },
             quantizedCentroids: quantizedCentroids,
             pixelLabels: globalLabels,
-            pixelLab: labArray,
+            pixelLab: displayLabArray,
             clusterPixelCounts: clusterPixelCounts,
             clusterSalience: clusterSalience
         )
@@ -212,23 +234,28 @@ enum ColorRegionsProcessor {
     ) -> Result? {
         let total = width * height
         let numShades = overclusterK ?? max(2, config.numShades)
+        let luminanceExponent = config.quantizationBias.luminanceExponent
 
         var stepStart = CFAbsoluteTimeGetCurrent()
-        var points = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
-        var labArray = [Float](repeating: 0, count: total * 3)
+        var displayPoints = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
+        var displayLabArray = [Float](repeating: 0, count: total * 3)
         for i in 0..<total {
             let base = i * 4
             let ok = rgbToOklab(r: pixels[base], g: pixels[base + 1], b: pixels[base + 2])
-            points[i] = ok
-            labArray[i*3] = ok.L
-            labArray[i*3+1] = ok.a
-            labArray[i*3+2] = ok.b
+            displayPoints[i] = ok
+            displayLabArray[i * 3] = ok.L
+            displayLabArray[i * 3 + 1] = ok.a
+            displayLabArray[i * 3 + 2] = ok.b
         }
+        let distancePoints = applyingLuminanceBias(
+            to: displayPoints,
+            exponent: luminanceExponent
+        )
         print("[ColorStudy][CPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         stepStart = CFAbsoluteTimeGetCurrent()
         let centroids = selectFamilyCentroids(
-            points: points,
+            points: distancePoints,
             k: numShades,
             lWeight: 0.3,
             spreadBias: Float(config.paletteSpread)
@@ -237,7 +264,11 @@ enum ColorRegionsProcessor {
         guard !centroids.isEmpty else { return nil }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let assignments = assignFamiliesCPU(points: points, centroids: centroids, lWeight: 0.3)
+        let assignments = assignFamiliesCPU(
+            points: distancePoints,
+            centroids: centroids,
+            lWeight: 0.3
+        )
         print("[ColorStudy][CPU] assign_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         var globalLabels = assignments.map { Int32($0) }
@@ -255,7 +286,11 @@ enum ColorRegionsProcessor {
         }
 
         stepStart = CFAbsoluteTimeGetCurrent()
-        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(pixelLab: labArray, labels: globalLabels, k: numShades)
+        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(
+            pixelLab: displayLabArray,
+            labels: globalLabels,
+            k: numShades
+        )
         let clusterSalience = computeSalience(centroids: quantizedCentroids, counts: clusterPixelCounts)
         print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
@@ -288,7 +323,7 @@ enum ColorRegionsProcessor {
             pixelBands: globalLabels.map { Int($0) },
             quantizedCentroids: quantizedCentroids,
             pixelLabels: globalLabels,
-            pixelLab: labArray,
+            pixelLab: displayLabArray,
             clusterPixelCounts: clusterPixelCounts,
             clusterSalience: clusterSalience
         )
@@ -302,6 +337,37 @@ enum ColorRegionsProcessor {
                 L: labArray[index],
                 a: labArray[index + 1],
                 b: labArray[index + 2]
+            )
+        }
+    }
+
+    private static func applyingLuminanceBias(
+        to labArray: [Float],
+        exponent: Float
+    ) -> [Float] {
+        guard abs(exponent - 1) > 0.0001 else { return labArray }
+
+        var transformed = labArray
+        var index = 0
+        while index < transformed.count {
+            let lightness = max(0, min(1, transformed[index]))
+            transformed[index] = powf(lightness, exponent)
+            index += 3
+        }
+        return transformed
+    }
+
+    private static func applyingLuminanceBias(
+        to points: [OklabColor],
+        exponent: Float
+    ) -> [OklabColor] {
+        guard abs(exponent - 1) > 0.0001 else { return points }
+
+        return points.map { point in
+            OklabColor(
+                L: powf(max(0, min(1, point.L)), exponent),
+                a: point.a,
+                b: point.b
             )
         }
     }

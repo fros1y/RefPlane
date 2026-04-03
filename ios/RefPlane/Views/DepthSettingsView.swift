@@ -5,7 +5,7 @@ struct DepthSettingsView: View {
 
     var body: some View {
         Group {
-            Toggle("Depth Effects", isOn: Binding(
+            Toggle("Process Background", isOn: Binding(
                 get: { state.depthConfig.enabled },
                 set: { newValue in
                     state.depthConfig.enabled = newValue
@@ -22,7 +22,7 @@ struct DepthSettingsView: View {
                 let step = max(0.01, (range.upperBound - range.lowerBound) / 100.0)
 
                 LabeledSlider(
-                    label: "Background",
+                    label: "Background Split",
                     value: Binding(
                         get: { state.depthConfig.backgroundCutoff },
                         set: { newValue in
@@ -70,10 +70,6 @@ struct DepthSettingsView: View {
                         }
                     }
                 )
-
-                if state.depthMap != nil {
-                    ContourSettingsView()
-                }
             }
         }
     }

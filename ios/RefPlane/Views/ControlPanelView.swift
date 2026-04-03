@@ -1,50 +1,5 @@
 import SwiftUI
 
-enum StudioInspectorSection: String, CaseIterable, Identifiable {
-    case study
-    case structure
-    case depth
-    case mixing
-    case export
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .study: return "Study"
-        case .structure: return "Structure"
-        case .depth: return "Depth"
-        case .mixing: return "Mixing"
-        case .export: return "Export"
-        }
-    }
-
-    var iconName: String {
-        switch self {
-        case .study: return "circle.lefthalf.filled"
-        case .structure: return "square.grid.3x3"
-        case .depth: return "camera.aperture"
-        case .mixing: return "paintpalette"
-        case .export: return "square.and.arrow.up"
-        }
-    }
-
-    var summary: String {
-        switch self {
-        case .study:
-            return "Control simplification, painterly filtering, and the active study mode."
-        case .structure:
-            return "Tune values and drawing guides to simplify composition and proportion."
-        case .depth:
-            return "Separate foreground from background and add form contours from depth."
-        case .mixing:
-            return "Build pigment recipes and isolate each mix to evaluate your palette."
-        case .export:
-            return "Send finished studies to Files, Photos, or another art workflow."
-        }
-    }
-}
-
 struct ControlPanelView: View {
     enum Presentation {
         case sidebar
@@ -55,26 +10,22 @@ struct ControlPanelView: View {
     @Environment(AppState.self) private var state
 
     let presentation: Presentation
-    @Binding var selectedSection: StudioInspectorSection
     var onClose: (() -> Void)? = nil
-    var onOpenPhoto: (() -> Void)? = nil
-    var onOpenSamples: (() -> Void)? = nil
-    var onExport: (() -> Void)? = nil
 
     @State private var abstractionStrengthAtDragStart: Double? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             headerView
-            if state.currentDisplayImage != nil {
-                inspectorModeStrip
-                Divider().opacity(0.18)
-            }
-            sectionSwitcher
             Divider().opacity(0.18)
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    panelBody
+                VStack(alignment: .leading, spacing: 14) {
+                    backgroundSection
+                    simplificationSection
+                    tonalSection
+                    quantizationSection
+                    paletteSection
+                    overlaysSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
@@ -91,11 +42,11 @@ struct ControlPanelView: View {
     private var headerView: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(selectedSection.title)
+                Text("Processing Pipeline")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.primary)
 
-                Text(selectedSection.summary)
+                Text("Apply each stage from top to bottom so the study stays predictable and easy to revise.")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -120,213 +71,132 @@ struct ControlPanelView: View {
         .padding(.bottom, 14)
     }
 
-    private var inspectorModeStrip: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Study Mode")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ModeBarView()
-                .accessibilityIdentifier("studio.inspector-mode")
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 14)
-    }
-
-    private var sectionSwitcher: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(StudioInspectorSection.allCases) { section in
-                    Button {
-                        selectedSection = section
-                    } label: {
-                        Label(section.title, systemImage: section.iconName)
-                            .font(.footnote.weight(.semibold))
-                            .labelStyle(.titleAndIcon)
-                            .foregroundStyle(selectedSection == section ? Color.black : Color.primary)
-                            .padding(.horizontal, 16)
-                            .frame(height: 44)
-                            .background(sectionBackground(isSelected: selectedSection == section))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
-                    .accessibilityIdentifier("studio.section.\(section.rawValue)")
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 14)
-        }
-    }
-
-    @ViewBuilder
-    private var panelBody: some View {
-        switch selectedSection {
-        case .study:
-            studyPanel
-        case .structure:
-            structurePanel
-        case .depth:
-            depthPanel
-        case .mixing:
-            mixingPanel
-        case .export:
-            exportPanel
-        }
-    }
-
-    private var studyPanel: some View {
-        VStack(spacing: 16) {
-            if state.currentDisplayImage == nil {
-                StudioPanelCard(
-                    title: "Mode",
-                    subtitle: "Choose which study layer is shown on the canvas.",
-                    systemImage: "slider.horizontal.below.rectangle",
-                    accessibilityID: "studio.card.mode"
-                ) {
-                    ModeBarView()
-                }
-            }
-
-            StudioPanelCard(
-                title: "Simplify",
-                subtitle: "Reduce photo noise and local texture so large shapes read more clearly.",
-                systemImage: "wand.and.stars",
-                accessibilityID: "studio.card.simplify"
-            ) {
-                abstractionControls
-            }
-        }
-    }
-
-    private var structurePanel: some View {
-        VStack(spacing: 16) {
-            if state.activeMode == .value {
-                StudioPanelCard(
-                    title: "Value Bands",
-                    subtitle: "Set the number and spacing of value steps for a stronger notan read.",
-                    systemImage: "square.stack.3d.up",
-                    accessibilityID: "studio.card.value-bands"
-                ) {
-                    ValueSettingsView()
-                }
-            } else {
-                StudioPanelCard(
-                    title: "Value Bands",
-                    subtitle: "Switch to Value mode to edit thresholds and tonal grouping.",
-                    systemImage: "square.stack.3d.up",
-                    accessibilityID: "studio.card.value-bands"
-                ) {
-                    ModeBarView()
-                }
-            }
-
-            StudioPanelCard(
-                title: "Drawing Grid",
-                subtitle: "Overlay proportional guides, diagonals, and adaptive line colors for transfer work.",
-                systemImage: "square.grid.3x3",
-                accessibilityID: "studio.card.grid"
-            ) {
-                GridSettingsView()
-            }
-        }
-    }
-
-    private var depthPanel: some View {
+    private var backgroundSection: some View {
         StudioPanelCard(
-            title: "Depth Separation",
-            subtitle: "Push backgrounds back, remove distractions, and trace surface contours from estimated depth.",
+            title: "1. Process Background",
+            subtitle: "Separate the subject from the background before simplifying or quantizing the image.",
             systemImage: "camera.aperture",
-            accessibilityID: "studio.card.depth"
+            accessibilityID: "studio.card.background"
         ) {
             DepthSettingsView()
         }
     }
 
-    private var mixingPanel: some View {
-        VStack(spacing: 16) {
-            if state.activeMode == .color {
-                StudioPanelCard(
-                    title: "Pigment Palette",
-                    subtitle: "Choose tubes, limit pigments per mix, and control how broadly regions spread across hue and mass.",
-                    systemImage: "paintpalette",
-                    accessibilityID: "studio.card.palette"
-                ) {
-                    ColorSettingsView()
-                }
+    private var simplificationSection: some View {
+        StudioPanelCard(
+            title: "2. Simplify",
+            subtitle: "Reduce small texture and noise so the dominant shapes and edges read first.",
+            systemImage: "wand.and.stars",
+            accessibilityID: "studio.card.simplify"
+        ) {
+            abstractionControls
+        }
+    }
 
-                StudioPanelCard(
-                    title: "Mix Recipes",
-                    subtitle: state.paletteColors.isEmpty
-                        ? "Run a Color study to generate pigment recipes from the current image."
-                        : "Tap a mix to isolate that band on canvas and inspect the recipe ratios below.",
-                    systemImage: "eyedropper.halffull",
-                    accessibilityID: "studio.card.recipes"
-                ) {
-                    PaletteView()
-                }
-            } else {
-                StudioPanelCard(
-                    title: "Mix Recipes",
-                    subtitle: "Switch to Color mode to extract palette groups and Golden acrylic recipes.",
-                    systemImage: "paintpalette",
-                    accessibilityID: "studio.card.recipes"
-                ) {
-                    ModeBarView()
+    private var tonalSection: some View {
+        StudioPanelCard(
+            title: "3. Grayscale",
+            subtitle: "Choose whether the study keeps hue/chroma or collapses to tonal grayscale first.",
+            systemImage: "circle.lefthalf.filled",
+            accessibilityID: "studio.card.tonal"
+        ) {
+            Picker("Rendering", selection: Binding(
+                get: { usesTonalRendering },
+                set: { setUsesTonalRendering($0) }
+            )) {
+                Text("Color").tag(false)
+                Text("Grayscale").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("studio.rendering-mode")
+        }
+    }
+
+    private var quantizationSection: some View {
+        StudioPanelCard(
+            title: "4. Quantize",
+            subtitle: "Limit the image to a small number of values or colors, and choose how bands are distributed.",
+            systemImage: "square.stack.3d.up",
+            accessibilityID: "studio.card.quantize"
+        ) {
+            VStack(spacing: 14) {
+                Toggle("Limit Palette", isOn: Binding(
+                    get: { usesQuantization },
+                    set: { setUsesQuantization($0) }
+                ))
+                .accessibilityIdentifier("studio.quantize-toggle")
+
+                if usesQuantization {
+                    if usesTonalRendering {
+                        ValueSettingsView()
+                    } else {
+                        ColorQuantizationSettingsView()
+                    }
+                } else {
+                    Text(usesTonalRendering
+                        ? "Quantization is off, so the canvas shows a continuous grayscale conversion."
+                        : "Quantization is off, so the canvas keeps the simplified full-color image.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
     }
 
-    private var exportPanel: some View {
-        VStack(spacing: 16) {
-            StudioPanelCard(
-                title: "Output",
-                subtitle: "Export the visible study with grid and contour overlays baked in.",
-                systemImage: "square.and.arrow.up",
-                accessibilityID: "studio.card.export"
-            ) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Button(action: { onExport?() }) {
-                        Label("Export Current Study", systemImage: "square.and.arrow.up")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(state.currentDisplayImage == nil)
-                    .accessibilityIdentifier("studio.export-current")
-
-                    if state.currentDisplayImage == nil {
-                        Text("Load a photo or sample image to enable export.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+    private var paletteSection: some View {
+        StudioPanelCard(
+            title: "5. Palette Approximation",
+            subtitle: "Use the quantized bands to derive swatches and, for color studies, mix recipes from the selected tubes.",
+            systemImage: "paintpalette",
+            accessibilityID: "studio.card.palette"
+        ) {
+            VStack(spacing: 14) {
+                if usesQuantization && !usesTonalRendering {
+                    PaletteApproximationSettingsView()
+                    Divider().opacity(0.18)
+                    PaletteView()
+                } else if usesQuantization && usesTonalRendering {
+                    PaletteView()
+                } else {
+                    Text("Enable quantization first to generate a compact palette from the current image.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-
-            StudioPanelCard(
-                title: "Source Images",
-                subtitle: "Start from your library or a bundled sample set tuned for checking values and color behavior.",
-                systemImage: "photo.stack",
-                accessibilityID: "studio.card.sources"
-            ) {
-                VStack(spacing: 12) {
-                    Button(action: { onOpenPhoto?() }) {
-                        Label("Choose from Library", systemImage: "photo.on.rectangle")
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("studio.choose-library")
-
-                    Button(action: { onOpenSamples?() }) {
-                        Label("Browse Sample Images", systemImage: "sparkles.rectangle.stack")
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("studio.choose-samples")
-                }
-                .font(.subheadline.weight(.semibold))
             }
         }
+    }
+
+    private var overlaysSection: some View {
+        StudioPanelCard(
+            title: "6. Overlays",
+            subtitle: "Superimpose contour lines and/or a proportional grid over the current study.",
+            systemImage: "square.grid.3x3",
+            accessibilityID: "studio.card.overlays"
+        ) {
+            VStack(spacing: 14) {
+                if state.depthMap != nil {
+                    ContourSettingsView()
+                } else {
+                    Text("Turn on background processing first to derive depth contours. The grid can be enabled independently.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Divider().opacity(0.18)
+                GridSettingsView()
+            }
+        }
+    }
+
+    private var usesTonalRendering: Bool {
+        state.activeMode == .tonal || state.activeMode == .value
+    }
+
+    private var usesQuantization: Bool {
+        state.activeMode == .value || state.activeMode == .color
     }
 
     private var abstractionControls: some View {
@@ -416,9 +286,24 @@ struct ControlPanelView: View {
         }
     }
 
-    private func sectionBackground(isSelected: Bool) -> some View {
-        Capsule()
-            .fill(isSelected ? Color.primary : Color.primary.opacity(0.08))
+    private func setUsesTonalRendering(_ newValue: Bool) {
+        let targetMode: RefPlaneMode
+        if newValue {
+            targetMode = usesQuantization ? .value : .tonal
+        } else {
+            targetMode = usesQuantization ? .color : .original
+        }
+        state.setMode(targetMode)
+    }
+
+    private func setUsesQuantization(_ newValue: Bool) {
+        let targetMode: RefPlaneMode
+        if newValue {
+            targetMode = usesTonalRendering ? .value : .color
+        } else {
+            targetMode = usesTonalRendering ? .tonal : .original
+        }
+        state.setMode(targetMode)
     }
 }
 
@@ -493,12 +378,10 @@ private extension View {
 
 private struct ControlPanelPreviewHarness: View {
     @State private var state = AppState()
-    @State private var selectedSection: StudioInspectorSection = .study
 
     var body: some View {
         ControlPanelView(
-            presentation: .sidebar,
-            selectedSection: $selectedSection
+            presentation: .sidebar
         )
         .environment(state)
         .frame(width: 392, height: 860)

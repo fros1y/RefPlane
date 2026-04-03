@@ -6,7 +6,7 @@ struct ValueSettingsView: View {
     var body: some View {
         Group {
             LabeledSlider(
-                label: "Levels",
+                label: "Values",
                 value: Binding(
                     get: { Double(state.valueConfig.levels) },
                     set: { newVal in
@@ -25,7 +25,7 @@ struct ValueSettingsView: View {
                 }
             )
 
-            Picker("Distribution", selection: Binding(
+            Picker("Band Bias", selection: Binding(
                 get: { state.valueConfig.distribution },
                 set: { newDist in
                     state.valueConfig.distribution = newDist
