@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ActionBarView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
 
     var showsDismissButton: Bool = false
     var dismissIcon: String = "sidebar.trailing"

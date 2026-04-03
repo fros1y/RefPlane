@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ColorSettingsView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
     @State private var pigmentListExpanded: Bool = false
 
     var body: some View {
@@ -16,7 +16,7 @@ struct ColorSettingsView: View {
             displayFormat: { "\(Int($0))" },
             onEditingChanged: { editing in
                 if !editing {
-                    state.triggerProcessing()
+                    state.scheduleProcessing()
                 }
             }
         )
@@ -36,7 +36,7 @@ struct ColorSettingsView: View {
             },
             onEditingChanged: { editing in
                 if !editing {
-                    state.triggerProcessing()
+                    state.scheduleProcessing()
                 }
             }
         )
@@ -104,7 +104,7 @@ struct ColorSettingsView: View {
                 step: 1,
                 displayFormat: { "\(Int($0))" },
                 onEditingChanged: { editing in
-                    if !editing { state.triggerProcessing() }
+                    if !editing { state.scheduleProcessing() }
                 }
             )
         }
@@ -125,12 +125,12 @@ struct ColorSettingsView: View {
                     }
                     state.colorConfig.enabledPigmentIDs = preset.pigmentIDs
                     state.colorConfig.saveEnabledPigmentIDs()
-                    state.triggerProcessing()
+                    state.scheduleProcessing()
                 } else {
                     // "Custom" selected — restore saved custom palette
                     state.colorConfig.enabledPigmentIDs = ColorConfig.loadCustomPigmentIDs()
                     state.colorConfig.saveEnabledPigmentIDs()
-                    state.triggerProcessing()
+                    state.scheduleProcessing()
                 }
             }
         )
@@ -143,7 +143,7 @@ struct ColorSettingsView: View {
         if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.colorConfig.enabledPigmentIDs }) == nil {
             state.colorConfig.saveCustomPigmentIDs()
         }
-        state.triggerProcessing()
+        state.scheduleProcessing()
     }
 }
 

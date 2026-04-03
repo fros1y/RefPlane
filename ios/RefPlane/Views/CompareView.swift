@@ -1,8 +1,8 @@
 import SwiftUI
 
-
 struct CompareSliderView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
+
     let beforeImage: UIImage
     let afterImage: UIImage
 
@@ -11,72 +11,89 @@ struct CompareSliderView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                StudyImageLayer(image: afterImage, showsGrid: state.gridConfig.enabled,
-                                showsContours: state.contourConfig.enabled
-                                    && state.depthConfig.enabled
-                                    && !state.isEditingDepthThreshold)
-                    .frame(width: geo.size.width, height: geo.size.height)
+                StudyImageLayer(
+                    image: afterImage,
+                    showsGrid: state.gridConfig.enabled,
+                    showsContours: state.contourConfig.enabled
+                        && state.depthConfig.enabled
+                        && !state.isEditingDepthThreshold
+                )
+                .frame(width: geo.size.width, height: geo.size.height)
 
                 StudyImageLayer(image: beforeImage, showsGrid: false, showsContours: false)
                     .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-                    .mask(
+                    .mask(alignment: .leading) {
                         Rectangle()
                             .frame(width: geo.size.width * splitFraction)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    )
-
-                CompareDividerHandle(splitFraction: $splitFraction, width: geo.size.width, height: geo.size.height)
-
-                VStack {
-                    HStack {
-                        CompareTag(title: "Original", icon: "photo")
-                            .padding(.leading, 12)
-                        Spacer()
-                        CompareTag(title: "Processed", icon: "wand.and.stars")
-                            .padding(.trailing, 12)
                     }
-                    .padding(.top, 10)
 
-                    Spacer()
-                }
+                CompareDividerHandle(
+                    splitFraction: $splitFraction,
+                    width: geo.size.width,
+                    height: geo.size.height
+                )
+
+                compareLabels
 
                 if state.isProcessing {
-                    ZStack {
-                        Color.black.opacity(0.24)
-
-                        VStack(spacing: 12) {
-                            if state.processingIsIndeterminate {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(1.1)
-                            } else {
-                                ProgressView(value: state.processingProgress)
-                                    .tint(.white)
-                                    .frame(width: 180)
-                            }
-
-                            Text(state.processingLabel)
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(.white.opacity(0.88))
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    }
-                    .ignoresSafeArea()
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(state.processingLabel)
+                    compareProcessingOverlay
                 }
             }
             .background(Color.black)
         }
         .environment(\.colorScheme, .dark)
     }
+
+    private var compareLabels: some View {
+        VStack {
+            HStack {
+                CompareTag(title: "Original", icon: "photo")
+                Spacer()
+                CompareTag(title: "Processed", icon: "wand.and.stars")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 86)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var compareProcessingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+
+            VStack(spacing: 12) {
+                if state.processingIsIndeterminate {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.1)
+                } else {
+                    ProgressView(value: state.processingProgress)
+                        .tint(.white)
+                        .frame(width: 188)
+                }
+
+                Text(state.processingLabel)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(state.processingLabel)
+    }
 }
 
 private struct CompareDividerHandle: View {
     @Binding var splitFraction: CGFloat
+
     let width: CGFloat
     let height: CGFloat
 
@@ -87,24 +104,29 @@ private struct CompareDividerHandle: View {
 
         ZStack {
             Rectangle()
-                .fill(Color.white.opacity(0.9))
+                .fill(Color.white.opacity(0.92))
                 .frame(width: 2)
+                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 0)
 
             Circle()
-                .fill(.regularMaterial)
-                .frame(width: 40, height: 40)
+                .fill(.ultraThinMaterial)
+                .frame(width: 52, height: 52)
                 .overlay {
                     Image(systemName: "arrow.left.and.right")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 .overlay {
                     Circle()
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
                 }
-                .scaleEffect(isDragging ? 1.1 : 1.0)
-                .shadow(color: .black.opacity(isDragging ? 0.3 : 0.1), radius: isDragging ? 10 : 3, x: 0, y: isDragging ? 5 : 2)
-                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isDragging)
+                .scaleEffect(isDragging ? 1.08 : 1.0)
+                .shadow(
+                    color: .black.opacity(isDragging ? 0.28 : 0.16),
+                    radius: isDragging ? 16 : 8,
+                    x: 0,
+                    y: isDragging ? 8 : 4
+                )
         }
         .frame(height: height)
         .position(x: xPosition, y: height / 2)
@@ -118,6 +140,7 @@ private struct CompareDividerHandle: View {
                     splitFraction = max(0.02, min(0.98, fraction))
                 }
         )
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
         .modifier(SensoryFeedback17(splitFraction: splitFraction))
         .accessibilityElement()
         .accessibilityLabel("Comparison divider")
@@ -141,15 +164,21 @@ private struct CompareTag: View {
 
     var body: some View {
         Label(title, systemImage: icon)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
+            .font(.footnote.weight(.semibold))
             .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay {
+                Capsule()
+                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+            }
     }
 }
+
 private struct SensoryFeedback17: ViewModifier {
     let splitFraction: CGFloat
+
     func body(content: Content) -> some View {
         if #available(iOS 17.0, *) {
             content.sensoryFeedback(.selection, trigger: splitFraction)

@@ -33,7 +33,10 @@ struct SampleImagePickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var failedSample: SampleItem?
 
-    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 16)]
+    private let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16),
+    ]
 
     var body: some View {
         NavigationStack {
@@ -50,8 +53,9 @@ struct SampleImagePickerView: View {
                         }
                     }
                 }
-                .padding(16)
+                .padding(20)
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Sample Images")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -84,16 +88,19 @@ private struct SampleThumbnailButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(sample.assetName)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 110)
-                    .clipped()
-                    .cornerRadius(10)
+            VStack(alignment: .leading, spacing: 10) {
+                GeometryReader { proxy in
+                    Image(sample.assetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: 132)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .frame(height: 132)
 
                 Text(sample.displayName)
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
 
                 Text(sample.description)
@@ -101,9 +108,24 @@ private struct SampleThumbnailButton: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+            .clipped()
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(sample.displayName)
         .accessibilityHint(sample.description)
+        .accessibilityAddTraits(.isButton)
     }
+}
+
+#Preview("Samples") {
+    SampleImagePickerView { _ in }
 }

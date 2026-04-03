@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ValueSettingsView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
 
     var body: some View {
         Group {
@@ -20,7 +20,7 @@ struct ValueSettingsView: View {
                 displayFormat: { "\(Int($0))" },
                 onEditingChanged: { editing in
                     if !editing {
-                        state.triggerProcessing()
+                        state.scheduleProcessing()
                     }
                 }
             )
@@ -31,7 +31,7 @@ struct ValueSettingsView: View {
                     state.valueConfig.distribution = newDist
                     if newDist != .custom {
                         state.valueConfig.thresholds = newDist.thresholds(for: state.valueConfig.levels)
-                        state.triggerProcessing()
+                        state.scheduleProcessing()
                     }
                 }
             )) {
@@ -62,7 +62,7 @@ struct ValueSettingsView: View {
                         return Color(white: t)
                     },
                     onEditingEnded: {
-                        state.triggerProcessing()
+                        state.scheduleProcessing()
                     }
                 )
             }

@@ -1,8 +1,9 @@
 import SwiftUI
-import Combine
+import Observation
 
+@Observable
 @MainActor
-class AppState: ObservableObject {
+class AppState {
     typealias ProcessOperation = @Sendable (
         UIImage,
         RefPlaneMode,
@@ -25,94 +26,95 @@ class AppState: ObservableObject {
     typealias DepthEffectOperation = @Sendable (UIImage, UIImage, DepthConfig) -> UIImage?
 
     // Source images
-    @Published var fullResolutionOriginalImage: UIImage? = nil
-    @Published var originalImage: UIImage?  = nil
-    @Published var sourceImage: UIImage?    = nil
+    var fullResolutionOriginalImage: UIImage? = nil
+    var originalImage: UIImage? = nil
+    var sourceImage: UIImage? = nil
 
     // Processed results
-    @Published var processedImage: UIImage? = nil
-    @Published var paletteColors: [Color]   = []
-    @Published var paletteBands: [Int]      = []
-    @Published var pigmentRecipes: [PigmentRecipe]? = nil
-    @Published var selectedTubes: [PigmentData] = []
-    @Published var clippedRecipeIndices: [Int] = []
+    var processedImage: UIImage? = nil
+    var paletteColors: [Color] = []
+    var paletteBands: [Int] = []
+    var pigmentRecipes: [PigmentRecipe]? = nil
+    var selectedTubes: [PigmentData] = []
+    var clippedRecipeIndices: [Int] = []
 
     // UI state
-    @Published var activeMode: RefPlaneMode = .original
-    @Published var isProcessing: Bool       = false
+    var activeMode: RefPlaneMode = .original
+    var isProcessing: Bool = false
     /// `true` while the image is being loaded or simplified (abstracted);
     /// `false` during actual mode processing. Used to suppress the blur
     /// overlay so the original image stays crisp during simplification.
-    @Published var isSimplifying: Bool      = false
-    @Published var processingProgress: Double = 0
-    @Published var processingLabel: String  = "Processing…"
-    @Published var processingIsIndeterminate: Bool = false
-    @Published var compareMode: Bool        = false
-    @Published var isolatedBand: Int?       = nil
-    @Published var errorMessage: String?    = nil
-    @Published var panelCollapsed: Bool     = false
-    @Published private(set) var isolatedProcessedImage: UIImage? = nil
+    var isSimplifying: Bool = false
+    var processingProgress: Double = 0
+    var processingLabel: String = "Processing…"
+    var processingIsIndeterminate: Bool = false
+    var compareMode: Bool = false
+    var isolatedBand: Int? = nil
+    var errorMessage: String? = nil
+    var panelCollapsed: Bool = false
+    private(set) var isolatedProcessedImage: UIImage? = nil
 
     // Configs
-    @Published var gridConfig: GridConfig   = GridConfig()
-    @Published var valueConfig: ValueConfig = ValueConfig()
-    @Published var colorConfig: ColorConfig = ColorConfig()
-    @Published var depthConfig: DepthConfig = DepthConfig()
-    @Published var contourConfig: ContourConfig = ContourConfig()
-    @Published var contourSegments: [GridLineSegment] = []
+    var gridConfig: GridConfig = GridConfig()
+    var valueConfig: ValueConfig = ValueConfig()
+    var colorConfig: ColorConfig = ColorConfig()
+    var depthConfig: DepthConfig = DepthConfig()
+    var contourConfig: ContourConfig = ContourConfig()
+    var contourSegments: [GridLineSegment] = []
 
     // Depth results
-    @Published var depthMap: UIImage? = nil
-    @Published var depthProcessedImage: UIImage? = nil
+    var depthMap: UIImage? = nil
+    var depthProcessedImage: UIImage? = nil
     /// Actual min/max depth values found in the current depth map (0–1 scale).
-    @Published var depthRange: ClosedRange<Double> = 0...1
+    var depthRange: ClosedRange<Double> = 0...1
     /// When true, the canvas shows a depth-threshold preview instead of the
     /// processed image. Set while the user drags a depth cutoff slider.
-    @Published var isEditingDepthThreshold: Bool = false
+    var isEditingDepthThreshold: Bool = false
     /// Cached depth-threshold preview image, regenerated as cutoffs change.
-    @Published var depthThresholdPreview: UIImage? = nil
+    var depthThresholdPreview: UIImage? = nil
     /// Cached Metal texture of the depth map, reused across preview updates for speed.
-    var cachedDepthTexture: AnyObject? = nil
+    @ObservationIgnored var cachedDepthTexture: AnyObject? = nil
     /// True while the user's finger is actively on a depth cutoff slider.
-    var depthSliderActive: Bool = false
+    @ObservationIgnored var depthSliderActive: Bool = false
     /// Abstraction strength 0–1. `0` disables abstraction; positive values map
     /// to the existing downscale-based abstraction range.
-    @Published var abstractionStrength: Double  = 0.5
-    @Published var abstractionMethod: AbstractionMethod = .apisr
+    var abstractionStrength: Double = 0.5
+    var abstractionMethod: AbstractionMethod = .apisr
     /// Kuwahara post-filter strength 0–1. `0` disables the filter; positive
     /// values map to a neighbourhood radius of 1–8 applied after the SR model.
-    @Published var kuwaharaStrength: Double = 0
+    var kuwaharaStrength: Double = 0
 
     // Abstracted image (after upscale/denoise)
-    @Published var abstractedImage: UIImage? = nil
+    var abstractedImage: UIImage? = nil
     /// Kuwahara-filtered image applied on top of the abstracted (or source) image.
-    @Published var kuwaharaFilteredImage: UIImage? = nil
+    var kuwaharaFilteredImage: UIImage? = nil
 
-    private var processingTask: Task<Void, Never>? = nil
-    private let processOperation: ProcessOperation
+    @ObservationIgnored private var processingTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var processingDebounceTask: Task<Void, Never>? = nil
+    @ObservationIgnored private let processOperation: ProcessOperation
     /// Incremented on every triggerProcessing() call; lets each task know if it is still current.
-    private var processingGeneration: Int = 0
+    @ObservationIgnored private var processingGeneration: Int = 0
 
-    private let abstractionOperation: AbstractionOperation
-    private var abstractionTask: Task<Void, Never>? = nil
-    private var abstractionGeneration: Int = 0
+    @ObservationIgnored private let abstractionOperation: AbstractionOperation
+    @ObservationIgnored private var abstractionTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var abstractionGeneration: Int = 0
 
-    private let kuwaharaOperation: KuwaharaOperation
-    private var kuwaharaTask: Task<Void, Never>? = nil
+    @ObservationIgnored private let kuwaharaOperation: KuwaharaOperation
+    @ObservationIgnored private var kuwaharaTask: Task<Void, Never>? = nil
 
-    private var loadingTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var loadingTask: Task<Void, Never>? = nil
     private var processedPixelBands: [Int] = []
 
-    private let depthMapOperation: DepthMapOperation
-    private let depthEffectOperation: DepthEffectOperation
-    private var depthTask: Task<Void, Never>? = nil
-    private var depthEffectTask: Task<Void, Never>? = nil
-    private var depthPreviewDismissTask: Task<Void, Never>? = nil
-    private var depthGeneration: Int = 0
-    private var depthEffectGeneration: Int = 0
+    @ObservationIgnored private let depthMapOperation: DepthMapOperation
+    @ObservationIgnored private let depthEffectOperation: DepthEffectOperation
+    @ObservationIgnored private var depthTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var depthEffectTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var depthPreviewDismissTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var depthGeneration: Int = 0
+    @ObservationIgnored private var depthEffectGeneration: Int = 0
 
-    private var contourTask: Task<Void, Never>? = nil
-    private var contourGeneration: Int = 0
+    @ObservationIgnored private var contourTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var contourGeneration: Int = 0
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
@@ -246,6 +248,7 @@ class AppState: ObservableObject {
     func loadImage(_ image: UIImage) {
         // Cancel any in-flight work before starting fresh.
         loadingTask?.cancel()
+        processingDebounceTask?.cancel()
         processingTask?.cancel()
         abstractionTask?.cancel()
         kuwaharaTask?.cancel()
@@ -303,6 +306,7 @@ class AppState: ObservableObject {
     }
 
     func triggerProcessing() {
+        processingDebounceTask?.cancel()
         processingTask?.cancel()
         processingIsIndeterminate = false
         errorMessage = nil
@@ -376,6 +380,23 @@ class AppState: ObservableObject {
                    !(self.depthConfig.enabled && self.depthMap != nil) {
                     self.isProcessing = false
                 }
+            }
+        }
+    }
+
+    func scheduleProcessing(after delay: Duration = .milliseconds(180)) {
+        processingDebounceTask?.cancel()
+
+        processingDebounceTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.triggerProcessing()
             }
         }
     }

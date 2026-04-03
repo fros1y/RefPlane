@@ -16,7 +16,7 @@ An iOS reference-prep tool for painting and drawing, built natively with Swift a
 | Tool | Version |
 |------|---------|
 | Xcode | 15 or later |
-| iOS Deployment Target | 16.0+ |
+| iOS Deployment Target | 18.0+ |
 | Swift | 5.9+ |
 
 No third-party dependencies — the project uses only Apple system frameworks (SwiftUI, PhotosUI, CoreImage, CoreML).

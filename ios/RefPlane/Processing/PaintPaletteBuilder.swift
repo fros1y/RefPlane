@@ -35,7 +35,7 @@ enum PaintPaletteBuilder {
         let t0 = CFAbsoluteTimeGetCurrent()
 
         // Stage 2 - Preliminary Decomposition
-        let prelimRecipes = PigmentDecomposer.decompose(
+        _ = PigmentDecomposer.decompose(
             targetColors: colorRegions.quantizedCentroids,
             pigments: pigments,
             database: database,

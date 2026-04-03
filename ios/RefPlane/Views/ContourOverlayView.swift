@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContourOverlayView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
     var image: UIImage? = nil
     private let lineWidth: CGFloat = 0.6
 

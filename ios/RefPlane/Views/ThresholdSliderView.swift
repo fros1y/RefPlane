@@ -21,6 +21,22 @@ struct ThresholdSliderView: View {
             onEditingEnded: onEditingEnded
         )
         .frame(height: 52)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Value thresholds")
+        .accessibilityValue(accessibilitySummary)
+        .accessibilityHint("Drag the numbered handles to redistribute the value bands.")
+    }
+
+    private var accessibilitySummary: String {
+        guard !thresholds.isEmpty else {
+            return "\(levels) evenly spaced levels"
+        }
+
+        let percentages = thresholds
+            .map { "\(Int(($0 * 100).rounded())) percent" }
+            .joined(separator: ", ")
+
+        return "\(levels) levels, boundaries at \(percentages)"
     }
 }
 
@@ -277,7 +293,7 @@ struct LabeledSlider: View {
     @State private var valueAtDragStart: Double? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(label)
                     .font(.subheadline)
@@ -286,9 +302,11 @@ struct LabeledSlider: View {
                 Text(displayFormat(value))
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.primary)
+                    .accessibilityHidden(true)
             }
             TouchEventSlider(
                 label: label,
+                accessibilityValue: displayFormat(value),
                 value: $value,
                 range: range,
                 step: step,
@@ -308,6 +326,7 @@ struct LabeledSlider: View {
 
 private struct TouchEventSlider: UIViewRepresentable {
     let label: String
+    let accessibilityValue: String
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
@@ -319,6 +338,8 @@ private struct TouchEventSlider: UIViewRepresentable {
         slider.maximumValue = Float(range.upperBound)
         slider.value = Float(snappedValue(value))
         slider.isContinuous = true
+        slider.accessibilityLabel = label
+        slider.accessibilityValue = accessibilityValue
 
         slider.addTarget(
             context.coordinator,
@@ -363,6 +384,8 @@ private struct TouchEventSlider: UIViewRepresentable {
         context.coordinator.parent = self
         uiView.minimumValue = Float(range.lowerBound)
         uiView.maximumValue = Float(range.upperBound)
+        uiView.accessibilityLabel = label
+        uiView.accessibilityValue = accessibilityValue
 
         let snapped = Float(snappedValue(value))
         if !uiView.isTracking, abs(uiView.value - snapped) > 0.000_001 {
@@ -443,7 +466,7 @@ struct LabeledPicker<T: Hashable>: View {
     let label: (T) -> String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.subheadline)
                 .foregroundStyle(.primary)
@@ -455,4 +478,36 @@ struct LabeledPicker<T: Hashable>: View {
             .pickerStyle(.segmented)
         }
     }
+}
+
+private struct ThresholdSliderPreviewHarness: View {
+    @State private var thresholds: [Double] = [0.22, 0.46, 0.72]
+    @State private var smoothness: Double = 0.4
+
+    var body: some View {
+        VStack(spacing: 24) {
+            ThresholdSliderView(
+                thresholds: $thresholds,
+                levels: 4,
+                colorForLevel: { level, total in
+                    let denominator = max(1, total - 1)
+                    return Color(white: Double(level) / Double(denominator))
+                }
+            )
+
+            LabeledSlider(
+                label: "Palette Spread",
+                value: $smoothness,
+                range: 0...1,
+                step: 0.05,
+                displayFormat: { String(format: "%.2f", $0) }
+            )
+        }
+        .padding(24)
+        .background(Color(.systemGroupedBackground))
+    }
+}
+
+#Preview("Threshold Controls") {
+    ThresholdSliderPreviewHarness()
 }

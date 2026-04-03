@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct ImageCanvasView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
+
     @Binding var showImagePicker: Bool
     @Binding var showSamplePicker: Bool
 
@@ -22,21 +23,21 @@ struct ImageCanvasView: View {
 
                 if let image = displayImage {
                     zoomableCanvas(image: image, containerSize: geo.size)
-                        .blur(radius: (state.isProcessing && !state.isSimplifying) ? 8 : 0)
-                        .opacity((state.isProcessing && !state.isSimplifying) ? 0.6 : 1.0)
-                        .animation(.easeInOut(duration: 0.2), value: state.isProcessing && !state.isSimplifying)
-                        .onChange(of: geo.size) {
-                            // Reset zoom when the canvas is resized (rotation, panel open/close)
-                            // so the image doesn't end up in an unexpected position.
-                            if currentScale > 1.0 {
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    currentScale = 1.0
-                                    currentOffset = .zero
-                                }
-                            }
+                        .blur(radius: shouldDimCanvas ? 8 : 0)
+                        .opacity(shouldDimCanvas ? 0.55 : 1.0)
+                        .animation(.easeInOut(duration: 0.2), value: shouldDimCanvas)
+                        .onChange(of: geo.size) { _, _ in
+                            resetViewportIfNeeded()
                         }
                 } else {
-                    emptyState
+                    CanvasEmptyStateCard(
+                        isBreathing: isBreathing,
+                        onOpenPhoto: openPhotoPicker,
+                        onOpenSamples: openSamplePicker
+                    )
+                    .onAppear {
+                        isBreathing = true
+                    }
                 }
 
                 if state.isProcessing {
@@ -47,6 +48,10 @@ struct ImageCanvasView: View {
         .environment(\.colorScheme, .dark)
     }
 
+    private var shouldDimCanvas: Bool {
+        state.isProcessing && !state.isSimplifying
+    }
+
     private func zoomableCanvas(image: UIImage, containerSize: CGSize) -> some View {
         let combinedScale = currentScale * gestureScale
         let combinedOffset = CGSize(
@@ -54,12 +59,13 @@ struct ImageCanvasView: View {
             height: currentOffset.height + gesturePan.height
         )
 
-        return ZStack {
-            StudyImageLayer(image: image, showsGrid: state.gridConfig.enabled,
-                            showsContours: state.contourConfig.enabled
-                                && state.depthConfig.enabled
-                                && !state.isEditingDepthThreshold)
-        }
+        return StudyImageLayer(
+            image: image,
+            showsGrid: state.gridConfig.enabled,
+            showsContours: state.contourConfig.enabled
+                && state.depthConfig.enabled
+                && !state.isEditingDepthThreshold
+        )
         .scaleEffect(combinedScale)
         .offset(combinedOffset)
         .gesture(
@@ -73,7 +79,12 @@ struct ImageCanvasView: View {
                     if newScale == 1.0 {
                         currentOffset = .zero
                     } else {
-                        currentOffset = clampedOffset(currentOffset, scale: newScale, image: image, container: containerSize)
+                        currentOffset = clampedOffset(
+                            currentOffset,
+                            scale: newScale,
+                            image: image,
+                            container: containerSize
+                        )
                     }
                 }
         )
@@ -87,87 +98,45 @@ struct ImageCanvasView: View {
                         width: currentOffset.width + value.translation.width,
                         height: currentOffset.height + value.translation.height
                     )
-                    currentOffset = clampedOffset(proposed, scale: currentScale, image: image, container: containerSize)
+                    currentOffset = clampedOffset(
+                        proposed,
+                        scale: currentScale,
+                        image: image,
+                        container: containerSize
+                    )
                 }
         )
-        .onTapGesture(count: 2) {
-            withAnimation(.spring()) {
-                currentScale = 1.0
-                currentOffset = .zero
-            }
-        }
+        .onTapGesture(count: 2, perform: resetViewport)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(state.activeMode.label) study canvas")
+        .accessibilityHint("Pinch to zoom, drag to pan, and double tap to reset.")
     }
 
-    /// Returns `offset` clamped so the image stays visible within the container.
-    /// Uses the image's aspect ratio to compute the actual rendered bounds.
     private func clampedOffset(_ offset: CGSize, scale: CGFloat, image: UIImage, container: CGSize) -> CGSize {
         guard container.width > 0, container.height > 0 else { return offset }
+
         let imageAspect = image.size.width / image.size.height
         let containerAspect = container.width / container.height
         let renderedSize: CGSize
+
         if imageAspect > containerAspect {
             renderedSize = CGSize(width: container.width, height: container.width / imageAspect)
         } else {
             renderedSize = CGSize(width: container.height * imageAspect, height: container.height)
         }
+
         let maxX = max(0, renderedSize.width * (scale - 1) / 2)
         let maxY = max(0, renderedSize.height * (scale - 1) / 2)
+
         return CGSize(
             width: max(-maxX, min(maxX, offset.width)),
             height: max(-maxY, min(maxY, offset.height))
         )
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 54, weight: .regular))
-                .foregroundStyle(.white.opacity(0.82))
-                .scaleEffect(isBreathing ? 1.05 : 1.0)
-                .animation(
-                    .easeInOut(duration: 4.0).repeatForever(autoreverses: true),
-                    value: isBreathing
-                )
-                .onAppear {
-                    isBreathing = true
-                }
-
-            VStack(spacing: 6) {
-                Text("Choose a reference image")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-
-                Text("Prepare tonal, value, and color studies from one image.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.72))
-                    .multilineTextAlignment(.center)
-            }
-
-            HStack(spacing: 12) {
-                Button("Open") {
-                    showImagePicker = true
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button("Try a Sample") {
-                    showSamplePicker = true
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 32)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14))
-        }
-        .padding(24)
-    }
-
     private var processingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.24)
+            Color.black.opacity(0.28)
 
             VStack(spacing: 12) {
                 if state.processingIsIndeterminate {
@@ -177,16 +146,20 @@ struct ImageCanvasView: View {
                 } else {
                     ProgressView(value: state.processingProgress)
                         .tint(.white)
-                        .frame(width: 180)
+                        .frame(width: 188)
                 }
 
                 Text(processingDisplayLabel)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+            }
         }
         .ignoresSafeArea()
         .accessibilityElement(children: .combine)
@@ -214,6 +187,26 @@ struct ImageCanvasView: View {
             return state.processingLabel
         }
     }
+
+    private func resetViewportIfNeeded() {
+        guard currentScale > 1.0 else { return }
+        resetViewport()
+    }
+
+    private func resetViewport() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+            currentScale = 1.0
+            currentOffset = .zero
+        }
+    }
+
+    private func openPhotoPicker() {
+        showImagePicker = true
+    }
+
+    private func openSamplePicker() {
+        showSamplePicker = true
+    }
 }
 
 struct StudyImageLayer: View {
@@ -231,9 +224,111 @@ struct StudyImageLayer: View {
             if showsGrid {
                 GridOverlayView(image: image)
             }
+
             if showsContours {
                 ContourOverlayView(image: image)
             }
         }
     }
+}
+
+private struct CanvasEmptyStateCard: View {
+    let isBreathing: Bool
+    let onOpenPhoto: () -> Void
+    let onOpenSamples: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 58, weight: .light))
+                .foregroundStyle(.white.opacity(0.88))
+                .scaleEffect(isBreathing ? 1.06 : 0.98)
+                .animation(
+                    .easeInOut(duration: 4.0).repeatForever(autoreverses: true),
+                    value: isBreathing
+                )
+
+            VStack(spacing: 10) {
+                Text("Build a study from any reference")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+
+                Text("Open a photo, simplify the big shapes, compare versions, and extract value maps or pigment mixes.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.74))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 12) {
+                Button(action: onOpenPhoto) {
+                    Label("Choose Photo", systemImage: "photo")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(action: onOpenSamples) {
+                    Label("Browse Samples", systemImage: "sparkles.rectangle.stack")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.bordered)
+                .tint(.white)
+            }
+        }
+        .frame(maxWidth: 390)
+        .padding(28)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        }
+        .padding(24)
+    }
+}
+
+#Preview("Empty Canvas") {
+    ImageCanvasView(
+        showImagePicker: .constant(false),
+        showSamplePicker: .constant(false)
+    )
+    .environment(AppState())
+}
+
+private struct ImageCanvasPreviewHarness: View {
+    @State private var state = AppState()
+
+    init(mode: RefPlaneMode, depthEnabled: Bool) {
+        let previewState = AppState()
+        let previewImage = UIImage(named: "sample-landscape")
+            ?? UIImage(systemName: "photo")!
+
+        previewState.originalImage = previewImage
+        previewState.sourceImage = previewImage
+        previewState.activeMode = mode
+        previewState.depthConfig.enabled = depthEnabled
+
+        if depthEnabled {
+            previewState.contourConfig.enabled = true
+        }
+
+        _state = State(initialValue: previewState)
+    }
+
+    var body: some View {
+        ImageCanvasView(
+            showImagePicker: .constant(false),
+            showSamplePicker: .constant(false)
+        )
+        .environment(state)
+    }
+}
+
+#Preview("Color Canvas") {
+    ImageCanvasPreviewHarness(mode: .color, depthEnabled: false)
+}
+
+#Preview("Depth Canvas") {
+    ImageCanvasPreviewHarness(mode: .value, depthEnabled: true)
 }

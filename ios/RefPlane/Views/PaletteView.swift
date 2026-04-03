@@ -1,91 +1,212 @@
 import SwiftUI
 
 struct PaletteView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
 
     var body: some View {
-        Group {
-            let sections = PaletteSections.makeSections(
+        let sections = sortedSections(
+            PaletteSections.makeSections(
                 paletteBands: state.paletteBands,
                 paletteCount: state.paletteColors.count
             )
+        )
 
-            if sections.isEmpty {
-                Text("Palette swatches appear after you generate a value or color study.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                let sorted = sortedSections(sections)
-
-                ForEach(Array(sorted.enumerated()), id: \.offset) { mixNum, section in
-                    VStack(alignment: .leading, spacing: 0) {
-                        Button {
-                            state.toggleIsolatedBand(section.band)
-                        } label: {
-                            HStack(alignment: .center, spacing: 12) {
-                                Text("Mix \(mixNum + 1)")
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 54, alignment: .leading)
-
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(section.indices, id: \.self) { idx in
-                                            let color = state.paletteColors[idx]
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(color)
-                                                .frame(width: 36, height: 28)
-                                                .overlay {
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .stroke(
-                                                            state.isolatedBand == section.band
-                                                                ? Color.accentColor
-                                                                : Color(.separator),
-                                                            lineWidth: state.isolatedBand == section.band ? 2 : 1
-                                                        )
-                                                }
-                                        }
-                                    }
-                                    .padding(.vertical, 4)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Mix \(mixNum + 1), \(section.indices.count) color\(section.indices.count == 1 ? "" : "s")")
-                        .accessibilityValue(state.isolatedBand == section.band ? "Isolated" : "")
-                        .accessibilityHint(state.isolatedBand == section.band ? "Tap to show all mixes" : "Tap to isolate this mix")
-
-                        if let recipes = state.pigmentRecipes {
-                            ForEach(section.indices, id: \.self) { idx in
-                                if idx < recipes.count {
-                                    RecipeView(recipe: recipes[idx])
-                                        .padding(.leading, 66)
-                                        .padding(.bottom, 2)
-                                }
-                            }
-                        }
-                    }
+        if sections.isEmpty {
+            Text("Palette swatches and recipes appear here after a Color study finishes.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            VStack(spacing: 12) {
+                ForEach(Array(sections.enumerated()), id: \.element.band) { index, section in
+                    PaletteMixCard(
+                        mixNumber: index + 1,
+                        section: section,
+                        colors: colors(for: section),
+                        recipes: recipes(for: section),
+                        isIsolated: state.isolatedBand == section.band,
+                        onToggleIsolation: { state.toggleIsolatedBand(section.band) }
+                    )
                 }
             }
         }
     }
 
-    /// Sort sections by the name of the majority (highest-concentration) pigment in the first recipe.
+    private func colors(for section: PaletteBandSection) -> [Color] {
+        section.indices.compactMap { index in
+            guard state.paletteColors.indices.contains(index) else { return nil }
+            return state.paletteColors[index]
+        }
+    }
+
+    private func recipes(for section: PaletteBandSection) -> [PigmentRecipe] {
+        guard let pigmentRecipes = state.pigmentRecipes else { return [] }
+        return section.indices.compactMap { index in
+            guard pigmentRecipes.indices.contains(index) else { return nil }
+            return pigmentRecipes[index]
+        }
+    }
+
     private func sortedSections(_ sections: [PaletteBandSection]) -> [PaletteBandSection] {
         guard let recipes = state.pigmentRecipes else { return sections }
-        return sections.sorted { a, b in
-            let nameA = majorityPigmentName(for: a, recipes: recipes)
-            let nameB = majorityPigmentName(for: b, recipes: recipes)
+
+        return sections.sorted { lhs, rhs in
+            let nameA = majorityPigmentName(for: lhs, recipes: recipes)
+            let nameB = majorityPigmentName(for: rhs, recipes: recipes)
             return nameA.localizedCaseInsensitiveCompare(nameB) == .orderedAscending
         }
     }
 
-    private func majorityPigmentName(for section: PaletteBandSection, recipes: [PigmentRecipe]) -> String {
-        guard let firstIdx = section.indices.first,
-              firstIdx < recipes.count,
-              let top = recipes[firstIdx].components.max(by: { $0.concentration < $1.concentration })
+    private func majorityPigmentName(
+        for section: PaletteBandSection,
+        recipes: [PigmentRecipe]
+    ) -> String {
+        guard let firstIndex = section.indices.first,
+              recipes.indices.contains(firstIndex),
+              let dominantPigment = recipes[firstIndex].components.max(by: {
+                  $0.concentration < $1.concentration
+              })
         else { return "" }
-        return top.pigmentName
+
+        return dominantPigment.pigmentName
     }
+}
+
+private struct PaletteMixCard: View {
+    let mixNumber: Int
+    let section: PaletteBandSection
+    let colors: [Color]
+    let recipes: [PigmentRecipe]
+    let isIsolated: Bool
+    let onToggleIsolation: () -> Void
+
+    var body: some View {
+        Button(action: onToggleIsolation) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Text("Mix \(mixNumber)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    Spacer(minLength: 8)
+
+                    Label(isIsolated ? "Isolated" : "Show", systemImage: isIsolated ? "scope" : "circle.dashed")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isIsolated ? Color.accentColor : Color.secondary)
+                        .labelStyle(.titleAndIcon)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(color)
+                                .frame(width: 40, height: 32)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(
+                                            isIsolated ? Color.accentColor : Color(.separator),
+                                            lineWidth: isIsolated ? 2 : 1
+                                        )
+                                }
+                        }
+                    }
+                }
+
+                if !recipes.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(recipes.enumerated()), id: \.offset) { _, recipe in
+                            RecipeView(recipe: recipe)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(
+                isIsolated
+                    ? Color.accentColor.opacity(0.08)
+                    : Color.primary.opacity(0.04),
+                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(
+                        isIsolated ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08),
+                        lineWidth: 1
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Mix \(mixNumber), \(colors.count) colors")
+        .accessibilityValue(isIsolated ? "Isolated on canvas" : "Showing all mixes")
+        .accessibilityHint(isIsolated ? "Double tap to show all mixes" : "Double tap to isolate this mix")
+    }
+}
+
+private struct PalettePreviewHarness: View {
+    @State private var state = AppState()
+
+    init() {
+        let previewState = AppState()
+        previewState.activeMode = .color
+        previewState.paletteColors = [
+            Color(red: 0.74, green: 0.23, blue: 0.17),
+            Color(red: 0.93, green: 0.80, blue: 0.53),
+            Color(red: 0.19, green: 0.31, blue: 0.56),
+            Color(red: 0.92, green: 0.91, blue: 0.88),
+        ]
+        previewState.paletteBands = [0, 0, 1, 1]
+        previewState.pigmentRecipes = [
+            PigmentRecipe(
+                components: [
+                    RecipeComponent(pigmentId: "cad_red_medium", pigmentName: "Cad Red Medium", concentration: 0.72),
+                    RecipeComponent(pigmentId: "yellow_ochre", pigmentName: "Yellow Ochre", concentration: 0.28),
+                ],
+                predictedColor: OklabColor(L: 0.62, a: 0.12, b: 0.08),
+                deltaE: 1.3
+            ),
+            PigmentRecipe(
+                components: [
+                    RecipeComponent(pigmentId: "yellow_ochre", pigmentName: "Yellow Ochre", concentration: 0.58),
+                    RecipeComponent(pigmentId: "titanium_white", pigmentName: "Titanium White", concentration: 0.42),
+                ],
+                predictedColor: OklabColor(L: 0.84, a: 0.01, b: 0.09),
+                deltaE: 0.8
+            ),
+            PigmentRecipe(
+                components: [
+                    RecipeComponent(pigmentId: "ultramarine_blue", pigmentName: "Ultramarine Blue", concentration: 0.66),
+                    RecipeComponent(pigmentId: "carbon_black", pigmentName: "Carbon Black", concentration: 0.34),
+                ],
+                predictedColor: OklabColor(L: 0.38, a: -0.02, b: -0.12),
+                deltaE: 2.0
+            ),
+            PigmentRecipe(
+                components: [
+                    RecipeComponent(pigmentId: "titanium_white", pigmentName: "Titanium White", concentration: 0.90),
+                    RecipeComponent(pigmentId: "yellow_ochre", pigmentName: "Yellow Ochre", concentration: 0.10),
+                ],
+                predictedColor: OklabColor(L: 0.95, a: 0.0, b: 0.02),
+                deltaE: 0.5
+            ),
+        ]
+        previewState.isolatedBand = 0
+        _state = State(initialValue: previewState)
+    }
+
+    var body: some View {
+        ScrollView {
+            PaletteView()
+                .padding(20)
+        }
+        .background(Color(.systemGroupedBackground))
+        .environment(state)
+    }
+}
+
+#Preview("Palette") {
+    PalettePreviewHarness()
 }
