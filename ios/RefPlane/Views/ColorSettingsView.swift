@@ -180,7 +180,6 @@ private struct PigmentToggleRow: View {
     }
 
     private var masstoneColor: Color {
-        let lab = pigment.cielab
         // Approximate CIELab → sRGB for swatch (good enough for display)
         let oklab = KubelkaMunkMixer.pigmentToOklab(
             kOverS: pigment.kOverS,

@@ -38,14 +38,14 @@ struct ContentView: View {
                             state.panelCollapsed = true
                         }
                     }
-                    .onChange(of: showsSidebar) { isSidebar in
+                    .onChange(of: showsSidebar) { _, isSidebar in
                         usesSidebarLayout = isSidebar
                         usesBottomPanel = !isSidebar && isLandscapeImage
                         if isSidebar || usesBottomPanel {
                             showInspector = false
                         }
                     }
-                    .onChange(of: state.originalImage?.size) { _ in
+                    .onChange(of: state.originalImage?.size) {
                         let isLandscape = geo.size.width > geo.size.height
                         let isBottom = !isLandscape && isLandscapeImage
                         let isSidebar = isLandscape || (horizontalSizeClass == .regular && !isBottom)
