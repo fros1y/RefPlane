@@ -70,7 +70,6 @@ struct ControlPanelView: View {
             Divider().opacity(0.18)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    sectionOverviewCard
                     panelBody
                 }
                 .padding(.horizontal, 20)
@@ -86,13 +85,14 @@ struct ControlPanelView: View {
     private var headerView: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Studio Controls")
+                Text(selectedSection.title)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.primary)
 
-                Text("\(state.activeMode.label) study")
+                Text(selectedSection.summary)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
@@ -137,16 +137,6 @@ struct ControlPanelView: View {
         }
     }
 
-    private var sectionOverviewCard: some View {
-        StudioPanelCard(
-            title: selectedSection.title,
-            subtitle: selectedSection.summary,
-            systemImage: selectedSection.iconName
-        ) {
-            EmptyView()
-        }
-    }
-
     @ViewBuilder
     private var panelBody: some View {
         switch selectedSection {
@@ -166,8 +156,8 @@ struct ControlPanelView: View {
     private var studyPanel: some View {
         VStack(spacing: 16) {
             StudioPanelCard(
-                title: "Study Mode",
-                subtitle: "Switch between the original reference, tonal simplification, value grouping, and color-region studies.",
+                title: "Mode",
+                subtitle: "Choose which study layer is shown on the canvas.",
                 systemImage: "slider.horizontal.below.rectangle"
             ) {
                 ModeBarView()

@@ -367,9 +367,11 @@ private struct StudioCanvasStage: View {
 
                 Spacer(minLength: 0)
 
-                StudioModeDock()
-                    .opacity(state.currentDisplayImage == nil ? 0 : 1)
-                    .accessibilityHidden(state.currentDisplayImage == nil)
+                if layout == .drawer {
+                    StudioModeDock()
+                        .opacity(state.currentDisplayImage == nil ? 0 : 1)
+                        .accessibilityHidden(state.currentDisplayImage == nil)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
