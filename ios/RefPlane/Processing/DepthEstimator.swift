@@ -59,6 +59,46 @@ enum DepthEstimator {
         return UIImage(cgImage: resized)
     }
 
+    static func depthRange(from image: UIImage) -> ClosedRange<Double> {
+        guard let cgImage = image.cgImage else {
+            return 0...1
+        }
+
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else {
+            return 0...1
+        }
+
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            return 0...1
+        }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var minValue = 1.0
+        var maxValue = 0.0
+        for pixel in pixels {
+            let value = Double(pixel) / 255.0
+            minValue = min(minValue, value)
+            maxValue = max(maxValue, value)
+        }
+
+        guard maxValue - minValue >= 0.01 else {
+            return 0...1
+        }
+        return minValue...maxValue
+    }
+
     // MARK: - Model loading
 
     private static func loadModel() async throws -> MLModel {
@@ -161,36 +201,6 @@ enum DepthEstimator {
         ctx.interpolationQuality = .high
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         return ctx.makeImage() ?? cgImage
-    }
-
-    // MARK: - Depth range extraction
-
-    /// Scan a grayscale depth map and return the actual (min, max) depth values
-    /// as fractions in 0…1. Returns `(0, 1)` if the image cannot be read.
-    static func depthRange(from depthImage: UIImage) -> ClosedRange<Double> {
-        guard let cg = depthImage.cgImage else { return 0...1 }
-        let w = cg.width, h = cg.height
-        guard w > 0, h > 0 else { return 0...1 }
-
-        var pixels = [UInt8](repeating: 0, count: w * h)
-        guard let ctx = CGContext(
-            data: &pixels,
-            width: w, height: h,
-            bitsPerComponent: 8, bytesPerRow: w,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue
-        ) else { return 0...1 }
-        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-
-        var lo: UInt8 = 255
-        var hi: UInt8 = 0
-        for p in pixels {
-            if p < lo { lo = p }
-            if p > hi { hi = p }
-        }
-        guard lo < hi else { return 0...1 }
-
-        return (Double(lo) / 255.0)...(Double(hi) / 255.0)
     }
 }
 

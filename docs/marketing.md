@@ -34,13 +34,13 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 
 ## Medium Description (≤ 500 characters — suitable for Instagram bio, press kit one-pager, or app directory)
 
-> Underpaint is a reference-preparation tool for painters and illustrators. Load a photograph, choose a study mode — Tonal, Value, or Color — and see your reference the way a painter sees it. The Color mode goes further: it decomposes each region into an actual paint recipe using real Golden Heavy Body Acrylic colors and Kubelka-Munk spectral mixing. A configurable grid overlay, a side-by-side compare view, and on-device simplification round out a focused, privacy-respecting studio tool.
+> Underpaint is a reference-preparation tool for painters and illustrators. Load a photograph, choose a study mode — Tonal, Value, or Color — and see your reference the way a painter sees it. The Color mode goes further: it decomposes each region into an actual paint recipe using real Golden Heavy Body Acrylic colors and Kubelka-Munk spectral mixing. On-device depth estimation lets you blur, remove, or de-emphasize the background while keeping your subject crisp. A configurable grid overlay, surface contour lines, a Kuwahara painterly filter, a side-by-side compare view, and on-device simplification round out a focused, privacy-respecting studio tool.
 
 ---
 
 ## Press Paragraph (≤ 1 000 characters — suitable for a press release body or a Product Hunt maker comment)
 
-> Underpaint is a native iPhone and iPad app for painters who work from photographic reference. It offers four study modes — Original, Tonal, Value, and Color — that progressively strip away photographic complexity and reveal the underlying structure of a scene. The Color mode is powered by Kubelka-Munk spectral mixing, the same physical model used in professional color-matching software. Rather than averaging RGB values, Underpaint simulates how real pigments absorb and scatter light to generate paint recipes from 78 Golden Heavy Body Acrylic colors. The app also includes an on-device super-resolution simplification pass, a configurable grid overlay for proportion transfer, and a drag-split compare view. No accounts. No analytics. Everything runs on device.
+> Underpaint is a native iPhone and iPad app for painters who work from photographic reference. It offers four study modes — Original, Tonal, Value, and Color — that progressively strip away photographic complexity and reveal the underlying structure of a scene. The Color mode is powered by Kubelka-Munk spectral mixing, the same physical model used in professional color-matching software. Rather than averaging RGB values, Underpaint simulates how real pigments absorb and scatter light to generate paint recipes from 78 Golden Heavy Body Acrylic colors. On-device depth estimation separates foreground from background so you can blur, remove, or atmospherically push back the background with a single slider. Surface contour lines trace equal-depth isolines across the scene, revealing the 3D form of your subject. A Kuwahara painterly filter, an on-device super-resolution simplification pass, a configurable grid overlay, and a drag-split compare view complete the toolkit. No accounts. No analytics. Everything runs on device.
 
 ---
 
@@ -94,6 +94,30 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 >
 > [screenshot]
 
+### Feature spotlight: Depth Effects (X/Twitter)
+
+> Underpaint's Depth Effects use on-device depth estimation to separate your subject from the background.
+>
+> Blur it. Remove it. Or push it back with atmospheric de-emphasis — like aerial perspective, on demand.
+>
+> [screenshot]
+
+### Feature spotlight: Surface Contours (X/Twitter)
+
+> Turn on Surface Contours in Underpaint and depth isolines trace across your scene, revealing the 3D form of every object.
+>
+> Great for understanding structure before you start painting or drawing.
+>
+> [screenshot]
+
+### Feature spotlight: Kuwahara Filter (X/Twitter)
+
+> Underpaint's Kuwahara filter gives your reference a painterly, flat-color look — averaging local regions while keeping edges crisp.
+>
+> Dial from R1 (subtle) to R16 (aggressive) and see your photo as broad, paintable shapes.
+>
+> [screenshot]
+
 ---
 
 ## Product Hunt Pitch
@@ -112,6 +136,8 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 >
 > The part that sets Underpaint apart: in Color mode it generates physically accurate paint mixture recipes. Not RGB blends — actual Kubelka-Munk spectral mixing using measured pigment data for 78 Golden Heavy Body Acrylic colors.
 >
+> It also runs on-device depth estimation so you can blur, remove, or atmospherically push back the background. Surface contour isolines reveal the 3D form of your subject. A Kuwahara painterly filter and a super-resolution simplification pass let you strip a photo down to broad, paintable shapes.
+>
 > Everything runs on device. No accounts, no analytics, no internet required. Open source under the AGPL.
 
 ---
@@ -122,11 +148,12 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 
 **0:00–0:03** — App icon animates in. Title card: "Underpaint."
 **0:03–0:07** — User taps photo icon, selects a landscape photograph from the library.
-**0:07–0:12** — Cut to Tonal mode: image converts to grayscale. Title card: "Study the light."
-**0:12–0:17** — Cut to Value mode: image simplifies to four flat tonal bands. Title card: "Plan your values."
-**0:17–0:22** — Cut to Color mode with paint recipes visible: swatches and recipe list. Title card: "Mix real paint."
-**0:22–0:27** — Compare mode: handle drags from right to left revealing original vs. processed. Title card: "Before and after."
-**0:27–0:30** — Grid overlay appears over the image. Title card: "Reference prep for painters."
+**0:07–0:10** — Cut to Tonal mode: image converts to grayscale. Title card: "Study the light."
+**0:10–0:13** — Cut to Value mode: image simplifies to four flat tonal bands. Title card: "Plan your values."
+**0:13–0:17** — Cut to Color mode with paint recipes visible: swatches and recipe list. Title card: "Mix real paint."
+**0:17–0:21** — Depth effects on: background blurs away, contour lines appear over the subject. Title card: "See the form."
+**0:21–0:25** — Compare mode: handle drags from right to left revealing original vs. processed. Title card: "Before and after."
+**0:25–0:30** — Grid overlay appears over the image. Title card: "Reference prep for painters."
 
 ---
 
@@ -137,6 +164,9 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 - Native iPhone and iPad app built with Swift and SwiftUI
 - Four study modes: Original, Tonal, Value, and Color
 - Kubelka-Munk spectral paint mixing with 78 Golden Heavy Body Acrylic colors
+- On-device depth estimation with background blur, removal, and atmospheric de-emphasis
+- Surface contour isolines that reveal the 3D form of your scene
+- Kuwahara painterly filter (radius 1–16) for flat-color simplification
 - On-device super-resolution simplification using a bundled Core ML model
 - Configurable grid overlay for proportion transfer
 - Drag-split compare view for before/after evaluation

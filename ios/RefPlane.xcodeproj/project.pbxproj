@@ -13,6 +13,10 @@
 		0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677004 /* PaletteSections.swift */; };
 		0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */; };
 		0A11B22C33D44E55F6677010 /* BandIsolationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */; };
+		0A11B22C33D44E55F6677012 /* ContourGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677013 /* ContourGenerator.swift */; };
+		0A11B22C33D44E55F6677014 /* ContourLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677015 /* ContourLineColorResolver.swift */; };
+		0A11B22C33D44E55F6677016 /* ContourSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677017 /* ContourSettingsView.swift */; };
+		0A11B22C33D44E55F6677018 /* ContourOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677019 /* ContourOverlayView.swift */; };
 		0A11B22C33D44E55F6677101 /* ThresholdUtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677102 /* ThresholdUtilitiesTests.swift */; };
 		0A11B22C33D44E55F6677103 /* PaletteSectionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */; };
 		0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */; };
@@ -93,6 +97,10 @@
 		0A11B22C33D44E55F6677004 /* PaletteSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaletteSections.swift; path = Support/PaletteSections.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridLineColorResolver.swift; path = Support/GridLineColorResolver.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BandIsolationRenderer.swift; path = Support/BandIsolationRenderer.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677013 /* ContourGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourGenerator.swift; path = Support/ContourGenerator.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677015 /* ContourLineColorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourLineColorResolver.swift; path = Support/ContourLineColorResolver.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677017 /* ContourSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourSettingsView.swift; path = Views/ContourSettingsView.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677019 /* ContourOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourOverlayView.swift; path = Views/ContourOverlayView.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677102 /* ThresholdUtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdUtilitiesTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaletteSectionsTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridLineColorResolverTests.swift; sourceTree = "<group>"; };
@@ -182,7 +190,9 @@
 			children = (
 				0A11B22C33D44E55F6677002 /* ThresholdUtilities.swift */,
 				0A11B22C33D44E55F6677004 /* PaletteSections.swift */,
+				0A11B22C33D44E55F6677013 /* ContourGenerator.swift */,
 				0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */,
+				0A11B22C33D44E55F6677015 /* ContourLineColorResolver.swift */,
 				0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */,
 			);
 			name = Support;
@@ -232,6 +242,8 @@
 				87AF7FD89A0E49169C002685 /* ColorSettingsView.swift */,
 				CCC0BBE0E4F4452FBC8CFDB1 /* GridSettingsView.swift */,
 				84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */,
+				0A11B22C33D44E55F6677017 /* ContourSettingsView.swift */,
+				0A11B22C33D44E55F6677019 /* ContourOverlayView.swift */,
 				CC8D69363CDB4E37AB598F8A /* CompareView.swift */,
 				CA3EA40383874CE288B53828 /* PaletteView.swift */,
 				B1C2D3E4F5A6B7C8D9E0F107 /* RecipeView.swift */,
@@ -330,6 +342,7 @@
 				33F93ED4BE2A4E4DA2C93DBE /* Sources */,
 				51026DF4D6D44B4D850D7BA2 /* Resources */,
 				E0EA7217478542508B909319 /* Frameworks */,
+				0A11B22C33D44E55F6677801 /* Stamp Git Revision */,
 			);
 			buildRules = (
 			);
@@ -396,6 +409,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		0A11B22C33D44E55F6677801 /* Stamp Git Revision */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp Git Revision";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/RefPlaneBuildMetadata.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nmetadata_path=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/RefPlaneBuildMetadata.plist\"\ngit_root=\"${SRCROOT}/..\"\ngit_revision=\"unknown\"\nif [ -d \"${git_root}/.git\" ]; then\n  git_revision=\"$(git -C \"${git_root}\" rev-parse --short HEAD 2>/dev/null || echo unknown)\"\n  if [ -n \"$(git -C \"${git_root}\" status --short --untracked-files=no 2>/dev/null || true)\" ]; then\n    git_revision=\"${git_revision}-dirty\"\n  fi\nfi\nmkdir -p \"$(dirname \"${metadata_path}\")\"\nrm -f \"${metadata_path}\"\n/usr/bin/plutil -create xml1 \"${metadata_path}\"\n/usr/libexec/PlistBuddy -c \"Add :gitRevision string ${git_revision}\" \"${metadata_path}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		0A11B22C33D44E55F6677502 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -461,6 +497,8 @@
 				0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */,
 				0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */,
 				0A11B22C33D44E55F6677010 /* BandIsolationRenderer.swift in Sources */,
+				0A11B22C33D44E55F6677012 /* ContourGenerator.swift in Sources */,
+				0A11B22C33D44E55F6677014 /* ContourLineColorResolver.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F201 /* SpectralData.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F202 /* SpectralDataStore.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F203 /* KubelkaMunkMixer.swift in Sources */,
@@ -469,6 +507,8 @@
 				DE01DE01DE01DE01DE010002 /* DepthEstimator.swift in Sources */,
 				DE01DE01DE01DE01DE010004 /* DepthProcessor.swift in Sources */,
 				DE01DE01DE01DE01DE010006 /* DepthSettingsView.swift in Sources */,
+				0A11B22C33D44E55F6677016 /* ContourSettingsView.swift in Sources */,
+				0A11B22C33D44E55F6677018 /* ContourOverlayView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

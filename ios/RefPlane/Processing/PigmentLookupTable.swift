@@ -175,7 +175,8 @@ final class PigmentLookupTable {
     func findBest(
         for target: OklabColor,
         enabledGlobalIndices: [Int],
-        maxPigments: Int
+        maxPigments: Int,
+        chromaWeight: Float = 1
     ) -> (entry: KMLookupEntry, distSq: Float)? {
         let enabled = enabledGlobalIndices
         let M = enabled.count
@@ -206,7 +207,7 @@ final class PigmentLookupTable {
                                 let dL = oklab[oi] - tL
                                 let da = oklab[oi + 1] - ta
                                 let db = oklab[oi + 2] - tb
-                                let d = dL * dL + da * da + db * db
+                                let d = dL * dL + chromaWeight * ((da * da) + (db * db))
                                 if d < bestDist { bestDist = d; bestIdx = base + s }
                             }
                         } else {
@@ -216,7 +217,7 @@ final class PigmentLookupTable {
                                 let dL = oklab[oi] - tL
                                 let da = oklab[oi + 1] - ta
                                 let db = oklab[oi + 2] - tb
-                                let d = dL * dL + da * da + db * db
+                                let d = dL * dL + chromaWeight * ((da * da) + (db * db))
                                 if d < bestDist { bestDist = d; bestIdx = base + s }
                             }
                         }
@@ -242,7 +243,7 @@ final class PigmentLookupTable {
                                     let dL = oklab[oi] - tL
                                     let da = oklab[oi + 1] - ta
                                     let db = oklab[oi + 2] - tb
-                                    let d = dL * dL + da * da + db * db
+                                    let d = dL * dL + chromaWeight * ((da * da) + (db * db))
                                     if d < bestDist { bestDist = d; bestIdx = base + s }
                                 }
                             }

@@ -1,54 +1,74 @@
 import SwiftUI
 
-struct ColorSettingsView: View {
-    @EnvironmentObject private var state: AppState
+struct ColorQuantizationSettingsView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(spacing: 14) {
+            LabeledSlider(
+                label: "Count",
+                value: Binding(
+                    get: { Double(state.colorConfig.numShades) },
+                    set: { state.colorConfig.numShades = Int($0.rounded()) }
+                ),
+                range: 2...24,
+                step: 1,
+                displayFormat: { "\(Int($0))" },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.scheduleProcessing()
+                    }
+                }
+            )
+
+            QuantizationBiasSlider(
+                value: Binding(
+                    get: { state.colorConfig.quantizationBias },
+                    set: {
+                        state.colorConfig.quantizationBias = QuantizationBias.clamped($0)
+                    }
+                ),
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.scheduleProcessing()
+                    }
+                }
+            )
+
+            LabeledSlider(
+                label: "Group",
+                value: Binding(
+                    get: { state.colorConfig.paletteSpread },
+                    set: { state.colorConfig.paletteSpread = $0 }
+                ),
+                range: 0...1,
+                step: 0.01,
+                displayFormat: { value in
+                    if value <= 0.01 { return "Mass" }
+                    if value >= 0.99 { return "Hue" }
+                    return String(format: "%.2f", value)
+                },
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.scheduleProcessing()
+                    }
+                }
+            )
+        }
+    }
+}
+
+struct PaletteSelectionSettingsView: View {
+    @Environment(AppState.self) private var state
     @State private var pigmentListExpanded: Bool = false
 
     var body: some View {
-        LabeledSlider(
-            label: "Shades",
-            value: Binding(
-                get: { Double(state.colorConfig.numShades) },
-                set: { state.colorConfig.numShades = Int($0.rounded()) }
-            ),
-            range: 2...24,
-            step: 1,
-            displayFormat: { "\(Int($0))" },
-            onEditingChanged: { editing in
-                if !editing {
-                    state.triggerProcessing()
-                }
-            }
-        )
-
-        LabeledSlider(
-            label: "Palette Spread",
-            value: Binding(
-                get: { state.colorConfig.paletteSpread },
-                set: { state.colorConfig.paletteSpread = $0 }
-            ),
-            range: 0...1,
-            step: 0.01,
-            displayFormat: { value in
-                if value <= 0.01 { return "Mass" }
-                if value >= 0.99 { return "Hue" }
-                return String(format: "%.2f", value)
-            },
-            onEditingChanged: { editing in
-                if !editing {
-                    state.triggerProcessing()
-                }
-            }
-        )
-
-        if state.activeMode == .color {
-            Divider()
-
-            // Preset palette picker
+        VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Palette")
                     .font(.subheadline)
                     .foregroundStyle(.primary)
+
                 Picker("Palette", selection: presetBinding) {
                     ForEach(PigmentPreset.allCases) { preset in
                         Text(preset.rawValue).tag(preset)
@@ -59,7 +79,6 @@ struct ColorSettingsView: View {
                 .labelsHidden()
             }
 
-            // Pigment checklist
             DisclosureGroup(
                 isExpanded: $pigmentListExpanded,
                 content: {
@@ -93,9 +112,10 @@ struct ColorSettingsView: View {
                     }
                 }
             )
+            .accessibilityIdentifier("studio.palette-tubes")
 
             LabeledSlider(
-                label: "Max Pigments",
+                label: "Mix Size",
                 value: Binding(
                     get: { Double(state.colorConfig.maxPigmentsPerMix) },
                     set: { state.colorConfig.maxPigmentsPerMix = Int($0.rounded()) }
@@ -104,7 +124,7 @@ struct ColorSettingsView: View {
                 step: 1,
                 displayFormat: { "\(Int($0))" },
                 onEditingChanged: { editing in
-                    if !editing { state.triggerProcessing() }
+                    if !editing { state.scheduleProcessing() }
                 }
             )
         }
@@ -125,12 +145,12 @@ struct ColorSettingsView: View {
                     }
                     state.colorConfig.enabledPigmentIDs = preset.pigmentIDs
                     state.colorConfig.saveEnabledPigmentIDs()
-                    state.triggerProcessing()
+                    state.scheduleProcessing()
                 } else {
                     // "Custom" selected — restore saved custom palette
                     state.colorConfig.enabledPigmentIDs = ColorConfig.loadCustomPigmentIDs()
                     state.colorConfig.saveEnabledPigmentIDs()
-                    state.triggerProcessing()
+                    state.scheduleProcessing()
                 }
             }
         )
@@ -143,7 +163,22 @@ struct ColorSettingsView: View {
         if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.colorConfig.enabledPigmentIDs }) == nil {
             state.colorConfig.saveCustomPigmentIDs()
         }
-        state.triggerProcessing()
+        state.scheduleProcessing()
+    }
+}
+
+struct ColorSettingsView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ColorQuantizationSettingsView()
+
+            if state.activeMode == .color {
+                Divider()
+                PaletteSelectionSettingsView()
+            }
+        }
     }
 }
 
@@ -180,7 +215,6 @@ private struct PigmentToggleRow: View {
     }
 
     private var masstoneColor: Color {
-        let lab = pigment.cielab
         // Approximate CIELab → sRGB for swatch (good enough for display)
         let oklab = KubelkaMunkMixer.pigmentToOklab(
             kOverS: pigment.kOverS,

@@ -1,8 +1,10 @@
+import ImageIO
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct ImagePickerView: UIViewControllerRepresentable {
-    let onImageSelected: (UIImage) -> Void
+    let onImageSelected: (ImportedImagePayload) -> Void
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
@@ -29,12 +31,61 @@ struct ImagePickerView: UIViewControllerRepresentable {
                     didFinishPicking results: [PHPickerResult]) {
             picker.dismiss(animated: true)
             guard let result = results.first else { return }
-            result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] obj, _ in
-                guard let image = obj as? UIImage else { return }
-                DispatchQueue.main.async {
-                    self?.parent.onImageSelected(image)
+
+            let provider = result.itemProvider
+            if let typeIdentifier = provider.registeredTypeIdentifiers.first(
+                where: { UTType($0)?.conforms(to: .image) == true }
+            ) {
+                loadImageData(from: provider, typeIdentifier: typeIdentifier)
+            } else {
+                loadFallbackImage(from: provider)
+            }
+        }
+
+        private func loadImageData(from provider: NSItemProvider, typeIdentifier: String) {
+            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { [weak self] data, _ in
+                guard let self else { return }
+
+                if let data,
+                   let image = UIImage(data: data) {
+                    let metadata = Self.readMetadata(from: data, fallbackTypeIdentifier: typeIdentifier)
+                    self.deliverSelection(ImportedImagePayload(image: image, metadata: metadata))
+                } else {
+                    self.loadFallbackImage(from: provider)
                 }
             }
+        }
+
+        private func loadFallbackImage(from provider: NSItemProvider) {
+            provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
+                guard let image = object as? UIImage else { return }
+                self?.deliverSelection(ImportedImagePayload(image: image))
+            }
+        }
+
+        private func deliverSelection(_ payload: ImportedImagePayload) {
+            DispatchQueue.main.async { [weak self] in
+                self?.parent.onImageSelected(payload)
+            }
+        }
+
+        private static func readMetadata(
+            from data: Data,
+            fallbackTypeIdentifier: String
+        ) -> SourceImageMetadata {
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+                return SourceImageMetadata(
+                    properties: [:],
+                    uniformTypeIdentifier: fallbackTypeIdentifier
+                )
+            }
+
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] ?? [:]
+            let typeIdentifier = (CGImageSourceGetType(source) as String?) ?? fallbackTypeIdentifier
+            return SourceImageMetadata(
+                properties: properties,
+                uniformTypeIdentifier: typeIdentifier
+            )
         }
     }
 }

@@ -44,7 +44,7 @@ enum PigmentDecomposer {
         concurrent: Bool = true,
         lookupTable: PigmentLookupTable? = nil
     ) -> [PigmentRecipe] {
-        guard !targetColors.isEmpty else { return [] }
+        guard !targetColors.isEmpty, !pigments.isEmpty else { return [] }
 
         let clamped = min(max(maxPigments, 1), 3)
 
@@ -218,10 +218,29 @@ enum PigmentDecomposer {
         maxPigments: Int,
         minConcentration: Float
     ) -> PigmentRecipe? {
+        if globalIndices.count == 1,
+           let pigmentIndex = globalIndices.first,
+           database.pigments.indices.contains(pigmentIndex),
+           table.masstones.indices.contains(pigmentIndex) {
+            let predictedColor = table.masstones[pigmentIndex]
+            return PigmentRecipe(
+                components: [
+                    RecipeComponent(
+                        pigmentId: database.pigments[pigmentIndex].id,
+                        pigmentName: database.pigments[pigmentIndex].name,
+                        concentration: 1
+                    )
+                ],
+                predictedColor: predictedColor,
+                deltaE: sqrtf(oklabDistance(target, predictedColor))
+            )
+        }
+
         guard let (entry, distSq) = table.findBest(
             for: target,
             enabledGlobalIndices: globalIndices,
-            maxPigments: maxPigments
+            maxPigments: maxPigments,
+            chromaWeight: targetDistanceChromaWeight(for: target)
         ) else { return nil }
 
         let a0 = entry.a0, a1 = entry.a1, a2 = entry.a2
@@ -267,10 +286,19 @@ enum PigmentDecomposer {
     ) -> PigmentRecipe {
         // Phase 1: Find best lookup entry
         var bestEntry = lookup[0]
-        var bestDist = oklabDistance(target, lookup[0].color)
+        let chromaWeight = targetDistanceChromaWeight(for: target)
+        var bestDist = recipeDistanceSquared(
+            target: target,
+            candidate: lookup[0].color,
+            chromaWeight: chromaWeight
+        )
 
         for entry in lookup.dropFirst() {
-            let dist = oklabDistance(target, entry.color)
+            let dist = recipeDistanceSquared(
+                target: target,
+                candidate: entry.color,
+                chromaWeight: chromaWeight
+            )
             if dist < bestDist {
                 bestDist = dist
                 bestEntry = entry
@@ -432,7 +460,8 @@ enum PigmentDecomposer {
                     if let (_, dSq) = table.findBest(
                         for: target,
                         enabledGlobalIndices: gIdx,
-                        maxPigments: clamped
+                        maxPigments: clamped,
+                        chromaWeight: targetDistanceChromaWeight(for: target)
                     ) {
                         totalError += sqrtf(dSq) * topWeights[i]
                     }
@@ -441,9 +470,14 @@ enum PigmentDecomposer {
                 // Fallback: build a runtime lookup for this tube subset.
                 let lookup = buildLookupTable(pigments: tubes, database: database, maxPigments: clamped)
                 for (i, target) in topColors.enumerated() {
+                    let chromaWeight = targetDistanceChromaWeight(for: target)
                     var bestDist = Float.greatestFiniteMagnitude
                     for entry in lookup {
-                        let d = oklabDistance(target, entry.color)
+                        let d = recipeDistanceSquared(
+                            target: target,
+                            candidate: entry.color,
+                            chromaWeight: chromaWeight
+                        )
                         if d < bestDist { bestDist = d }
                     }
                     totalError += sqrtf(bestDist) * topWeights[i]
@@ -577,5 +611,27 @@ enum PigmentDecomposer {
         }
         
         return (mergedRecipes, labelMapping)
+    }
+
+    private static func targetDistanceChromaWeight(for target: OklabColor) -> Float {
+        let chroma = sqrtf((target.a * target.a) + (target.b * target.b))
+        guard chroma >= 0.01 else {
+            return 0.08
+        }
+
+        // For chromatic targets, keep hue/chroma errors from being traded away
+        // too easily for a slightly closer value match.
+        return min(32.0, 6.0 + chroma * 180.0)
+    }
+
+    private static func recipeDistanceSquared(
+        target: OklabColor,
+        candidate: OklabColor,
+        chromaWeight: Float
+    ) -> Float {
+        let dL = target.L - candidate.L
+        let da = target.a - candidate.a
+        let db = target.b - candidate.b
+        return (dL * dL) + chromaWeight * ((da * da) + (db * db))
     }
 }

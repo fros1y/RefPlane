@@ -9,6 +9,24 @@ private struct SampleItem: Identifiable {
 
 private let sampleImages: [SampleItem] = [
     SampleItem(
+        id: "statue",
+        displayName: "Sculpture",
+        assetName: "sample-statue",
+        description: "Classical bust study for planes, edges, and form shadows"
+    ),
+    SampleItem(
+        id: "eye",
+        displayName: "Eye Close-Up",
+        assetName: "sample-eye",
+        description: "Macro reference for iris texture and subtle skin values"
+    ),
+    SampleItem(
+        id: "still-life",
+        displayName: "Still Life",
+        assetName: "sample-still-life",
+        description: "Studio setup with fruit and cloth for color and material studies"
+    ),
+    SampleItem(
         id: "colorchecker",
         displayName: "Color Checker",
         assetName: "sample-colorchecker",
@@ -16,9 +34,9 @@ private let sampleImages: [SampleItem] = [
     ),
     SampleItem(
         id: "portrait",
-        displayName: "Portrait",
+        displayName: "Reference Board",
         assetName: "sample-portrait",
-        description: "Real-world subject for tonal and value studies"
+        description: "Mixed image board for stress-testing value grouping and color extraction"
     ),
     SampleItem(
         id: "landscape",
@@ -29,11 +47,14 @@ private let sampleImages: [SampleItem] = [
 ]
 
 struct SampleImagePickerView: View {
-    let onImageSelected: (UIImage) -> Void
+    let onImageSelected: (ImportedImagePayload) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var failedSample: SampleItem?
 
-    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 16)]
+    private let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16),
+    ]
 
     var body: some View {
         NavigationStack {
@@ -42,7 +63,7 @@ struct SampleImagePickerView: View {
                     ForEach(sampleImages) { sample in
                         SampleThumbnailButton(sample: sample) {
                             if let image = UIImage(named: sample.assetName) {
-                                onImageSelected(image)
+                                onImageSelected(ImportedImagePayload(image: image))
                                 dismiss()
                             } else {
                                 failedSample = sample
@@ -50,13 +71,16 @@ struct SampleImagePickerView: View {
                         }
                     }
                 }
-                .padding(16)
+                .padding(20)
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Sample Images")
             .navigationBarTitleDisplayMode(.inline)
+            .accessibilityIdentifier("sample-picker.grid")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("sample-picker.cancel")
                 }
             }
             .alert(
@@ -84,16 +108,19 @@ private struct SampleThumbnailButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(sample.assetName)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 110)
-                    .clipped()
-                    .cornerRadius(10)
+            VStack(alignment: .leading, spacing: 10) {
+                GeometryReader { proxy in
+                    Image(sample.assetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: 132)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .frame(height: 132)
 
                 Text(sample.displayName)
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
 
                 Text(sample.description)
@@ -101,9 +128,25 @@ private struct SampleThumbnailButton: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+            .clipped()
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(sample.displayName)
         .accessibilityHint(sample.description)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("sample-picker.\(sample.id)")
     }
+}
+
+#Preview("Samples") {
+    SampleImagePickerView { _ in }
 }

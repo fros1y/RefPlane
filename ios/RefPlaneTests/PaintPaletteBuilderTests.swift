@@ -6,6 +6,252 @@ import Testing
 struct PaintPaletteBuilderTests {
     let database = SpectralDataStore.shared
     let pigments = SpectralDataStore.essentialPigments
+
+    private func loadSampleImage(named sampleName: String) throws -> UIImage {
+        let repoRoot = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let imageURL = repoRoot
+            .appendingPathComponent("ios/RefPlane/Assets.xcassets")
+            .appendingPathComponent("\(sampleName).imageset")
+
+        let fileNames = try FileManager.default.contentsOfDirectory(
+            atPath: imageURL.path(percentEncoded: false)
+        )
+        let imageFile = try #require(
+            fileNames.first { fileName in
+                fileName.hasSuffix(".jpg") ||
+                fileName.hasSuffix(".jpeg") ||
+                fileName.hasSuffix(".png")
+            }
+        )
+        let data = try Data(contentsOf: imageURL.appendingPathComponent(imageFile))
+        return try #require(UIImage(data: data))
+    }
+
+    private func assertPaletteSelectionKeepsGreenAccent(
+        from image: UIImage,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) throws {
+        var config = ColorConfig()
+        config.paletteSelectionEnabled = true
+        config.numShades = 8
+        config.maxPigmentsPerMix = 3
+        config.minConcentration = 0.02
+
+        let regions = try #require(
+            ColorRegionsProcessor.process(
+                image: image,
+                config: config,
+                overclusterK: 16
+            ),
+            sourceLocation: sourceLocation
+        )
+
+        let greenCentroidIndex = try #require(
+            regions.quantizedCentroids.indices.max { lhs, rhs in
+                let lhsColor = regions.quantizedCentroids[lhs]
+                let rhsColor = regions.quantizedCentroids[rhs]
+                return (lhsColor.a * -1 + lhsColor.b) < (rhsColor.a * -1 + rhsColor.b)
+            },
+            sourceLocation: sourceLocation
+        )
+        let greenQuantizedCentroid = regions.quantizedCentroids[greenCentroidIndex]
+        let greenQuantizedPixelCount = regions.clusterPixelCounts[greenCentroidIndex]
+        let greenQuantizedSalience = regions.clusterSalience[greenCentroidIndex]
+        #expect(
+            greenQuantizedCentroid.a < -0.03 && greenQuantizedCentroid.b > 0.03,
+            "Still Life sample should include a green/yellow-green quantized centroid",
+            sourceLocation: sourceLocation
+        )
+
+        let directGreenRecipe = try #require(
+            PigmentDecomposer.decompose(
+                targetColors: [greenQuantizedCentroid],
+                pigments: pigments,
+                database: database,
+                maxPigments: config.maxPigmentsPerMix,
+                minConcentration: config.minConcentration,
+                concurrent: false,
+                lookupTable: SpectralDataStore.sharedLookupTable
+            ).first,
+            sourceLocation: sourceLocation
+        )
+        let directGreenRecipeSummary = String(
+            format: "Direct green recipe L=%.3f a=%.3f b=%.3f ΔE=%.3f %@",
+            directGreenRecipe.predictedColor.L,
+            directGreenRecipe.predictedColor.a,
+            directGreenRecipe.predictedColor.b,
+            directGreenRecipe.deltaE,
+            directGreenRecipe.components
+                .map { "\($0.pigmentName) \(Int(($0.concentration * 100).rounded()))%" }
+                .joined(separator: " + ")
+        )
+
+        let batchRecipes = PigmentDecomposer.decompose(
+            targetColors: regions.quantizedCentroids,
+            pigments: pigments,
+            database: database,
+            maxPigments: config.maxPigmentsPerMix,
+            minConcentration: config.minConcentration,
+            concurrent: false,
+            lookupTable: SpectralDataStore.sharedLookupTable
+        )
+        let batchGreenRecipe = try #require(
+            batchRecipes.indices.contains(greenCentroidIndex)
+                ? batchRecipes[greenCentroidIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let batchLabels = ColorRegionsProcessor.assignQuantizedToRecipes(
+            quantizedCentroids: regions.quantizedCentroids,
+            recipeCentroids: batchRecipes.map { $0.predictedColor },
+            lWeight: 0.3
+        )
+        let batchAssignedRecipeIndex = Int(batchLabels[greenCentroidIndex])
+        let batchAssignedRecipe = try #require(
+            batchRecipes.indices.contains(batchAssignedRecipeIndex)
+                ? batchRecipes[batchAssignedRecipeIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let batchGreenRecipeSummary = String(
+            format: "Batch green recipe L=%.3f a=%.3f b=%.3f ΔE=%.3f",
+            batchGreenRecipe.predictedColor.L,
+            batchGreenRecipe.predictedColor.a,
+            batchGreenRecipe.predictedColor.b,
+            batchGreenRecipe.deltaE
+        )
+        let batchAssignedRecipeSummary = String(
+            format: "First-pass assigned recipe #%d L=%.3f a=%.3f b=%.3f ΔE=%.3f",
+            batchAssignedRecipeIndex + 1,
+            batchAssignedRecipe.predictedColor.L,
+            batchAssignedRecipe.predictedColor.a,
+            batchAssignedRecipe.predictedColor.b,
+            batchAssignedRecipe.deltaE
+        )
+        let (firstPassCentroids, firstPassCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+            quantizedCentroids: regions.quantizedCentroids,
+            quantizedPixelCounts: regions.clusterPixelCounts,
+            centroidToRecipe: batchLabels,
+            recipeCount: batchRecipes.count
+        )
+        let firstPassCentroid = try #require(
+            firstPassCentroids.indices.contains(batchAssignedRecipeIndex)
+                ? firstPassCentroids[batchAssignedRecipeIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let firstPassCount = firstPassCounts.indices.contains(batchAssignedRecipeIndex)
+            ? firstPassCounts[batchAssignedRecipeIndex]
+            : 0
+        let firstPassRefitRecipe = try #require(
+            PigmentDecomposer.decompose(
+                targetColors: [firstPassCentroid],
+                pigments: pigments,
+                database: database,
+                maxPigments: config.maxPigmentsPerMix,
+                minConcentration: config.minConcentration,
+                concurrent: false,
+                lookupTable: SpectralDataStore.sharedLookupTable
+            ).first,
+            sourceLocation: sourceLocation
+        )
+        let firstPassRefitSummary = String(
+            format: "First-pass centroid count=%d L=%.3f a=%.3f b=%.3f refit L=%.3f a=%.3f b=%.3f ΔE=%.3f %@",
+            firstPassCount,
+            firstPassCentroid.L,
+            firstPassCentroid.a,
+            firstPassCentroid.b,
+            firstPassRefitRecipe.predictedColor.L,
+            firstPassRefitRecipe.predictedColor.a,
+            firstPassRefitRecipe.predictedColor.b,
+            firstPassRefitRecipe.deltaE,
+            firstPassRefitRecipe.components
+                .map { "\($0.pigmentName) \(Int(($0.concentration * 100).rounded()))%" }
+                .joined(separator: " + ")
+        )
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+        let recipeDebugSummary = result.recipes.enumerated()
+            .map { index, recipe in
+                let mix = recipe.components
+                    .map { "\($0.pigmentName) \(Int(($0.concentration * 100).rounded()))%" }
+                    .joined(separator: " + ")
+                return String(
+                    format: "#%d L=%.3f a=%.3f b=%.3f ΔE=%.3f %@",
+                    index + 1,
+                    recipe.predictedColor.L,
+                    recipe.predictedColor.a,
+                    recipe.predictedColor.b,
+                    recipe.deltaE,
+                    mix
+                )
+            }
+            .joined(separator: " || ")
+
+        let hasGreenRecipe = result.recipes.contains { recipe in
+            recipe.predictedColor.a < -0.02 && recipe.predictedColor.b > 0.03
+        }
+        let centroidDebugSummary = String(
+            format: "Green centroid L=%.3f a=%.3f b=%.3f count=%d salience=%.3f %@ %@ %@ %@ Recipes: %@",
+            greenQuantizedCentroid.L,
+            greenQuantizedCentroid.a,
+            greenQuantizedCentroid.b,
+            greenQuantizedPixelCount,
+            greenQuantizedSalience,
+            directGreenRecipeSummary,
+            batchGreenRecipeSummary,
+            batchAssignedRecipeSummary,
+            firstPassRefitSummary,
+            recipeDebugSummary
+        )
+        #expect(
+            hasGreenRecipe,
+            "Palette selection should preserve a greenish recipe for the Still Life lime. \(centroidDebugSummary)",
+            sourceLocation: sourceLocation
+        )
+
+        var mappedRecipeCounts = [Int: Int]()
+        for pixelIndex in 0..<min(regions.pixelLabels.count, result.pixelLabels.count)
+            where Int(regions.pixelLabels[pixelIndex]) == greenCentroidIndex {
+            mappedRecipeCounts[Int(result.pixelLabels[pixelIndex]), default: 0] += 1
+        }
+
+        let dominantMappedRecipeIndex = try #require(
+            mappedRecipeCounts.max(by: { lhs, rhs in lhs.value < rhs.value })?.key,
+            sourceLocation: sourceLocation
+        )
+        let dominantMappedRecipe = try #require(
+            result.recipes.indices.contains(dominantMappedRecipeIndex)
+                ? result.recipes[dominantMappedRecipeIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let mappingDebugSummary = String(
+            format: "Green centroid L=%.3f a=%.3f b=%.3f dominant recipe L=%.3f a=%.3f b=%.3f mapped counts=%@ recipes=%@",
+            greenQuantizedCentroid.L,
+            greenQuantizedCentroid.a,
+            greenQuantizedCentroid.b,
+            dominantMappedRecipe.predictedColor.L,
+            dominantMappedRecipe.predictedColor.a,
+            dominantMappedRecipe.predictedColor.b,
+            String(describing: mappedRecipeCounts),
+            recipeDebugSummary
+        )
+        #expect(
+            dominantMappedRecipe.predictedColor.a < -0.02 &&
+            dominantMappedRecipe.predictedColor.b > 0.03,
+            "Still Life green pixels should still map to a green/yellow-green recipe. \(mappingDebugSummary)",
+            sourceLocation: sourceLocation
+        )
+    }
     
     @Test
     func buildLimitsToMaxShades() throws {
@@ -100,6 +346,184 @@ struct PaintPaletteBuilderTests {
             return chroma > 0.05
         }
         #expect(hasVividRecipe, "Vivid minority cluster should survive in final palette")
+    }
+
+    @Test
+    func highSalienceAccentOutranksLargerLowSalienceClusterWhenPruning() throws {
+        let majorityNeutralCount = 800
+        let largerMutedCount = 180
+        let accentCount = 90
+        let total = majorityNeutralCount + largerMutedCount + accentCount
+
+        let centroids = [
+            OklabColor(L: 0.52, a: 0.0, b: 0.0),
+            OklabColor(L: 0.58, a: 0.02, b: 0.01),
+            OklabColor(L: 0.64, a: 0.18, b: 0.10)
+        ]
+
+        let labels: [Int32] =
+            Array(repeating: 0, count: majorityNeutralCount) +
+            Array(repeating: 1, count: largerMutedCount) +
+            Array(repeating: 2, count: accentCount)
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: [Float](repeating: 0, count: total * 3),
+            clusterPixelCounts: [majorityNeutralCount, largerMutedCount, accentCount],
+            clusterSalience: [1.0, 0.35, 2.0]
+        )
+
+        var config = ColorConfig()
+        config.numShades = 2
+        config.maxPigmentsPerMix = 3
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        let hasAccentRecipe = result.recipes.contains { recipe in
+            let chroma = sqrtf(
+                recipe.predictedColor.a * recipe.predictedColor.a +
+                recipe.predictedColor.b * recipe.predictedColor.b
+            )
+            return chroma > 0.08 && recipe.predictedColor.L > 0.55
+        }
+
+        #expect(result.recipes.count <= 2)
+        #expect(hasAccentRecipe, "Small high-salience accent should survive over a larger muted cluster")
+    }
+
+    @Test
+    func grayscaleBandsStaySeparatedWithYellowAndUltramarineTubes() throws {
+        let selectedPigments = [
+            try #require(SpectralDataStore.pigment(byId: "cadmium_yellow_light")),
+            try #require(SpectralDataStore.pigment(byId: "ultramarine_blue"))
+        ]
+
+        let bandCounts = [120, 120, 120]
+        let labels: [Int32] =
+            Array(repeating: 0, count: bandCounts[0]) +
+            Array(repeating: 1, count: bandCounts[1]) +
+            Array(repeating: 2, count: bandCounts[2])
+
+        let grayCentroids = [
+            OklabColor(L: 0.0, a: 0.0, b: 0.0),
+            OklabColor(L: 0.5, a: 0.0, b: 0.0),
+            OklabColor(L: 1.0, a: 0.0, b: 0.0)
+        ]
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: grayCentroids,
+            pixelLabels: labels,
+            pixelLab: [],
+            clusterPixelCounts: bandCounts,
+            clusterSalience: [1.0, 1.0, 1.0]
+        )
+
+        var config = ColorConfig()
+        config.numShades = 3
+        config.maxPigmentsPerMix = 2
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: selectedPigments
+        )
+
+        let uniqueLabels = Set(result.pixelLabels)
+        #expect(uniqueLabels.count >= 2, "Three grayscale bands should not collapse into one recipe")
+
+        let sortedRecipes = result.recipes.sorted {
+            $0.predictedColor.L < $1.predictedColor.L
+        }
+        let darkestRecipe = try #require(sortedRecipes.first)
+        let lightestRecipe = try #require(sortedRecipes.last)
+
+        #expect(
+            darkestRecipe.components.contains { $0.pigmentId == "ultramarine_blue" },
+            "Darkest grayscale band should keep an ultramarine-heavy recipe"
+        )
+        #expect(
+            lightestRecipe.components.contains { $0.pigmentId == "cadmium_yellow_light" },
+            "Lightest grayscale band should keep a cadmium yellow light recipe"
+        )
+    }
+
+    @Test
+    func sixGrayscaleBandsProduceMoreThanTwoRecipesWithYellowAndUltramarine() throws {
+        let selectedPigments = [
+            try #require(SpectralDataStore.pigment(byId: "cadmium_yellow_light")),
+            try #require(SpectralDataStore.pigment(byId: "ultramarine_blue"))
+        ]
+
+        let centroids = (0..<6).map { index in
+            OklabColor(L: Float(index) / 5.0, a: 0, b: 0)
+        }
+        let pixelsPerBand = 90
+        let labels = centroids.indices.flatMap { index in
+            Array(repeating: Int32(index), count: pixelsPerBand)
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: [],
+            clusterPixelCounts: [Int](repeating: pixelsPerBand, count: centroids.count),
+            clusterSalience: [Float](repeating: 1.0, count: centroids.count)
+        )
+
+        var config = ColorConfig()
+        config.numShades = 6
+        config.maxPigmentsPerMix = 2
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: selectedPigments
+        )
+
+        #expect(result.recipes.count > 2)
+        #expect(Set(result.pixelLabels).count > 2)
+    }
+
+    @Test
+    func stillLifePaletteSelectionKeepsGreenAccent() throws {
+        let image = try loadSampleImage(named: "sample-still-life")
+        try assertPaletteSelectionKeepsGreenAccent(from: image)
+    }
+
+    @Test
+    func stillLifePaletteSelectionKeepsGreenAccentAfterAPISRSimplification() async throws {
+        let image = try loadSampleImage(named: "sample-still-life")
+        let referenceResolution: CGFloat = 1600.0
+        let maxDimension = max(image.size.width, image.size.height)
+        let resolutionScale = maxDimension / referenceResolution
+        let downscale = max(1.0, (2.0 + 0.5 * 10.0) * resolutionScale)
+        let simplified = try await ImageAbstractor.abstract(
+            image: image,
+            downscale: downscale,
+            method: .apisr
+        )
+
+        try assertPaletteSelectionKeepsGreenAccent(from: simplified)
     }
 
     @Test

@@ -2,6 +2,68 @@ import UIKit
 import Testing
 @testable import Underpaint
 
+private let transformPresetStoreKey = "AppState.transformPresetStore.v1"
+
+private func clearTransformPresetStore() {
+    UserDefaults.standard.removeObject(forKey: transformPresetStoreKey)
+}
+
+@MainActor
+@Test
+func saveCurrentTransformPresetAddsPresetAndSelectsIt() throws {
+    clearTransformPresetStore()
+    defer { clearTransformPresetStore() }
+
+    let state = AppState()
+    state.gridConfig.enabled = true
+    state.gridConfig.divisions = 7
+
+    try state.saveCurrentTransformPreset(named: "Studio A")
+
+    #expect(state.savedTransformPresets.count == 1)
+    #expect(state.savedTransformPresets[0].name == "Studio A")
+    #expect(state.selectedTransformPresetSelection == .saved(state.savedTransformPresets[0].id))
+}
+
+@MainActor
+@Test
+func previousSettingsOptionHiddenWhenSnapshotMatchesSavedPreset() throws {
+    clearTransformPresetStore()
+    defer { clearTransformPresetStore() }
+
+    let state = AppState()
+
+    try state.saveCurrentTransformPreset(named: "Balanced")
+    state.selectTransformPreset(.saved(state.savedTransformPresets[0].id))
+
+    #expect(state.shouldShowPreviousSettingsOption == false)
+    #expect(state.availableTransformPresetSelections.contains(.saved(state.savedTransformPresets[0].id)))
+    #expect(!state.availableTransformPresetSelections.contains(.previous))
+}
+
+@MainActor
+@Test
+func selectingDefaultPresetRestoresDefaultTransformationValues() {
+    clearTransformPresetStore()
+    defer { clearTransformPresetStore() }
+
+    let state = AppState()
+
+    state.abstractionStrength = 0.9
+    state.gridConfig.enabled = true
+    state.gridConfig.divisions = 9
+    state.valueConfig.levels = 5
+    state.depthConfig.enabled = true
+
+    state.selectTransformPreset(.appDefault)
+
+    #expect(state.abstractionStrength == 0.5)
+    #expect(state.gridConfig.enabled == false)
+    #expect(state.gridConfig.divisions == 4)
+    #expect(state.valueConfig.levels == 3)
+    #expect(state.depthConfig.enabled == false)
+}
+
 @MainActor
 @Test
 func resetAbstractionCancelsInflightAbstractionTask() async throws {
@@ -273,7 +335,7 @@ func applyKuwaharaCallsOperationAndStoresResult() async throws {
 
     let source = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
     state.sourceImage      = source
-    state.kuwaharaStrength = 0.5  // radius = Int(0.5 * 8) = 4
+    state.kuwaharaStrength = 0.5  // radius = Int(0.5 * 16) = 8
 
     state.applyKuwahara()
     for _ in 0..<50 where state.isProcessing { await Task.yield() }
@@ -281,7 +343,7 @@ func applyKuwaharaCallsOperationAndStoresResult() async throws {
     let callCount = await kuwaharaProbe.callCount
     let lastRadius = await kuwaharaProbe.lastRadius
     #expect(callCount == 1)
-    #expect(lastRadius == 4)
+    #expect(lastRadius == 8)
     #expect(state.kuwaharaFilteredImage === expectedImage)
 }
 

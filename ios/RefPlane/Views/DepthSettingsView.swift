@@ -1,95 +1,49 @@
 import SwiftUI
 
 struct DepthSettingsView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(AppState.self) private var state
 
     var body: some View {
-        Group {
-            Toggle("Depth Effects", isOn: Binding(
-                get: { state.depthConfig.enabled },
-                set: { newValue in
-                    state.depthConfig.enabled = newValue
-                    if newValue {
-                        state.computeDepthMap()
-                    } else {
-                        state.resetDepthProcessing()
-                    }
+        let range = state.depthRange
+        let span = max(range.upperBound - range.lowerBound, 0.0001)
+        let step = max(0.01, span / 100.0)
+
+        VStack(spacing: 14) {
+            Picker("Adjust Background", selection: Binding(
+                get: { state.depthConfig.backgroundMode },
+                set: setBackgroundMode
+            )) {
+                ForEach(BackgroundMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
-            ))
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("studio.background-mode-picker")
 
-            if state.depthConfig.enabled {
-                let range = state.depthRange
-                let step = max(0.01, (range.upperBound - range.lowerBound) / 100.0)
-
+            if state.depthConfig.backgroundMode != .none {
                 LabeledSlider(
-                    label: "Foreground",
-                    value: Binding(
-                        get: { state.depthConfig.foregroundCutoff },
-                        set: { newValue in
-                            let clamped = min(newValue, state.depthConfig.backgroundCutoff - step)
-                            guard clamped != state.depthConfig.foregroundCutoff else { return }
-                            state.depthConfig.foregroundCutoff = clamped
-                            if state.isEditingDepthThreshold {
-                                state.updateDepthThresholdPreview()
-                            }
-                        }
-                    ),
-                    range: range.lowerBound...range.upperBound,
-                    step: step,
-                    displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
-                    onEditingChanged: { editing in
-                        state.isEditingDepthThreshold = editing
-                        if editing {
-                            state.updateDepthThresholdPreview()
-                        } else {
-                            state.depthThresholdPreview = nil
-                            state.applyDepthEffects()
-                        }
-                    }
-                )
-
-                LabeledSlider(
-                    label: "Background",
+                    label: "Depth Threshold",
                     value: Binding(
                         get: { state.depthConfig.backgroundCutoff },
                         set: { newValue in
-                            let clamped = max(newValue, state.depthConfig.foregroundCutoff + step)
-                            guard clamped != state.depthConfig.backgroundCutoff else { return }
-                            state.depthConfig.backgroundCutoff = clamped
-                            if state.isEditingDepthThreshold {
-                                state.updateDepthThresholdPreview()
-                            }
+                            state.updateBackgroundDepthCutoff(newValue)
                         }
                     ),
                     range: range.lowerBound...range.upperBound,
                     step: step,
-                    displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
+                    displayFormat: { "\(Int(($0 - range.lowerBound) / span * 100))%" },
                     onEditingChanged: { editing in
-                        state.isEditingDepthThreshold = editing
+                        state.depthSliderActive = editing
                         if editing {
                             state.updateDepthThresholdPreview()
                         } else {
-                            state.depthThresholdPreview = nil
-                            state.applyDepthEffects()
+                            state.dismissDepthThresholdPreview()
                         }
                     }
                 )
 
-                Picker("Background", selection: Binding(
-                    get: { state.depthConfig.backgroundMode },
-                    set: { newMode in
-                        guard newMode != state.depthConfig.backgroundMode else { return }
-                        state.depthConfig.backgroundMode = newMode
-                        state.applyDepthEffects()
-                    }
-                )) {
-                    ForEach(BackgroundMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-
                 LabeledSlider(
-                    label: "Intensity",
+                    label: "Amount",
                     value: Binding(
                         get: { state.depthConfig.effectIntensity },
                         set: { state.depthConfig.effectIntensity = $0 }
@@ -104,6 +58,26 @@ struct DepthSettingsView: View {
                     }
                 )
             }
+        }
+        .accessibilityIdentifier("studio.depth-settings")
+    }
+
+    private func setBackgroundMode(_ newMode: BackgroundMode) {
+        guard newMode != state.depthConfig.backgroundMode else { return }
+
+        state.depthConfig.backgroundMode = newMode
+
+        if newMode == .none {
+            state.depthConfig.enabled = false
+            state.dismissDepthThresholdPreview()
+            return
+        }
+
+        state.depthConfig.enabled = true
+        if state.depthMap == nil {
+            state.computeDepthMap()
+        } else {
+            state.applyDepthEffects()
         }
     }
 }

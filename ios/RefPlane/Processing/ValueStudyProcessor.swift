@@ -16,12 +16,14 @@ enum ValueStudyProcessor {
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
         let levels = max(2, min(8, config.levels))
         let thresholds = config.thresholds  // values in 0-1, sorted ascending
+        let conversion = config.grayscaleConversion == .none
+            ? GrayscaleConversion.luminance
+            : config.grayscaleConversion
         let total = width * height
         let t1 = CFAbsoluteTimeGetCurrent()
         print("[ValueStudy] toPixelData: \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
 
-        // GPU path
-        if let gpu = MetalContext.shared {
+        if conversion.usesGPUShortcut, let gpu = MetalContext.shared {
             let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height,
                               levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
             let t2 = CFAbsoluteTimeGetCurrent()
@@ -29,10 +31,10 @@ enum ValueStudyProcessor {
             return result
         }
 
-        // CPU fallback
         print("[ValueStudy] ⚠️ CPU fallback (MetalContext.shared = nil)")
         let result = processCPU(pixels: pixels, width: width, height: height,
-                          levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
+                          levels: levels, thresholds: thresholds, minRegionSize: minRegionSize,
+                          conversion: conversion)
         let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
         print("[ValueStudy] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
         return result
@@ -55,7 +57,8 @@ enum ValueStudyProcessor {
         ) else {
             print("[ValueStudy] ⚠️ GPU quantize failed, falling back to CPU")
             return processCPU(pixels: pixels, width: width, height: height,
-                              levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
+                              levels: levels, thresholds: thresholds, minRegionSize: minRegionSize,
+                              conversion: .luminance)
         }
         print("[ValueStudy]   quantize: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
@@ -104,7 +107,8 @@ enum ValueStudyProcessor {
 
     private static func processCPU(
         pixels: [UInt8], width: Int, height: Int,
-        levels: Int, thresholds: [Double], minRegionSize: MinRegionSize
+        levels: Int, thresholds: [Double], minRegionSize: MinRegionSize,
+        conversion: GrayscaleConversion
     ) -> Result? {
         let total = width * height
 
@@ -117,13 +121,12 @@ enum ValueStudyProcessor {
             let r = Float(pixels[base])     / 255.0
             let g = Float(pixels[base + 1]) / 255.0
             let b = Float(pixels[base + 2]) / 255.0
-
-            let rl = linearizeSRGB(r)
-            let gl = linearizeSRGB(g)
-            let bl = linearizeSRGB(b)
-            let lum = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl
-            let encoded = delinearizeSRGB(Float(lum))
-            let gray = UInt8(max(0, min(255, Int(encoded * 255 + 0.5))))
+            let gray = GrayscaleProcessor.grayscaleByte(
+                r: r,
+                g: g,
+                b: b,
+                conversion: conversion
+            )
 
             var level = 0
             for t in thresholdBytes { if gray >= t { level += 1 } }

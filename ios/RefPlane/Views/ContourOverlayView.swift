@@ -1,15 +1,17 @@
 import SwiftUI
 
-struct GridOverlayView: View {
+struct ContourOverlayView: View {
     @Environment(AppState.self) private var state
     var image: UIImage? = nil
-    private let lineWidth: CGFloat = 0.5
+    private let lineWidth: CGFloat = 0.6
 
     var body: some View {
         GeometryReader { _ in
             Canvas { ctx, size in
-                let config = state.gridConfig
+                let config = state.contourConfig
                 guard config.enabled else { return }
+                let segments = state.contourSegments
+                guard !segments.isEmpty else { return }
                 let sourceImage = image ?? state.currentDisplayImage
 
                 let imgSize: CGSize
@@ -25,24 +27,18 @@ struct GridOverlayView: View {
                 let originX = (size.width  - imgSize.width)  / 2
                 let originY = (size.height - imgSize.height) / 2
 
-                // Clip all drawing to the fitted image rect so lines don't
-                // bleed into letterbox areas.
                 let imageRect = CGRect(x: originX, y: originY,
                                        width: imgSize.width, height: imgSize.height)
                 ctx.clip(to: Path(imageRect))
 
-                let layoutSize = sourceImage?.size ?? imgSize
-                let segments = GridLineColorResolver.resolvedSegments(
+                let resolved = ContourLineColorResolver.resolvedSegments(
                     config: config,
                     image: sourceImage,
-                    segments: GridLineColorResolver.normalizedSegments(
-                        config: config,
-                        imageSize: layoutSize
-                    )
+                    segments: segments
                 )
-                let strokeStyle = StrokeStyle(lineWidth: lineWidth, lineCap: .square)
+                let strokeStyle = StrokeStyle(lineWidth: lineWidth, lineCap: .round)
 
-                for resolvedSegment in segments {
+                for resolvedSegment in resolved {
                     let mappedSegment = resolvedSegment.segment.mapped(to: imageRect)
                     var path = Path()
                     path.move(to: mappedSegment.start)

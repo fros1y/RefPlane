@@ -145,4 +145,37 @@ struct ColorStudyInvariantTests {
         #expect(error2 <= error1 + tolerance, "Increasing pigments per mix from 1 to 2 should not increase error.")
         #expect(error3 <= error2 + tolerance, "Increasing pigments per mix from 2 to 3 should not increase error.")
     }
+
+    @Test
+    func singleTubePaletteBuildShouldNotCrashOrReturnEmptyRecipes() throws {
+        let image = try loadImage(named: "atkinsonrealworld.jpg")
+
+        var config = ColorConfig()
+        config.numShades = 6
+        config.maxPigmentsPerMix = 1
+        config.paletteSelectionEnabled = true
+
+        let singleTube = try #require(
+            SpectralDataStore.essentialPigments.first(where: { $0.id == "titanium_white" })
+                ?? SpectralDataStore.essentialPigments.first
+        )
+        config.enabledPigmentIDs = [singleTube.id]
+
+        let regions = try #require(
+            ColorRegionsProcessor.process(image: image, config: config, overclusterK: 12)
+        )
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: [singleTube]
+        )
+
+        #expect(!result.recipes.isEmpty)
+        #expect(result.recipes.allSatisfy { recipe in
+            recipe.components.count == 1 && recipe.components[0].pigmentId == singleTube.id
+        })
+        #expect(result.pixelLabels.count == regions.pixelLabels.count)
+    }
 }
