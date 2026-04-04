@@ -78,6 +78,7 @@ class AppState {
         var abstractionStrength: Double
         var abstractionMethod: AbstractionMethod
         var kuwaharaStrength: Double
+        var postSimplificationStrength: Double
 
         var gridEnabled: Bool
         var gridDivisions: Int
@@ -203,11 +204,16 @@ class AppState {
     /// Kuwahara post-filter strength 0–1. `0` disables the filter; positive
     /// values map to a neighbourhood radius of 1...16 applied after the SR model.
     var kuwaharaStrength: Double = 0
+    /// Post-simplification strength 0–1. When positive, runs a second SR-based
+    /// abstraction pass on the quantised (mode-processed) output to smooth edges.
+    var postSimplificationStrength: Double = 0
 
     // Abstracted image (after upscale/denoise)
     var abstractedImage: UIImage? = nil
     /// Kuwahara-filtered image applied on top of the abstracted (or source) image.
     var kuwaharaFilteredImage: UIImage? = nil
+    /// Post-simplified image: the processedImage after a second abstraction pass.
+    var postSimplifiedImage: UIImage? = nil
 
     @ObservationIgnored private var processingTask: Task<Void, Never>? = nil
     @ObservationIgnored private var processingDebounceTask: Task<Void, Never>? = nil
@@ -221,6 +227,9 @@ class AppState {
 
     @ObservationIgnored private let kuwaharaOperation: KuwaharaOperation
     @ObservationIgnored private var kuwaharaTask: Task<Void, Never>? = nil
+
+    @ObservationIgnored private var postSimplificationTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var postSimplificationGeneration: Int = 0
 
     @ObservationIgnored private var loadingTask: Task<Void, Never>? = nil
     @ObservationIgnored private(set) var sourceImageMetadata: SourceImageMetadata = .empty
@@ -243,6 +252,10 @@ class AppState {
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
+    }
+
+    var postSimplificationIsEnabled: Bool {
+        postSimplificationStrength > 0
     }
 
     /// Kuwahara neighbourhood radius derived from `kuwaharaStrength`.
@@ -359,6 +372,7 @@ class AppState {
         processingTask?.cancel()
         abstractionTask?.cancel()
         kuwaharaTask?.cancel()
+        postSimplificationTask?.cancel()
         depthTask?.cancel()
         depthEffectTask?.cancel()
         depthPreviewDismissTask?.cancel()
@@ -375,7 +389,7 @@ class AppState {
         }
         let modeResult = activeMode == .original
             ? displayBaseImage
-            : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
+            : (isolatedProcessedImage ?? postSimplifiedImage ?? processedImage ?? displayBaseImage)
         if depthConfig.enabled, let depthResult = depthProcessedImage {
             return depthResult
         }
@@ -403,6 +417,7 @@ class AppState {
         processingTask?.cancel()
         abstractionTask?.cancel()
         kuwaharaTask?.cancel()
+        postSimplificationTask?.cancel()
         depthTask?.cancel()
         depthEffectTask?.cancel()
         depthPreviewDismissTask?.cancel()
@@ -411,6 +426,7 @@ class AppState {
         // Invalidate stale completions in case any task ignores cancellation.
         processingGeneration += 1
         abstractionGeneration += 1
+        postSimplificationGeneration += 1
         depthGeneration += 1
         depthEffectGeneration += 1
         contourGeneration += 1
@@ -423,6 +439,7 @@ class AppState {
         sourceImage               = image
         abstractedImage           = nil
         kuwaharaFilteredImage     = nil
+        postSimplifiedImage       = nil
         processedImage            = nil
         isolatedProcessedImage    = nil
         depthMap                  = nil
@@ -480,6 +497,7 @@ class AppState {
         guard activeMode != .original else {
             processedImage = nil
             isolatedProcessedImage = nil
+            postSimplifiedImage = nil
             processedPixelBands = []
             isProcessing = false
             processingProgress = 0
@@ -522,6 +540,11 @@ class AppState {
                     self.clippedRecipeIndices = result.clippedRecipeIndices
                     self.processingProgress  = 1
                     self.refreshIsolatedProcessedImage()
+                    if self.postSimplificationIsEnabled {
+                        self.applyPostSimplification()
+                    } else {
+                        self.postSimplifiedImage = nil
+                    }
                     if self.depthConfig.enabled && self.depthMap != nil {
                         self.applyDepthEffects()
                     }
@@ -715,6 +738,7 @@ class AppState {
             abstractionStrength: abstractionStrength,
             abstractionMethod: abstractionMethod,
             kuwaharaStrength: kuwaharaStrength,
+            postSimplificationStrength: postSimplificationStrength,
             gridEnabled: gridConfig.enabled,
             gridDivisions: gridConfig.divisions,
             gridShowDiagonals: gridConfig.showDiagonals,
@@ -751,6 +775,7 @@ class AppState {
         abstractionStrength = snapshot.abstractionStrength
         abstractionMethod = snapshot.abstractionMethod
         kuwaharaStrength = snapshot.kuwaharaStrength
+        postSimplificationStrength = snapshot.postSimplificationStrength
 
         gridConfig = GridConfig(
             enabled: snapshot.gridEnabled,
@@ -901,6 +926,7 @@ class AppState {
             abstractionStrength: 0.5,
             abstractionMethod: .apisr,
             kuwaharaStrength: 0,
+            postSimplificationStrength: 0,
             gridEnabled: false,
             gridDivisions: 4,
             gridShowDiagonals: false,
@@ -990,6 +1016,7 @@ class AppState {
             "Method: \(settings.abstractionMethod)",
             "Strength: \(formattedScalar(settings.abstractionStrength))",
             "Kuwahara: \(formattedScalar(settings.kuwaharaStrength))",
+            "Post-simplify: \(formattedScalar(settings.postSimplificationStrength))",
             "",
             "Grayscale Conversion",
             settings.grayscaleConversion,
@@ -1192,6 +1219,7 @@ class AppState {
             abstractionStrength: abstractionStrength,
             abstractionMethod: abstractionMethod.rawValue,
             kuwaharaStrength: kuwaharaStrength,
+            postSimplificationStrength: postSimplificationStrength,
             grayscaleConversion: valueConfig.grayscaleConversion.rawValue,
             valueLevels: valueConfig.levels,
             valueQuantizationBias: valueConfig.quantizationBias,
@@ -1540,6 +1568,67 @@ class AppState {
         }
     }
 
+    /// Run an SR-based abstraction pass on the mode-processed image to smooth
+    /// quantisation artefacts. Called automatically after `triggerProcessing()`
+    /// finishes when `postSimplificationIsEnabled` is true, or when the user
+    /// adjusts the post-simplification strength slider.
+    func applyPostSimplification() {
+        postSimplificationTask?.cancel()
+
+        guard postSimplificationIsEnabled,
+              activeMode != .original,
+              let source = processedImage
+        else {
+            postSimplifiedImage = nil
+            return
+        }
+
+        postSimplificationGeneration += 1
+        let generation = postSimplificationGeneration
+
+        let referenceResolution: CGFloat = 1600.0
+        let maxDimension = max(source.size.width, source.size.height)
+        let resolutionScale = maxDimension / referenceResolution
+        let rawDownscale = 2.0 + postSimplificationStrength * 10.0
+        let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
+        let method = abstractionMethod
+
+        isProcessing = true
+        processingProgress = 0
+        processingLabel = "Smoothing…"
+        processingIsIndeterminate = false
+
+        postSimplificationTask = Task {
+            do {
+                let smoothed = try await abstractionOperation(
+                    source,
+                    downscale,
+                    method,
+                    { [weak self] p in
+                        Task { @MainActor [weak self] in self?.processingProgress = p }
+                    }
+                )
+                try Task.checkCancellation()
+
+                await MainActor.run {
+                    guard self.postSimplificationGeneration == generation else { return }
+                    self.postSimplifiedImage = smoothed
+                    self.isProcessing = false
+                    self.processingLabel = "Processing…"
+                }
+            } catch is CancellationError {
+                // superseded by a newer request
+            } catch {
+                await MainActor.run {
+                    guard self.postSimplificationGeneration == generation else { return }
+                    self.isProcessing = false
+                    self.processingLabel = "Processing…"
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
     func toggleIsolatedBand(_ band: Int) {
         isolatedBand = isolatedBand == band ? nil : band
         refreshIsolatedProcessedImage()
@@ -1858,6 +1947,7 @@ private struct ExportSettingsMetadata: Encodable {
     var abstractionStrength: Double
     var abstractionMethod: String
     var kuwaharaStrength: Double
+    var postSimplificationStrength: Double
     var grayscaleConversion: String
     var valueLevels: Int
     var valueQuantizationBias: Double

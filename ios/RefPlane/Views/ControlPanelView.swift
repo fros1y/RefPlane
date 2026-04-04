@@ -14,6 +14,7 @@ struct ControlPanelView: View {
     var onClose: (() -> Void)? = nil
 
     @State private var abstractionStrengthAtDragStart: Double? = nil
+    @State private var postSimplificationStrengthAtDragStart: Double? = nil
     @State private var savePresetPromptPresented = false
     @State private var renamePresetPromptPresented = false
     @State private var deletePresetPromptPresented = false
@@ -363,6 +364,20 @@ struct ControlPanelView: View {
                 },
                 onEditingChanged: handleKuwaharaDrag
             )
+
+            LabeledSlider(
+                label: "Post-simplify",
+                value: Binding(
+                    get: { state.postSimplificationStrength },
+                    set: { state.postSimplificationStrength = $0 }
+                ),
+                range: 0...1,
+                step: 0.05,
+                displayFormat: { value in
+                    value > 0 ? "\(Int((value * 100).rounded()))%" : "Off"
+                },
+                onEditingChanged: handlePostSimplificationDrag
+            )
         }
     }
 
@@ -451,6 +466,20 @@ struct ControlPanelView: View {
             state.applyAbstraction()
         } else {
             state.applyKuwahara()
+        }
+    }
+
+    private func handlePostSimplificationDrag(_ editing: Bool) {
+        if editing {
+            postSimplificationStrengthAtDragStart = state.postSimplificationStrength
+            return
+        }
+
+        let didChange = postSimplificationStrengthAtDragStart.map { $0 != state.postSimplificationStrength } ?? false
+        postSimplificationStrengthAtDragStart = nil
+
+        if didChange {
+            state.applyPostSimplification()
         }
     }
 
