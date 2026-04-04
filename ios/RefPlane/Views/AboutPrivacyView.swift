@@ -145,8 +145,10 @@ struct AboutPrivacyView: View {
     private func redeemCode() {
         #if !targetEnvironment(simulator)
         Task {
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first else { return }
             do {
-                try await AppStore.presentOfferCodeRedeemSheet()
+                try await AppStore.presentOfferCodeRedeemSheet(in: windowScene)
             } catch {
                 unlockManager.errorMessage = error.localizedDescription
             }
