@@ -112,6 +112,115 @@ class AppState {
         var contourLineStyle: LineStyle
         var contourCustomColor: CodableColor
         var contourOpacity: Double
+
+        // Backward-compatible decoding: older presets won't have postSimplificationStrength.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            activeMode = try c.decode(RefPlaneMode.self, forKey: .activeMode)
+            abstractionStrength = try c.decode(Double.self, forKey: .abstractionStrength)
+            abstractionMethod = try c.decode(AbstractionMethod.self, forKey: .abstractionMethod)
+            kuwaharaStrength = try c.decode(Double.self, forKey: .kuwaharaStrength)
+            postSimplificationStrength = try c.decodeIfPresent(Double.self, forKey: .postSimplificationStrength) ?? 0
+            gridEnabled = try c.decode(Bool.self, forKey: .gridEnabled)
+            gridDivisions = try c.decode(Int.self, forKey: .gridDivisions)
+            gridShowDiagonals = try c.decode(Bool.self, forKey: .gridShowDiagonals)
+            gridLineStyle = try c.decode(LineStyle.self, forKey: .gridLineStyle)
+            gridCustomColor = try c.decode(CodableColor.self, forKey: .gridCustomColor)
+            gridOpacity = try c.decode(Double.self, forKey: .gridOpacity)
+            grayscaleConversion = try c.decode(GrayscaleConversion.self, forKey: .grayscaleConversion)
+            valueLevels = try c.decode(Int.self, forKey: .valueLevels)
+            valueThresholds = try c.decode([Double].self, forKey: .valueThresholds)
+            valueDistribution = try c.decode(ThresholdDistribution.self, forKey: .valueDistribution)
+            valueQuantizationBias = try c.decode(Double.self, forKey: .valueQuantizationBias)
+            paletteSelectionEnabled = try c.decode(Bool.self, forKey: .paletteSelectionEnabled)
+            colorLimit = try c.decode(Int.self, forKey: .colorLimit)
+            enabledPigmentIDs = try c.decode([String].self, forKey: .enabledPigmentIDs)
+            paletteSpread = try c.decode(Double.self, forKey: .paletteSpread)
+            colorQuantizationBias = try c.decode(Double.self, forKey: .colorQuantizationBias)
+            maxPigmentsPerMix = try c.decode(Int.self, forKey: .maxPigmentsPerMix)
+            minConcentration = try c.decode(Float.self, forKey: .minConcentration)
+            depthEnabled = try c.decode(Bool.self, forKey: .depthEnabled)
+            foregroundCutoff = try c.decode(Double.self, forKey: .foregroundCutoff)
+            backgroundCutoff = try c.decode(Double.self, forKey: .backgroundCutoff)
+            depthEffectIntensity = try c.decode(Double.self, forKey: .depthEffectIntensity)
+            backgroundMode = try c.decode(BackgroundMode.self, forKey: .backgroundMode)
+            contourEnabled = try c.decode(Bool.self, forKey: .contourEnabled)
+            contourLevels = try c.decode(Int.self, forKey: .contourLevels)
+            contourLineStyle = try c.decode(LineStyle.self, forKey: .contourLineStyle)
+            contourCustomColor = try c.decode(CodableColor.self, forKey: .contourCustomColor)
+            contourOpacity = try c.decode(Double.self, forKey: .contourOpacity)
+        }
+
+        // Explicit memberwise init (required because custom init(from:) suppresses synthesis).
+        init(
+            activeMode: RefPlaneMode,
+            abstractionStrength: Double,
+            abstractionMethod: AbstractionMethod,
+            kuwaharaStrength: Double,
+            postSimplificationStrength: Double,
+            gridEnabled: Bool,
+            gridDivisions: Int,
+            gridShowDiagonals: Bool,
+            gridLineStyle: LineStyle,
+            gridCustomColor: CodableColor,
+            gridOpacity: Double,
+            grayscaleConversion: GrayscaleConversion,
+            valueLevels: Int,
+            valueThresholds: [Double],
+            valueDistribution: ThresholdDistribution,
+            valueQuantizationBias: Double,
+            paletteSelectionEnabled: Bool,
+            colorLimit: Int,
+            enabledPigmentIDs: [String],
+            paletteSpread: Double,
+            colorQuantizationBias: Double,
+            maxPigmentsPerMix: Int,
+            minConcentration: Float,
+            depthEnabled: Bool,
+            foregroundCutoff: Double,
+            backgroundCutoff: Double,
+            depthEffectIntensity: Double,
+            backgroundMode: BackgroundMode,
+            contourEnabled: Bool,
+            contourLevels: Int,
+            contourLineStyle: LineStyle,
+            contourCustomColor: CodableColor,
+            contourOpacity: Double
+        ) {
+            self.activeMode = activeMode
+            self.abstractionStrength = abstractionStrength
+            self.abstractionMethod = abstractionMethod
+            self.kuwaharaStrength = kuwaharaStrength
+            self.postSimplificationStrength = postSimplificationStrength
+            self.gridEnabled = gridEnabled
+            self.gridDivisions = gridDivisions
+            self.gridShowDiagonals = gridShowDiagonals
+            self.gridLineStyle = gridLineStyle
+            self.gridCustomColor = gridCustomColor
+            self.gridOpacity = gridOpacity
+            self.grayscaleConversion = grayscaleConversion
+            self.valueLevels = valueLevels
+            self.valueThresholds = valueThresholds
+            self.valueDistribution = valueDistribution
+            self.valueQuantizationBias = valueQuantizationBias
+            self.paletteSelectionEnabled = paletteSelectionEnabled
+            self.colorLimit = colorLimit
+            self.enabledPigmentIDs = enabledPigmentIDs
+            self.paletteSpread = paletteSpread
+            self.colorQuantizationBias = colorQuantizationBias
+            self.maxPigmentsPerMix = maxPigmentsPerMix
+            self.minConcentration = minConcentration
+            self.depthEnabled = depthEnabled
+            self.foregroundCutoff = foregroundCutoff
+            self.backgroundCutoff = backgroundCutoff
+            self.depthEffectIntensity = depthEffectIntensity
+            self.backgroundMode = backgroundMode
+            self.contourEnabled = contourEnabled
+            self.contourLevels = contourLevels
+            self.contourLineStyle = contourLineStyle
+            self.contourCustomColor = contourCustomColor
+            self.contourOpacity = contourOpacity
+        }
     }
 
     private struct TransformPresetStore: Codable {
@@ -256,6 +365,13 @@ class AppState {
 
     var postSimplificationIsEnabled: Bool {
         postSimplificationStrength > 0
+    }
+
+    /// Kuwahara neighbourhood radius derived from `postSimplificationStrength`.
+    /// Returns 0 when the filter is off, and a value clamped to 1...16 otherwise.
+    var postSimplificationRadius: Int {
+        guard postSimplificationStrength > 0 else { return 0 }
+        return min(max(Int((postSimplificationStrength * 16).rounded()), 1), 16)
     }
 
     /// Kuwahara neighbourhood radius derived from `kuwaharaStrength`.
@@ -1568,7 +1684,7 @@ class AppState {
         }
     }
 
-    /// Run an SR-based abstraction pass on the mode-processed image to smooth
+    /// Run a Kuwahara filter pass on the mode-processed image to smooth
     /// quantisation artefacts. Called automatically after `triggerProcessing()`
     /// finishes when `postSimplificationIsEnabled` is true, or when the user
     /// adjusts the post-simplification strength slider.
@@ -1586,45 +1702,22 @@ class AppState {
         postSimplificationGeneration += 1
         let generation = postSimplificationGeneration
 
-        let referenceResolution: CGFloat = 1600.0
-        let maxDimension = max(source.size.width, source.size.height)
-        let resolutionScale = maxDimension / referenceResolution
-        let rawDownscale = 2.0 + postSimplificationStrength * 10.0
-        let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
-        let method = abstractionMethod
+        let radius = postSimplificationRadius
 
         isProcessing = true
         processingProgress = 0
         processingLabel = "Smoothing…"
-        processingIsIndeterminate = false
+        processingIsIndeterminate = true
 
         postSimplificationTask = Task {
-            do {
-                let smoothed = try await abstractionOperation(
-                    source,
-                    downscale,
-                    method,
-                    { [weak self] p in
-                        Task { @MainActor [weak self] in self?.processingProgress = p }
-                    }
-                )
-                try Task.checkCancellation()
-
-                await MainActor.run {
-                    guard self.postSimplificationGeneration == generation else { return }
-                    self.postSimplifiedImage = smoothed
-                    self.isProcessing = false
-                    self.processingLabel = "Processing…"
-                }
-            } catch is CancellationError {
-                // superseded by a newer request
-            } catch {
-                await MainActor.run {
-                    guard self.postSimplificationGeneration == generation else { return }
-                    self.isProcessing = false
-                    self.processingLabel = "Processing…"
-                    self.errorMessage = error.localizedDescription
-                }
+            let smoothed = await kuwaharaOperation(source, radius)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self.postSimplificationGeneration == generation else { return }
+                self.postSimplifiedImage = smoothed
+                self.isProcessing = false
+                self.processingIsIndeterminate = false
+                self.processingLabel = "Processing…"
             }
         }
     }

@@ -36,6 +36,7 @@ struct ControlPanelView: View {
                     tonalSection
                     quantizationSection
                     paletteSection
+                    postSimplificationSection
                     overlaysSection
                 }
                 .padding(.horizontal, 20)
@@ -310,6 +311,29 @@ struct ControlPanelView: View {
         }
     }
 
+    private var postSimplificationSection: some View {
+        StudioPanelCard(
+            title: "Post-Simplify",
+            systemImage: "wand.and.rays",
+            accessibilityID: "studio.card.post-simplify"
+        ) {
+            LabeledSlider(
+                label: "Kuwahara",
+                value: Binding(
+                    get: { state.postSimplificationStrength },
+                    set: { state.postSimplificationStrength = $0 }
+                ),
+                range: 0...1,
+                step: 0.0625,
+                displayFormat: { value in
+                    guard value > 0 else { return "Off" }
+                    return "R\(Int((value * 16).rounded()))"
+                },
+                onEditingChanged: handlePostSimplificationDrag
+            )
+        }
+    }
+
     private var usesTonalRendering: Bool {
         state.activeMode == .tonal || state.activeMode == .value
     }
@@ -365,19 +389,6 @@ struct ControlPanelView: View {
                 onEditingChanged: handleKuwaharaDrag
             )
 
-            LabeledSlider(
-                label: "Post-simplify",
-                value: Binding(
-                    get: { state.postSimplificationStrength },
-                    set: { state.postSimplificationStrength = $0 }
-                ),
-                range: 0...1,
-                step: 0.05,
-                displayFormat: { value in
-                    value > 0 ? "\(Int((value * 100).rounded()))%" : "Off"
-                },
-                onEditingChanged: handlePostSimplificationDrag
-            )
         }
     }
 
