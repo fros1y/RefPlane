@@ -108,6 +108,12 @@ enum PaintPaletteBuilder {
             centroidToRecipe: qCentroidLabels,
             recipeCount: finalRecipes.count
         ).counts
+        var finalImportances = recipeImportances(
+            quantizedPixelCounts: colorRegions.clusterPixelCounts,
+            quantizedSalience: colorRegions.clusterSalience,
+            centroidToRecipe: qCentroidLabels,
+            recipeCount: finalRecipes.count
+        )
 
         // Stage 5A - Adaptive shade count
         let anchors5A: Set<Int> = {
@@ -127,6 +133,7 @@ enum PaintPaletteBuilder {
         finalRecipes = adaptivePrune(
             recipes: finalRecipes,
             counts: finalCounts,
+            importances: finalImportances,
             labels: &qCentroidLabels,
             anchors: anchors5A,
             minShades: config.numShades
@@ -139,12 +146,19 @@ enum PaintPaletteBuilder {
             centroidToRecipe: qCentroidLabels,
             recipeCount: finalRecipes.count
         ).counts
+        finalImportances = recipeImportances(
+            quantizedPixelCounts: colorRegions.clusterPixelCounts,
+            quantizedSalience: colorRegions.clusterSalience,
+            centroidToRecipe: qCentroidLabels,
+            recipeCount: finalRecipes.count
+        )
 
         // Prune down to numShades.
         if finalRecipes.count > config.numShades && config.numShades > 1 {
             finalRecipes = pruneToMaxShades(
                 recipes: finalRecipes,
                 counts: finalCounts,
+                importances: finalImportances,
                 labels: &qCentroidLabels,
                 maxShades: config.numShades
             )
@@ -155,6 +169,12 @@ enum PaintPaletteBuilder {
                 centroidToRecipe: qCentroidLabels,
                 recipeCount: finalRecipes.count
             ).counts
+            finalImportances = recipeImportances(
+                quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                quantizedSalience: colorRegions.clusterSalience,
+                centroidToRecipe: qCentroidLabels,
+                recipeCount: finalRecipes.count
+            )
         }
 
         // Compact: remove recipes with no pixels. O(K).
@@ -359,22 +379,24 @@ enum PaintPaletteBuilder {
     private static func adaptivePrune(
         recipes: [PigmentRecipe],
         counts: [Int],
+        importances: [Float],
         labels: inout [Int32],
         anchors: Set<Int>,
         minShades: Int
     ) -> [PigmentRecipe] {
-        let totalPixels = max(1, counts.reduce(0, +))
+        let totalImportance = max(1, importances.reduce(0, +))
         var survivors = Array(0..<recipes.count)
         let targetMax = max(2, minShades)
 
         while survivors.count > targetMax {
-            // Find weakest non-anchor by pixel count
+            // Find weakest non-anchor by perceptual importance
             var weakestIdx = -1
-            var weakestCount = Int.max
+            var weakestImportance = Float.greatestFiniteMagnitude
 
             for s in survivors where !anchors.contains(s) {
-                if counts[s] < weakestCount {
-                    weakestCount = counts[s]
+                let importance = s < importances.count ? importances[s] : Float(counts[s])
+                if importance < weakestImportance {
+                    weakestImportance = importance
                     weakestIdx = s
                 }
             }
@@ -391,8 +413,8 @@ enum PaintPaletteBuilder {
 
             // Estimate error increase from removing this shade
             // Pixels currently assigned to it would go to the nearest survivor
-            let errorIncrease = Float(weakestCount) * sqrtf(nearestDist)
-            let perPixelIncrease = errorIncrease / Float(totalPixels)
+            let errorIncrease = weakestImportance * sqrtf(nearestDist)
+            let perPixelIncrease = errorIncrease / totalImportance
 
             if perPixelIncrease >= adaptivePruneErrorThreshold { break }
 
@@ -435,6 +457,7 @@ enum PaintPaletteBuilder {
     private static func pruneToMaxShades(
         recipes: [PigmentRecipe],
         counts: [Int],
+        importances: [Float],
         labels: inout [Int32],
         maxShades: Int
     ) -> [PigmentRecipe] {
@@ -470,13 +493,14 @@ enum PaintPaletteBuilder {
         let anchors = Set([darkest, lightest, neutral].compactMap { $0 })
         
         while survivors.count > maxShades {
-            // Find weakest non-anchor
-            var weakestVal = Int.max
+            // Find weakest non-anchor by perceptual importance
+            var weakestVal = Float.greatestFiniteMagnitude
             var weakestIdx = -1
             
             for s in survivors where !anchors.contains(s) {
-                if counts[s] < weakestVal {
-                    weakestVal = counts[s]
+                let importance = s < importances.count ? importances[s] : Float(counts[s])
+                if importance < weakestVal {
+                    weakestVal = importance
                     weakestIdx = s
                 }
             }
@@ -508,5 +532,29 @@ enum PaintPaletteBuilder {
         labels = labels.map { indexMap[Int($0)] }
         
         return recipes
+    }
+
+    private static func recipeImportances(
+        quantizedPixelCounts: [Int],
+        quantizedSalience: [Float],
+        centroidToRecipe: [Int32],
+        recipeCount: Int
+    ) -> [Float] {
+        guard recipeCount > 0 else { return [] }
+
+        var importances = [Float](repeating: 0, count: recipeCount)
+        let centroidCount = min(quantizedPixelCounts.count, centroidToRecipe.count)
+
+        for centroidIndex in 0..<centroidCount {
+            let recipeIndex = Int(centroidToRecipe[centroidIndex])
+            guard recipeIndex >= 0, recipeIndex < recipeCount else { continue }
+
+            let salience = centroidIndex < quantizedSalience.count
+                ? max(0.1, quantizedSalience[centroidIndex])
+                : 1
+            importances[recipeIndex] += Float(quantizedPixelCounts[centroidIndex]) * salience
+        }
+
+        return importances
     }
 }

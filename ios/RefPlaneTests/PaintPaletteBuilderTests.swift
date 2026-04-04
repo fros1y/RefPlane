@@ -103,6 +103,59 @@ struct PaintPaletteBuilderTests {
     }
 
     @Test
+    func highSalienceAccentOutranksLargerLowSalienceClusterWhenPruning() throws {
+        let majorityNeutralCount = 800
+        let largerMutedCount = 180
+        let accentCount = 90
+        let total = majorityNeutralCount + largerMutedCount + accentCount
+
+        let centroids = [
+            OklabColor(L: 0.52, a: 0.0, b: 0.0),
+            OklabColor(L: 0.58, a: 0.02, b: 0.01),
+            OklabColor(L: 0.64, a: 0.18, b: 0.10)
+        ]
+
+        let labels: [Int32] =
+            Array(repeating: 0, count: majorityNeutralCount) +
+            Array(repeating: 1, count: largerMutedCount) +
+            Array(repeating: 2, count: accentCount)
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: [Float](repeating: 0, count: total * 3),
+            clusterPixelCounts: [majorityNeutralCount, largerMutedCount, accentCount],
+            clusterSalience: [1.0, 0.35, 2.0]
+        )
+
+        var config = ColorConfig()
+        config.numShades = 2
+        config.maxPigmentsPerMix = 3
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+
+        let hasAccentRecipe = result.recipes.contains { recipe in
+            let chroma = sqrtf(
+                recipe.predictedColor.a * recipe.predictedColor.a +
+                recipe.predictedColor.b * recipe.predictedColor.b
+            )
+            return chroma > 0.08 && recipe.predictedColor.L > 0.55
+        }
+
+        #expect(result.recipes.count <= 2)
+        #expect(hasAccentRecipe, "Small high-salience accent should survive over a larger muted cluster")
+    }
+
+    @Test
     func snapAndReassignProducesValidLabels() throws {
         // 4 distinct clusters spread across Oklab space
         let centroids = [
