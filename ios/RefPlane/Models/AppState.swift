@@ -6,6 +6,119 @@ import UniformTypeIdentifiers
 @Observable
 @MainActor
 class AppState {
+    enum TransformPresetSelection: Hashable {
+        case previous
+        case appDefault
+        case saved(UUID)
+    }
+
+    enum TransformPresetError: LocalizedError {
+        case emptyName
+        case duplicateName
+        case presetNotFound
+
+        var errorDescription: String? {
+            switch self {
+            case .emptyName:
+                return "Preset name cannot be empty."
+            case .duplicateName:
+                return "A preset with that name already exists."
+            case .presetNotFound:
+                return "Preset not found."
+            }
+        }
+    }
+
+    struct SavedTransformPreset: Identifiable, Codable, Equatable {
+        var id: UUID
+        var name: String
+        var createdAt: Date
+        var updatedAt: Date
+        var snapshot: TransformationSnapshot
+    }
+
+    struct CodableColor: Codable, Equatable {
+        var red: Double
+        var green: Double
+        var blue: Double
+        var alpha: Double
+
+        init(_ color: Color) {
+            let uiColor = UIColor(color)
+            var redComponent: CGFloat = 0
+            var greenComponent: CGFloat = 0
+            var blueComponent: CGFloat = 0
+            var alphaComponent: CGFloat = 0
+
+            if uiColor.getRed(
+                &redComponent,
+                green: &greenComponent,
+                blue: &blueComponent,
+                alpha: &alphaComponent
+            ) {
+                red = redComponent
+                green = greenComponent
+                blue = blueComponent
+                alpha = alphaComponent
+            } else {
+                red = 1
+                green = 1
+                blue = 1
+                alpha = 1
+            }
+        }
+
+        var color: Color {
+            Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
+        }
+    }
+
+    struct TransformationSnapshot: Codable, Equatable {
+        var activeMode: RefPlaneMode
+        var abstractionStrength: Double
+        var abstractionMethod: AbstractionMethod
+        var kuwaharaStrength: Double
+
+        var gridEnabled: Bool
+        var gridDivisions: Int
+        var gridShowDiagonals: Bool
+        var gridLineStyle: LineStyle
+        var gridCustomColor: CodableColor
+        var gridOpacity: Double
+
+        var grayscaleConversion: GrayscaleConversion
+        var valueLevels: Int
+        var valueThresholds: [Double]
+        var valueDistribution: ThresholdDistribution
+        var valueQuantizationBias: Double
+
+        var paletteSelectionEnabled: Bool
+        var colorLimit: Int
+        var enabledPigmentIDs: [String]
+        var paletteSpread: Double
+        var colorQuantizationBias: Double
+        var maxPigmentsPerMix: Int
+        var minConcentration: Float
+
+        var depthEnabled: Bool
+        var foregroundCutoff: Double
+        var backgroundCutoff: Double
+        var depthEffectIntensity: Double
+        var backgroundMode: BackgroundMode
+
+        var contourEnabled: Bool
+        var contourLevels: Int
+        var contourLineStyle: LineStyle
+        var contourCustomColor: CodableColor
+        var contourOpacity: Double
+    }
+
+    private struct TransformPresetStore: Codable {
+        var schemaVersion: Int
+        var savedPresets: [SavedTransformPreset]
+        var previousSnapshot: TransformationSnapshot?
+    }
+
     typealias ProcessOperation = @Sendable (
         UIImage,
         RefPlaneMode,
@@ -64,6 +177,11 @@ class AppState {
     var contourConfig: ContourConfig = ContourConfig()
     var contourSegments: [GridLineSegment] = []
 
+    // Transformation preset state
+    var savedTransformPresets: [SavedTransformPreset] = []
+    var previousTransformSnapshot: TransformationSnapshot? = nil
+    var selectedTransformPresetSelection: TransformPresetSelection = .previous
+
     // Depth results
     var depthMap: UIImage? = nil
     var depthProcessedImage: UIImage? = nil
@@ -119,6 +237,9 @@ class AppState {
     @ObservationIgnored private var contourTask: Task<Void, Never>? = nil
     @ObservationIgnored private var contourGeneration: Int = 0
     @ObservationIgnored private var memoryWarningObserver: NSObjectProtocol? = nil
+    @ObservationIgnored private var presetPersistenceTask: Task<Void, Never>? = nil
+
+    @ObservationIgnored private static let transformPresetStoreKey = "AppState.transformPresetStore.v1"
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
@@ -223,6 +344,9 @@ class AppState {
             ImageAbstractor.clearModelCache()
             DepthEstimator.clearModelCache()
         }
+
+        loadTransformPresetStore()
+        restoreInitialTransformSnapshotSelection()
     }
 
     deinit {
@@ -239,6 +363,7 @@ class AppState {
         depthEffectTask?.cancel()
         depthPreviewDismissTask?.cancel()
         contourTask?.cancel()
+        presetPersistenceTask?.cancel()
     }
 
     var displayBaseImage: UIImage? { kuwaharaFilteredImage ?? abstractedImage ?? sourceImage }
@@ -346,6 +471,7 @@ class AppState {
         processingTask?.cancel()
         processingIsIndeterminate = false
         errorMessage = nil
+        updatePreviousTransformSnapshot()
         guard let source = displayBaseImage else {
             isProcessing = false
             processingProgress = 0
@@ -422,6 +548,7 @@ class AppState {
 
     func scheduleProcessing(after delay: Duration = .milliseconds(180)) {
         processingDebounceTask?.cancel()
+        updatePreviousTransformSnapshot()
 
         processingDebounceTask = Task { [weak self] in
             do {
@@ -457,7 +584,352 @@ class AppState {
         pigmentRecipes = nil
         selectedTubes = []
         clippedRecipeIndices = []
+        updatePreviousTransformSnapshot()
         triggerProcessing()
+    }
+
+    var hasPreviousTransformSnapshot: Bool {
+        previousTransformSnapshot != nil
+    }
+
+    var shouldShowPreviousSettingsOption: Bool {
+        guard let previousTransformSnapshot else { return true }
+        return matchingSavedPresetID(for: previousTransformSnapshot) == nil
+    }
+
+    var availableTransformPresetSelections: [TransformPresetSelection] {
+        var options: [TransformPresetSelection] = []
+        if shouldShowPreviousSettingsOption {
+            options.append(.previous)
+        }
+        options.append(.appDefault)
+        options.append(contentsOf: savedTransformPresets.map { .saved($0.id) })
+        return options
+    }
+
+    var selectedTransformPresetLabel: String {
+        label(for: selectedTransformPresetSelection)
+    }
+
+    func label(for selection: TransformPresetSelection) -> String {
+        switch selection {
+        case .previous:
+            return "Previous Settings"
+        case .appDefault:
+            return "Default"
+        case .saved(let presetID):
+            return savedTransformPresets.first(where: { $0.id == presetID })?.name ?? "Saved Settings"
+        }
+    }
+
+    func saveCurrentTransformPreset(named rawName: String) throws {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            throw TransformPresetError.emptyName
+        }
+
+        let normalizedName = normalizedPresetName(name)
+        guard !savedTransformPresets.contains(where: { normalizedPresetName($0.name) == normalizedName }) else {
+            throw TransformPresetError.duplicateName
+        }
+
+        let now = Date()
+        let preset = SavedTransformPreset(
+            id: UUID(),
+            name: name,
+            createdAt: now,
+            updatedAt: now,
+            snapshot: makeTransformationSnapshot()
+        )
+
+        savedTransformPresets.append(preset)
+        savedTransformPresets.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        selectedTransformPresetSelection = .saved(preset.id)
+        persistTransformPresetStore()
+    }
+
+    func renameTransformPreset(id: UUID, to rawName: String) throws {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            throw TransformPresetError.emptyName
+        }
+
+        let normalizedName = normalizedPresetName(name)
+        guard !savedTransformPresets.contains(where: {
+            $0.id != id && normalizedPresetName($0.name) == normalizedName
+        }) else {
+            throw TransformPresetError.duplicateName
+        }
+
+        guard let index = savedTransformPresets.firstIndex(where: { $0.id == id }) else {
+            throw TransformPresetError.presetNotFound
+        }
+
+        savedTransformPresets[index].name = name
+        savedTransformPresets[index].updatedAt = Date()
+        savedTransformPresets.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        persistTransformPresetStore()
+    }
+
+    func deleteTransformPreset(id: UUID) {
+        savedTransformPresets.removeAll { $0.id == id }
+        selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
+        persistTransformPresetStore()
+    }
+
+    func selectTransformPreset(_ selection: TransformPresetSelection) {
+        switch selection {
+        case .previous:
+            if let previousTransformSnapshot {
+                applyTransformationSnapshot(previousTransformSnapshot)
+            }
+        case .appDefault:
+            applyTransformationSnapshot(Self.defaultTransformationSnapshot())
+        case .saved(let presetID):
+            guard let preset = savedTransformPresets.first(where: { $0.id == presetID }) else { return }
+            applyTransformationSnapshot(preset.snapshot)
+        }
+
+        selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
+    }
+
+    func suggestedTransformPresetName() -> String {
+        var index = 1
+        while true {
+            let candidate = "Preset \(index)"
+            let normalized = normalizedPresetName(candidate)
+            if !savedTransformPresets.contains(where: { normalizedPresetName($0.name) == normalized }) {
+                return candidate
+            }
+            index += 1
+        }
+    }
+
+    private func normalizedPresetName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func makeTransformationSnapshot() -> TransformationSnapshot {
+        TransformationSnapshot(
+            activeMode: activeMode,
+            abstractionStrength: abstractionStrength,
+            abstractionMethod: abstractionMethod,
+            kuwaharaStrength: kuwaharaStrength,
+            gridEnabled: gridConfig.enabled,
+            gridDivisions: gridConfig.divisions,
+            gridShowDiagonals: gridConfig.showDiagonals,
+            gridLineStyle: gridConfig.lineStyle,
+            gridCustomColor: CodableColor(gridConfig.customColor),
+            gridOpacity: gridConfig.opacity,
+            grayscaleConversion: valueConfig.grayscaleConversion,
+            valueLevels: valueConfig.levels,
+            valueThresholds: valueConfig.thresholds,
+            valueDistribution: valueConfig.distribution,
+            valueQuantizationBias: valueConfig.quantizationBias,
+            paletteSelectionEnabled: colorConfig.paletteSelectionEnabled,
+            colorLimit: colorConfig.numShades,
+            enabledPigmentIDs: colorConfig.enabledPigmentIDs.sorted(),
+            paletteSpread: colorConfig.paletteSpread,
+            colorQuantizationBias: colorConfig.quantizationBias,
+            maxPigmentsPerMix: colorConfig.maxPigmentsPerMix,
+            minConcentration: colorConfig.minConcentration,
+            depthEnabled: depthConfig.enabled,
+            foregroundCutoff: depthConfig.foregroundCutoff,
+            backgroundCutoff: depthConfig.backgroundCutoff,
+            depthEffectIntensity: depthConfig.effectIntensity,
+            backgroundMode: depthConfig.backgroundMode,
+            contourEnabled: contourConfig.enabled,
+            contourLevels: contourConfig.levels,
+            contourLineStyle: contourConfig.lineStyle,
+            contourCustomColor: CodableColor(contourConfig.customColor),
+            contourOpacity: contourConfig.opacity
+        )
+    }
+
+    private func applyTransformationSnapshot(_ snapshot: TransformationSnapshot) {
+        activeMode = snapshot.activeMode
+        abstractionStrength = snapshot.abstractionStrength
+        abstractionMethod = snapshot.abstractionMethod
+        kuwaharaStrength = snapshot.kuwaharaStrength
+
+        gridConfig = GridConfig(
+            enabled: snapshot.gridEnabled,
+            divisions: snapshot.gridDivisions,
+            showDiagonals: snapshot.gridShowDiagonals,
+            lineStyle: snapshot.gridLineStyle,
+            customColor: snapshot.gridCustomColor.color,
+            opacity: snapshot.gridOpacity
+        )
+
+        valueConfig = ValueConfig(
+            grayscaleConversion: snapshot.grayscaleConversion,
+            levels: snapshot.valueLevels,
+            thresholds: snapshot.valueThresholds,
+            distribution: snapshot.valueDistribution,
+            quantizationBias: snapshot.valueQuantizationBias
+        )
+
+        colorConfig = ColorConfig(
+            paletteSelectionEnabled: snapshot.paletteSelectionEnabled,
+            numShades: snapshot.colorLimit,
+            enabledPigmentIDs: Set(snapshot.enabledPigmentIDs),
+            paletteSpread: snapshot.paletteSpread,
+            quantizationBias: snapshot.colorQuantizationBias,
+            maxPigmentsPerMix: snapshot.maxPigmentsPerMix,
+            minConcentration: snapshot.minConcentration
+        )
+
+        depthConfig = DepthConfig(
+            enabled: snapshot.depthEnabled,
+            foregroundCutoff: snapshot.foregroundCutoff,
+            backgroundCutoff: snapshot.backgroundCutoff,
+            effectIntensity: snapshot.depthEffectIntensity,
+            backgroundMode: snapshot.backgroundMode
+        )
+
+        contourConfig = ContourConfig(
+            enabled: snapshot.contourEnabled,
+            levels: snapshot.contourLevels,
+            lineStyle: snapshot.contourLineStyle,
+            customColor: snapshot.contourCustomColor.color,
+            opacity: snapshot.contourOpacity
+        )
+
+        isolatedBand = nil
+        isolatedProcessedImage = nil
+
+        updatePreviousTransformSnapshot()
+
+        if abstractionIsEnabled {
+            applyAbstraction()
+        } else if kuwaharaStrength > 0 {
+            applyKuwahara()
+        } else {
+            if depthConfig.enabled {
+                computeDepthMap()
+            }
+            triggerProcessing()
+        }
+    }
+
+    private func canonicalSelectionForCurrentSettings() -> TransformPresetSelection {
+        let currentSnapshot = makeTransformationSnapshot()
+
+        if let savedPresetID = matchingSavedPresetID(for: currentSnapshot) {
+            return .saved(savedPresetID)
+        }
+
+        if currentSnapshot == Self.defaultTransformationSnapshot() {
+            return .appDefault
+        }
+
+        if shouldShowPreviousSettingsOption {
+            return .previous
+        }
+
+        return .appDefault
+    }
+
+    private func matchingSavedPresetID(for snapshot: TransformationSnapshot) -> UUID? {
+        savedTransformPresets.first(where: { $0.snapshot == snapshot })?.id
+    }
+
+    private func updatePreviousTransformSnapshot() {
+        previousTransformSnapshot = makeTransformationSnapshot()
+        selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
+
+        presetPersistenceTask?.cancel()
+        presetPersistenceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard let self, !Task.isCancelled else { return }
+            self.persistTransformPresetStore()
+        }
+    }
+
+    private func loadTransformPresetStore() {
+        guard let data = UserDefaults.standard.data(forKey: Self.transformPresetStoreKey) else {
+            savedTransformPresets = []
+            previousTransformSnapshot = nil
+            return
+        }
+
+        let decoder = JSONDecoder()
+        guard let decoded = try? decoder.decode(TransformPresetStore.self, from: data),
+              decoded.schemaVersion == 1
+        else {
+            savedTransformPresets = []
+            previousTransformSnapshot = nil
+            return
+        }
+
+        savedTransformPresets = decoded.savedPresets
+        previousTransformSnapshot = decoded.previousSnapshot
+    }
+
+    private func persistTransformPresetStore() {
+        let store = TransformPresetStore(
+            schemaVersion: 1,
+            savedPresets: savedTransformPresets,
+            previousSnapshot: previousTransformSnapshot
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let encoded = try? encoder.encode(store) else { return }
+        UserDefaults.standard.set(encoded, forKey: Self.transformPresetStoreKey)
+    }
+
+    private func restoreInitialTransformSnapshotSelection() {
+        guard let previousTransformSnapshot else {
+            selectedTransformPresetSelection = .appDefault
+            return
+        }
+
+        if let matchingPresetID = matchingSavedPresetID(for: previousTransformSnapshot) {
+            selectedTransformPresetSelection = .saved(matchingPresetID)
+            applyTransformationSnapshot(previousTransformSnapshot)
+            return
+        }
+
+        selectedTransformPresetSelection = .previous
+        applyTransformationSnapshot(previousTransformSnapshot)
+    }
+
+    private static func defaultTransformationSnapshot() -> TransformationSnapshot {
+        TransformationSnapshot(
+            activeMode: .original,
+            abstractionStrength: 0.5,
+            abstractionMethod: .apisr,
+            kuwaharaStrength: 0,
+            gridEnabled: false,
+            gridDivisions: 4,
+            gridShowDiagonals: false,
+            gridLineStyle: .autoContrast,
+            gridCustomColor: CodableColor(.white),
+            gridOpacity: 0.7,
+            grayscaleConversion: .none,
+            valueLevels: 3,
+            valueThresholds: defaultThresholds(for: 3),
+            valueDistribution: .even,
+            valueQuantizationBias: 0,
+            paletteSelectionEnabled: false,
+            colorLimit: 24,
+            enabledPigmentIDs: SpectralDataStore.essentialPigments.map(\.id).sorted(),
+            paletteSpread: 0,
+            colorQuantizationBias: 0,
+            maxPigmentsPerMix: 3,
+            minConcentration: 0.02,
+            depthEnabled: false,
+            foregroundCutoff: 0.33,
+            backgroundCutoff: 0.66,
+            depthEffectIntensity: 0.5,
+            backgroundMode: .none,
+            contourEnabled: false,
+            contourLevels: 5,
+            contourLineStyle: .autoContrast,
+            contourCustomColor: CodableColor(.white),
+            contourOpacity: 0.7
+        )
     }
 
     func exportCurrentImage() -> UIImage? {

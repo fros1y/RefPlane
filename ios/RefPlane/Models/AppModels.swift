@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum RefPlaneMode: String, CaseIterable, Identifiable {
+enum RefPlaneMode: String, CaseIterable, Identifiable, Codable {
     case original, tonal, value, color
     var id: String { rawValue }
     var label: String {
@@ -23,7 +23,7 @@ enum RefPlaneMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum LineStyle: String, CaseIterable {
+enum LineStyle: String, CaseIterable, Codable {
     case autoContrast = "Auto"
     case black        = "Black"
     case white        = "White"
@@ -57,7 +57,7 @@ struct GridConfig {
 
 // MARK: - Value threshold distribution
 
-enum ThresholdDistribution: String, CaseIterable, Identifiable {
+enum ThresholdDistribution: String, CaseIterable, Identifiable, Codable {
     case even     = "Even"
     case shadows  = "Shadow Detail"
     case lights   = "Light Detail"
@@ -81,7 +81,7 @@ enum ThresholdDistribution: String, CaseIterable, Identifiable {
     }
 }
 
-enum GrayscaleConversion: String, CaseIterable, Identifiable {
+enum GrayscaleConversion: String, CaseIterable, Identifiable, Codable {
     case none = "None"
     case luminance = "Luminance"
     case average = "Average"
@@ -246,7 +246,7 @@ enum AbstractionProcessingKind {
     case metalShader
 }
 
-enum AbstractionMethod: String, CaseIterable, Identifiable {
+enum AbstractionMethod: String, CaseIterable, Identifiable, Codable {
     case apisr = "APISR"
 
     var id: String { rawValue }
@@ -268,7 +268,7 @@ enum AbstractionMethod: String, CaseIterable, Identifiable {
 
 // MARK: - Depth-based painterly effects
 
-enum BackgroundMode: String, CaseIterable, Identifiable {
+enum BackgroundMode: String, CaseIterable, Identifiable, Codable {
     case none = "No"
     case compress = "Compress"
     case blur = "Blur"

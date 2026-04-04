@@ -14,10 +14,19 @@ struct ControlPanelView: View {
     var onClose: (() -> Void)? = nil
 
     @State private var abstractionStrengthAtDragStart: Double? = nil
+    @State private var savePresetPromptPresented = false
+    @State private var renamePresetPromptPresented = false
+    @State private var deletePresetPromptPresented = false
+    @State private var presetNameInput = ""
+    @State private var renamePresetID: UUID? = nil
+    @State private var deletePresetID: UUID? = nil
+    @State private var presetErrorMessage: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             headerView
+            Divider().opacity(0.18)
+            presetSelectorBar
             Divider().opacity(0.18)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -34,12 +43,129 @@ struct ControlPanelView: View {
             }
             .scrollIndicators(.hidden)
             Divider().opacity(0.18)
-            exportBar
+            footerBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("studio.inspector")
+        .alert(
+            "Save Current Settings",
+            isPresented: $savePresetPromptPresented
+        ) {
+            TextField("Preset name", text: $presetNameInput)
+            Button("Save") {
+                saveCurrentPreset()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Save the current transformation setup as a reusable preset.")
+        }
+        .alert(
+            "Rename Settings Preset",
+            isPresented: $renamePresetPromptPresented
+        ) {
+            TextField("Preset name", text: $presetNameInput)
+            Button("Rename") {
+                renameSelectedPreset()
+            }
+            Button("Cancel", role: .cancel) {
+                renamePresetID = nil
+            }
+        } message: {
+            Text("Enter a new name for this preset.")
+        }
+        .confirmationDialog(
+            "Delete this settings preset?",
+            isPresented: $deletePresetPromptPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                deleteSelectedPreset()
+            }
+            Button("Cancel", role: .cancel) {
+                deletePresetID = nil
+            }
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .alert("Preset Error", isPresented: Binding(
+            get: { presetErrorMessage != nil },
+            set: { if !$0 { presetErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                presetErrorMessage = nil
+            }
+        } message: {
+            Text(presetErrorMessage ?? "Unknown preset error.")
+        }
+    }
+
+    private var presetSelectorBar: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Settings")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Menu {
+                if state.shouldShowPreviousSettingsOption {
+                    Button("Previous Settings") {
+                        state.selectTransformPreset(.previous)
+                    }
+                    .disabled(!state.hasPreviousTransformSnapshot)
+                }
+
+                Button("Default") {
+                    state.selectTransformPreset(.appDefault)
+                }
+
+                if !state.savedTransformPresets.isEmpty {
+                    Divider()
+
+                    ForEach(state.savedTransformPresets) { preset in
+                        Menu(preset.name) {
+                            Button("Apply") {
+                                state.selectTransformPreset(.saved(preset.id))
+                            }
+                            Button("Rename…") {
+                                renamePresetID = preset.id
+                                presetNameInput = preset.name
+                                renamePresetPromptPresented = true
+                            }
+                            Button("Delete", role: .destructive) {
+                                deletePresetID = preset.id
+                                deletePresetPromptPresented = true
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Text(state.selectedTransformPresetLabel)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
     }
 
     private var headerView: some View {
@@ -240,18 +366,58 @@ struct ControlPanelView: View {
         }
     }
 
-    private var exportBar: some View {
-        Button(action: onExport) {
-            Label("Export", systemImage: "square.and.arrow.up")
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 52)
+    private var footerBar: some View {
+        VStack(spacing: 10) {
+            Button {
+                presetNameInput = state.suggestedTransformPresetName()
+                savePresetPromptPresented = true
+            } label: {
+                Label("Save Current Settings", systemImage: "square.and.arrow.down")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("studio.save-settings")
+
+            Button(action: onExport) {
+                Label("Export", systemImage: "square.and.arrow.up")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 52)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(state.currentDisplayImage == nil)
+            .accessibilityIdentifier("studio.export")
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(state.currentDisplayImage == nil)
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, presentation == .bottomPanel ? 34 : 18)
-        .accessibilityIdentifier("studio.export")
+    }
+
+    private func saveCurrentPreset() {
+        do {
+            try state.saveCurrentTransformPreset(named: presetNameInput)
+            presetNameInput = ""
+        } catch {
+            presetErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func renameSelectedPreset() {
+        guard let renamePresetID else { return }
+
+        do {
+            try state.renameTransformPreset(id: renamePresetID, to: presetNameInput)
+            self.renamePresetID = nil
+            presetNameInput = ""
+        } catch {
+            presetErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteSelectedPreset() {
+        guard let deletePresetID else { return }
+        state.deleteTransformPreset(id: deletePresetID)
+        self.deletePresetID = nil
     }
 
     private func closePanel() {

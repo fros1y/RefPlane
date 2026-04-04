@@ -2,6 +2,68 @@ import UIKit
 import Testing
 @testable import Underpaint
 
+private let transformPresetStoreKey = "AppState.transformPresetStore.v1"
+
+private func clearTransformPresetStore() {
+    UserDefaults.standard.removeObject(forKey: transformPresetStoreKey)
+}
+
+@MainActor
+@Test
+func saveCurrentTransformPresetAddsPresetAndSelectsIt() throws {
+    clearTransformPresetStore()
+    defer { clearTransformPresetStore() }
+
+    let state = AppState()
+    state.gridConfig.enabled = true
+    state.gridConfig.divisions = 7
+
+    try state.saveCurrentTransformPreset(named: "Studio A")
+
+    #expect(state.savedTransformPresets.count == 1)
+    #expect(state.savedTransformPresets[0].name == "Studio A")
+    #expect(state.selectedTransformPresetSelection == .saved(state.savedTransformPresets[0].id))
+}
+
+@MainActor
+@Test
+func previousSettingsOptionHiddenWhenSnapshotMatchesSavedPreset() throws {
+    clearTransformPresetStore()
+    defer { clearTransformPresetStore() }
+
+    let state = AppState()
+
+    try state.saveCurrentTransformPreset(named: "Balanced")
+    state.selectTransformPreset(.saved(state.savedTransformPresets[0].id))
+
+    #expect(state.shouldShowPreviousSettingsOption == false)
+    #expect(state.availableTransformPresetSelections.contains(.saved(state.savedTransformPresets[0].id)))
+    #expect(!state.availableTransformPresetSelections.contains(.previous))
+}
+
+@MainActor
+@Test
+func selectingDefaultPresetRestoresDefaultTransformationValues() {
+    clearTransformPresetStore()
+    defer { clearTransformPresetStore() }
+
+    let state = AppState()
+
+    state.abstractionStrength = 0.9
+    state.gridConfig.enabled = true
+    state.gridConfig.divisions = 9
+    state.valueConfig.levels = 5
+    state.depthConfig.enabled = true
+
+    state.selectTransformPreset(.appDefault)
+
+    #expect(state.abstractionStrength == 0.5)
+    #expect(state.gridConfig.enabled == false)
+    #expect(state.gridConfig.divisions == 4)
+    #expect(state.valueConfig.levels == 3)
+    #expect(state.depthConfig.enabled == false)
+}
+
 @MainActor
 @Test
 func resetAbstractionCancelsInflightAbstractionTask() async throws {
