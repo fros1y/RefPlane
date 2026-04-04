@@ -14,7 +14,8 @@ struct RecipeView: View {
                     Spacer()
 
                     if showsPartsLabel {
-                        Text(partsLabel(for: component.concentration))
+                        let parts = simplifiedParts[component.pigmentId] ?? 1
+                        Text(parts == 1 ? "1 part" : "\(parts) parts")
                             .font(.footnote.monospacedDigit())
                             .foregroundStyle(component.pigmentId == dominantPigmentID ? .primary : .secondary)
                     }
@@ -33,8 +34,31 @@ struct RecipeView: View {
         recipe.components.count > 1
     }
 
-    private func partsLabel(for concentration: Float) -> String {
-        let parts = max(1, Int((concentration * 8).rounded()))
-        return parts == 1 ? "1 part" : "\(parts) parts"
+    private var simplifiedParts: [String: Int] {
+        let rawParts = recipe.components.map { component in
+            (pigmentId: component.pigmentId, parts: max(1, Int((component.concentration * 8).rounded())))
+        }
+        let divisor = rawParts
+            .map(\.parts)
+            .reduce(0) { current, parts in
+                current == 0 ? parts : greatestCommonDivisor(current, parts)
+            }
+
+        return rawParts.reduce(into: [:]) { partialResult, entry in
+            partialResult[entry.pigmentId] = entry.parts / max(1, divisor)
+        }
+    }
+
+    private func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+        var left = abs(lhs)
+        var right = abs(rhs)
+
+        while right != 0 {
+            let remainder = left % right
+            left = right
+            right = remainder
+        }
+
+        return max(1, left)
     }
 }
