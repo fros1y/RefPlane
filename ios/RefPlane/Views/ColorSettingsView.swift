@@ -21,18 +21,19 @@ struct ColorQuantizationSettingsView: View {
                 }
             )
 
-            Picker("Bias", selection: Binding(
-                get: { state.colorConfig.quantizationBias },
-                set: { newBias in
-                    state.colorConfig.quantizationBias = newBias
-                    state.scheduleProcessing()
+            QuantizationBiasSlider(
+                value: Binding(
+                    get: { state.colorConfig.quantizationBias },
+                    set: {
+                        state.colorConfig.quantizationBias = QuantizationBias.clamped($0)
+                    }
+                ),
+                onEditingChanged: { editing in
+                    if !editing {
+                        state.scheduleProcessing()
+                    }
                 }
-            )) {
-                ForEach(ColorQuantizationBias.allCases) { bias in
-                    Text(bias.rawValue).tag(bias)
-                }
-            }
-            .pickerStyle(.segmented)
+            )
 
             LabeledSlider(
                 label: "Group",

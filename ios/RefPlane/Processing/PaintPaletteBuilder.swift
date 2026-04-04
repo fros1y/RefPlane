@@ -65,6 +65,10 @@ enum PaintPaletteBuilder {
             lookupTable: lookupTable
         )
 
+        guard !constrainedRecipes.isEmpty else {
+            throw BuilderError.missingData
+        }
+
         let t3 = CFAbsoluteTimeGetCurrent()
         print("[PaintPaletteBuilder] Stage 4A (Constrained Decomp) took \(String(format: "%.1f", (t3 - t2) * 1000)) ms")
         onProgress?(0.60)
@@ -247,6 +251,10 @@ enum PaintPaletteBuilder {
         iterations: Int = 2,
         lookupTable: PigmentLookupTable? = nil
     ) -> (recipes: [PigmentRecipe], centroidToRecipe: [Int32], counts: [Int]) {
+        guard !recipes.isEmpty else {
+            return ([], [Int32](repeating: 0, count: colorRegions.quantizedCentroids.count), [])
+        }
+
         let qCentroids   = colorRegions.quantizedCentroids
         let qCounts      = colorRegions.clusterPixelCounts
 
@@ -431,6 +439,7 @@ enum PaintPaletteBuilder {
         maxShades: Int
     ) -> [PigmentRecipe] {
         var survivors = Array(0..<recipes.count)
+        guard !survivors.isEmpty else { return [] }
         
         // Identify anchors
         let nonTrivialThreshold = max(1, counts.reduce(0, +) / 100)

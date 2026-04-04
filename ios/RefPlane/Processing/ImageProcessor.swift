@@ -47,7 +47,10 @@ actor ImageProcessor {
         case .tonal:
             onProgress(0.3)
             try Task.checkCancellation()
-            guard let gray = GrayscaleProcessor.process(image: image) else {
+            guard let gray = GrayscaleProcessor.process(
+                image: image,
+                conversion: valueConfig.grayscaleConversion
+            ) else {
                 throw ProcessingError.conversionFailed
             }
             let tonalMs = (CFAbsoluteTimeGetCurrent() - start) * 1000

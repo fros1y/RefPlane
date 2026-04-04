@@ -1,4 +1,6 @@
+import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum RefPlaneMode: String, CaseIterable, Identifiable {
     case original, tonal, value, color
@@ -65,28 +67,39 @@ enum ThresholdDistribution: String, CaseIterable, Identifiable {
 
     /// Compute thresholds for the given number of levels using this distribution.
     func thresholds(for levels: Int) -> [Double] {
-        guard levels > 1 else { return [] }
-        let n = levels
         switch self {
         case .even:
-            return (1..<n).map { Double($0) / Double(n) }
+            return QuantizationBias.thresholds(for: levels, bias: 0)
         case .shadows:
-            // Larger low-end intervals merge neighboring shadow values together.
-            return (1..<n).map { pow(Double($0) / Double(n), 0.6) }
+            return QuantizationBias.thresholds(for: levels, bias: -1)
         case .lights:
-            // Larger high-end intervals merge neighboring highlight values together.
-            return (1..<n).map { pow(Double($0) / Double(n), 1.667) }
+            return QuantizationBias.thresholds(for: levels, bias: 1)
         case .custom:
             // Custom returns even as a starting point; user adjusts manually.
-            return (1..<n).map { Double($0) / Double(n) }
+            return QuantizationBias.thresholds(for: levels, bias: 0)
         }
     }
 }
 
+enum GrayscaleConversion: String, CaseIterable, Identifiable {
+    case none = "None"
+    case luminance = "Luminance"
+    case average = "Average"
+    case lightness = "Lightness"
+
+    var id: String { rawValue }
+
+    var usesGPUShortcut: Bool {
+        self == .luminance
+    }
+}
+
 struct ValueConfig {
+    var grayscaleConversion: GrayscaleConversion = .none
     var levels: Int                        = 3
     var thresholds: [Double]               = defaultThresholds(for: 3)
     var distribution: ThresholdDistribution = .even
+    var quantizationBias: Double = 0
 }
 
 // MARK: - Pigment palette presets
@@ -140,7 +153,7 @@ struct ColorConfig {
             ?? Set(SpectralDataStore.essentialPigments.map(\.id))
     }()
     var paletteSpread: Double  = 0
-    var quantizationBias: ColorQuantizationBias = .neutral
+    var quantizationBias: Double = 0
     var maxPigmentsPerMix: Int = 3
     var minConcentration: Float = 0.02
 
@@ -178,22 +191,46 @@ struct ColorConfig {
     }
 }
 
-enum ColorQuantizationBias: String, CaseIterable, Identifiable {
-    case neutral = "Even"
-    case compressDarks = "Compress Darks"
-    case compressLights = "Compress Lights"
+enum QuantizationBias {
+    static let range: ClosedRange<Double> = -1...1
+    static let step: Double = 0.01
 
-    var id: String { rawValue }
+    private static let maxExponent: Double = 5.0 / 3.0
 
-    var luminanceExponent: Float {
-        switch self {
-        case .neutral:
-            return 1
-        case .compressDarks:
-            return 1.667
-        case .compressLights:
-            return 0.6
+    static func displayName(for bias: Double) -> String {
+        let clampedBias = clamped(bias)
+        if abs(clampedBias) < 0.04 {
+            return "Even"
         }
+
+        let percentage = Int((abs(clampedBias) * 100).rounded())
+        return clampedBias < 0
+            ? "Darks \(percentage)%"
+            : "Lights \(percentage)%"
+    }
+
+    static func luminanceExponent(for bias: Double) -> Float {
+        Float(pow(maxExponent, -clamped(bias)))
+    }
+
+    static func thresholds(for levels: Int, bias: Double) -> [Double] {
+        guard levels > 1 else { return [] }
+        let exponent = pow(maxExponent, clamped(bias))
+        return (1..<levels).map { index in
+            pow(Double(index) / Double(levels), exponent)
+        }
+    }
+
+    static func distribution(for bias: Double) -> ThresholdDistribution {
+        let clampedBias = clamped(bias)
+        if abs(clampedBias) < 0.04 {
+            return .even
+        }
+        return clampedBias < 0 ? .shadows : .lights
+    }
+
+    static func clamped(_ bias: Double) -> Double {
+        min(max(bias, range.lowerBound), range.upperBound)
     }
 }
 
@@ -241,6 +278,7 @@ enum BackgroundMode: String, CaseIterable, Identifiable {
 
 struct DepthConfig {
     var enabled: Bool = false
+    var foregroundCutoff: Double = 0.33
     var backgroundCutoff: Double = 0.66
     var effectIntensity: Double = 0.5     // global intensity multiplier
     var backgroundMode: BackgroundMode = .depthEffects
@@ -252,4 +290,28 @@ struct ContourConfig {
     var lineStyle: LineStyle = .autoContrast
     var customColor: Color   = .white
     var opacity: Double      = 0.7
+}
+
+// MARK: - Image import/export payloads
+
+struct SourceImageMetadata {
+    var properties: [String: Any] = [:]
+    var uniformTypeIdentifier: String? = nil
+
+    static let empty = SourceImageMetadata()
+}
+
+struct ImportedImagePayload {
+    var image: UIImage
+    var metadata: SourceImageMetadata
+
+    init(image: UIImage, metadata: SourceImageMetadata = .empty) {
+        self.image = image
+        self.metadata = metadata
+    }
+}
+
+struct ExportedImagePayload {
+    var imageData: Data
+    var contentType: UTType
 }

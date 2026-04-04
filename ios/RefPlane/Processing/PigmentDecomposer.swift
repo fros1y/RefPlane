@@ -44,7 +44,7 @@ enum PigmentDecomposer {
         concurrent: Bool = true,
         lookupTable: PigmentLookupTable? = nil
     ) -> [PigmentRecipe] {
-        guard !targetColors.isEmpty else { return [] }
+        guard !targetColors.isEmpty, !pigments.isEmpty else { return [] }
 
         let clamped = min(max(maxPigments, 1), 3)
 
@@ -218,6 +218,24 @@ enum PigmentDecomposer {
         maxPigments: Int,
         minConcentration: Float
     ) -> PigmentRecipe? {
+        if globalIndices.count == 1,
+           let pigmentIndex = globalIndices.first,
+           database.pigments.indices.contains(pigmentIndex),
+           table.masstones.indices.contains(pigmentIndex) {
+            let predictedColor = table.masstones[pigmentIndex]
+            return PigmentRecipe(
+                components: [
+                    RecipeComponent(
+                        pigmentId: database.pigments[pigmentIndex].id,
+                        pigmentName: database.pigments[pigmentIndex].name,
+                        concentration: 1
+                    )
+                ],
+                predictedColor: predictedColor,
+                deltaE: sqrtf(oklabDistance(target, predictedColor))
+            )
+        }
+
         guard let (entry, distSq) = table.findBest(
             for: target,
             enabledGlobalIndices: globalIndices,

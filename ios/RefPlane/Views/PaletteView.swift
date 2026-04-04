@@ -90,13 +90,7 @@ private struct PaletteMixCard: View {
 
                     Spacer(minLength: 8)
 
-                    Label(
-                        isIsolated ? "Focused" : "Show Mix",
-                        systemImage: isIsolated ? "scope" : "circle.dashed"
-                    )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(isIsolated ? Color.accentColor : Color.secondary)
-                        .labelStyle(.titleAndIcon)
+                    focusPill
                 }
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -145,8 +139,34 @@ private struct PaletteMixCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityValue(isIsolated ? "Isolated on canvas" : "Showing all mixes")
-        .accessibilityHint(isIsolated ? "Double tap to show all mixes" : "Double tap to isolate this mix")
+        .accessibilityHint(isIsolated ? "Double tap to show all mixes" : "Double tap to focus this mix")
         .accessibilityIdentifier("mix-card.\(bandID)")
+    }
+
+    private var focusPill: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isIsolated ? "scope" : "circle.dashed")
+            Text(isIsolated ? "Focused" : "Focus")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(isIsolated ? Color.accentColor : Color.primary.opacity(0.7))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            isIsolated
+                ? Color.accentColor.opacity(0.12)
+                : Color.primary.opacity(0.05),
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .strokeBorder(
+                    isIsolated
+                        ? Color.accentColor.opacity(0.35)
+                        : Color.primary.opacity(0.08),
+                    lineWidth: 1
+                )
+        }
     }
 
     private var title: String {

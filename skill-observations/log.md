@@ -54,3 +54,65 @@ DECLINED = user decided not to pursue
 **Suggested improvement:** For settings inspectors, use short action-oriented card titles without numeric prefixes, avoid descriptive subtitles unless a control is unavailable, and represent optional downstream processing stages with a dedicated default-off toggle and independent state flag.
 
 **Principle:** In dense tool UIs, reduce copy before adding layout complexity, and model conceptually separate pipeline stages as separate state so the interface matches the mental model.
+
+### Observation 4: Collapse overlay panels before asserting canvas tap side effects
+**Status:** OPEN
+
+**Date:** 2026-04-03
+**Session context:** Added tap-to-swatch behavior on the image canvas while iterating a bottom-drawer inspector on iPhone and a sidebar inspector on iPad.
+**Skill:** build-ios-apps:ios-debugger-agent
+**Type:** internal
+**Phase/Area:** UI automation for canvas gestures under overlapping inspector chrome
+
+**Issue:** A screenshot test tapped the canvas while the phone drawer covered nearly the entire image, so the band-callout assertion failed even though the feature worked when the inspector was hidden.
+
+**Suggested improvement:** When validating direct canvas gestures, collapse overlapping inspectors first, tap a visible center-region point, then reopen the controls panel for follow-on assertions. For SwiftUI gesture stacks, prefer a high-priority `SpatialTapGesture` with an explicit `contentShape` when taps must coexist with pan/zoom gestures.
+
+**Principle:** UI tests should interact with the same visible affordances a user sees; if an overlay occludes a target, verify gesture behavior in the unobstructed layout state.
+
+## 2026-04-04
+
+### Observation 5: Trust the newest xcresult bundle before a stale xcodebuild shell
+**Status:** OPEN
+
+**Date:** 2026-04-04
+**Session context:** Replaced a discrete SwiftUI quantization-bias picker with a continuous slider and verified the iPad screenshot test.
+**Skill:** build-ios-apps:ios-debugger-agent
+**Type:** internal
+**Phase/Area:** XCTest result verification and process teardown
+
+**Issue:** The iPad `xcodebuild test` parent process stayed alive with no active test-runner child, but the newest `.xcresult` bundle already reported `status = succeeded` and an `endedTime`, indicating the test action had finished.
+
+**Suggested improvement:** When `xcodebuild` appears idle after UI tests, inspect the newest `/tmp/.../Logs/Test/*.xcresult` with `xcrun xcresulttool get --legacy --format json` before rerunning tests. If the bundle is succeeded and has an `endedTime`, treat the run as complete and clean up only the stale shell process.
+
+**Principle:** Separate test outcome from shell-process liveness; `.xcresult` is the authoritative artifact when terminal lifecycle and simulator teardown drift apart.
+
+### Observation 6: Guard zero-candidate fast paths before remapping palette labels
+**Status:** OPEN
+
+**Date:** 2026-04-04
+**Session context:** Fixed a crash when palette selection used a single custom tube and updated grayscale/palette UI controls.
+**Skill:** build-ios-apps:ios-debugger-agent
+**Type:** internal
+**Phase/Area:** Palette decomposition edge cases and regression coverage
+
+**Issue:** The precomputed pigment lookup fast path only searched pair/triplet mixes, so a one-pigment selection returned no recipes. A later merge-map projection then indexed an empty array and crashed with `Fatal error: Index out of range`.
+
+**Suggested improvement:** Add explicit single-item fast paths for combinatorial search tables, and add hard guards at every downstream remap/prune boundary that can receive an empty candidate set. Pair that with a one-choice regression test for user-editable subsets.
+
+**Principle:** If upstream search cardinality can collapse to 0 or 1, encode those cases directly and verify downstream code never assumes a non-empty survivor set.
+
+### Observation 7: Preserve image metadata at the byte boundary, not after UIImage decoding
+**Status:** OPEN
+
+**Date:** 2026-04-04
+**Session context:** Added metadata-preserving image import/export and a git-revision provenance stamp to processed RefPlane exports.
+**Skill:** build-ios-apps:ios-debugger-agent
+**Type:** internal
+**Phase/Area:** Image pipeline IO and export provenance
+
+**Issue:** Loading photo-library selections as `UIImage` and exporting processed results with `pngData()` stripped source metadata and left no stable provenance record for the settings/build that produced an exported image.
+
+**Suggested improvement:** Capture ImageIO properties from picker byte data before decoding, keep that snapshot in app state, and write exports through `CGImageDestination` with a merged metadata dictionary plus app-specific provenance JSON. For build identity, generate a dedicated bundle resource in an Xcode run script instead of editing `Info.plist` in place.
+
+**Principle:** Metadata survives reliably when captured and rewritten at file-encoding boundaries; once an image is reduced to `UIImage`, provenance must be carried in parallel state.

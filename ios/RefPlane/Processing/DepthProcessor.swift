@@ -1,5 +1,4 @@
 import UIKit
-import Metal
 
 // MARK: - Depth effect application coordinator
 
@@ -17,6 +16,69 @@ enum DepthProcessor {
 
         // CPU fallback: simplified per-pixel contrast/saturation adjustment
         return cpuFallback(source: sourceCG, depth: depthCG, config: config)
+    }
+
+    static func thresholdPreview(
+        depthMap: UIImage,
+        backgroundCutoff: Double,
+        cachedDepthTexture _: AnyObject? = nil
+    ) -> UIImage? {
+        guard let depthCG = depthMap.cgImage else { return nil }
+
+        let width = depthCG.width
+        let height = depthCG.height
+        guard width > 0, height > 0 else { return nil }
+
+        var depthPixels = [UInt8](repeating: 128, count: width * height)
+        guard let context = CGContext(
+            data: &depthPixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            return nil
+        }
+        context.draw(depthCG, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let threshold = UInt8(max(0, min(255, Int((backgroundCutoff * 255).rounded()))))
+        var output = [UInt8](repeating: 255, count: width * height * 4)
+
+        for i in 0..<(width * height) {
+            let pixel = depthPixels[i]
+            let base = i * 4
+            if pixel >= threshold {
+                output[base] = 233
+                output[base + 1] = 238
+                output[base + 2] = 245
+            } else {
+                output[base] = pixel
+                output[base + 1] = pixel
+                output[base + 2] = pixel
+            }
+            output[base + 3] = 255
+        }
+
+        guard let provider = CGDataProvider(data: Data(output) as CFData),
+              let cgImage = CGImage(
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+              ) else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - CPU fallback
@@ -48,6 +110,7 @@ enum DepthProcessor {
         ) else { return nil }
         depCtx.draw(depth, in: CGRect(x: 0, y: 0, width: width, height: height))
 
+        let fgCutoff = Float(config.foregroundCutoff)
         let bgCutoff = Float(config.backgroundCutoff)
         let intensity = Float(config.effectIntensity)
         let isRemove = config.backgroundMode == .remove
@@ -61,17 +124,26 @@ enum DepthProcessor {
             var g = Float(sourcePixels[px + 1]) / 255.0
             var b = Float(sourcePixels[px + 2]) / 255.0
 
-            // Background removal — hard binary cutoff
+            // Background removal
             if isRemove && d > bgCutoff {
-                r = r * (1 - intensity) + intensity
-                g = g * (1 - intensity) + intensity
-                b = b * (1 - intensity) + intensity
+                let t = min((d - bgCutoff) / max(0.05, 1.0 - bgCutoff), 1.0)
+                let blend = t * intensity
+                r = r * (1 - blend) + blend
+                g = g * (1 - blend) + blend
+                b = b * (1 - blend) + blend
             }
 
             // Simple luminance
             let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
 
-            if d > bgCutoff && !isRemove {
+            if d < fgCutoff {
+                // Foreground: boost contrast + warm shift
+                let t = 1.0 - d / max(fgCutoff, 0.001)
+                let strength = t * intensity * 0.3
+                r = lum + (r - lum) * (1 + strength) + strength * 0.02
+                g = lum + (g - lum) * (1 + strength)
+                b = lum + (b - lum) * (1 + strength) - strength * 0.02
+            } else if d > bgCutoff && !isRemove {
                 // Background: reduce contrast + cool shift
                 let t = min((d - bgCutoff) / max(0.05, 1.0 - bgCutoff), 1.0)
                 let strength = t * intensity * 0.3
@@ -90,84 +162,6 @@ enum DepthProcessor {
                 width: width, height: height,
                 bitsPerComponent: 8, bitsPerPixel: 32,
                 bytesPerRow: width * 4,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
-                provider: provider,
-                decode: nil, shouldInterpolate: false,
-                intent: .defaultIntent
-              ) else { return nil }
-        return UIImage(cgImage: cgImage)
-    }
-
-    // MARK: - Threshold preview
-
-    /// Generate a preview image that shows the depth map with zone coloring:
-    /// pixels below the background cutoff shown as gray depth, background tinted blue.
-    /// Uses GPU path when available, falls back to CPU.
-    static func thresholdPreview(
-        depthMap: UIImage,
-        backgroundCutoff: Double,
-        cachedDepthTexture: AnyObject? = nil
-    ) -> UIImage? {
-        // GPU path: use cached Metal texture if available
-        if let ctx = MetalContext.shared,
-           let tex = cachedDepthTexture as? MTLTexture {
-            return ctx.depthThresholdPreview(
-                depthTexture: tex,
-                foregroundCutoff: 0,
-                backgroundCutoff: Float(backgroundCutoff)
-            )
-        }
-
-        // CPU fallback
-        return cpuThresholdPreview(
-            depthMap: depthMap,
-            backgroundCutoff: backgroundCutoff
-        )
-    }
-
-    private static func cpuThresholdPreview(depthMap: UIImage, backgroundCutoff: Double) -> UIImage? {
-        guard let cg = depthMap.cgImage else { return nil }
-        let w = cg.width, h = cg.height
-        guard w > 0, h > 0 else { return nil }
-
-        var depthPixels = [UInt8](repeating: 0, count: w * h)
-        guard let depCtx = CGContext(
-            data: &depthPixels,
-            width: w, height: h,
-            bitsPerComponent: 8, bytesPerRow: w,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue
-        ) else { return nil }
-        depCtx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-
-        let bg = Float(backgroundCutoff)
-
-        var output = [UInt8](repeating: 255, count: w * h * 4)
-        for i in 0..<(w * h) {
-            let d = Float(depthPixels[i]) / 255.0
-            let gray = Float(depthPixels[i])
-            let px = i * 4
-
-            if d >= bg {
-                // Background: blue tint over depth
-                output[px]     = UInt8(gray * 0.2)                   // R
-                output[px + 1] = UInt8(min(gray * 0.4 + 80, 255))   // G
-                output[px + 2] = UInt8(min(gray * 0.5 + 128, 255))  // B
-            } else {
-                // Non-background: neutral gray depth
-                let v = UInt8(gray)
-                output[px]     = v
-                output[px + 1] = v
-                output[px + 2] = v
-            }
-        }
-
-        guard let provider = CGDataProvider(data: Data(output) as CFData),
-              let cgImage = CGImage(
-                width: w, height: h,
-                bitsPerComponent: 8, bitsPerPixel: 32,
-                bytesPerRow: w * 4,
                 space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
                 provider: provider,

@@ -324,6 +324,55 @@ struct LabeledSlider: View {
     }
 }
 
+struct QuantizationBiasSlider: View {
+    @Binding var value: Double
+    var onEditingChanged: ((Bool) -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Bias")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Text(QuantizationBias.displayName(for: value))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.primary)
+                    .accessibilityHidden(true)
+            }
+
+            ZStack(alignment: .center) {
+                Rectangle()
+                    .fill(.secondary.opacity(0.35))
+                    .frame(width: 2, height: 12)
+                    .accessibilityHidden(true)
+
+                TouchEventSlider(
+                    label: "Bias",
+                    accessibilityValue: QuantizationBias.displayName(for: value),
+                    value: $value,
+                    range: QuantizationBias.range,
+                    step: QuantizationBias.step,
+                    onEditingChanged: onEditingChanged
+                )
+            }
+
+            HStack {
+                Text("Darks")
+                Spacer()
+                Text("Even")
+                Spacer()
+                Text("Lights")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+        }
+    }
+}
+
 private struct TouchEventSlider: UIViewRepresentable {
     let label: String
     let accessibilityValue: String

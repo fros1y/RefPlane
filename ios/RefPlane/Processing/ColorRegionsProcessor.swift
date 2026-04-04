@@ -81,7 +81,9 @@ enum ColorRegionsProcessor {
     ) -> Result? {
         let total = width * height
         let numShades = overclusterK ?? max(2, config.numShades)
-        let luminanceExponent = config.quantizationBias.luminanceExponent
+        let luminanceExponent = QuantizationBias.luminanceExponent(
+            for: config.quantizationBias
+        )
 
         var stepStart = CFAbsoluteTimeGetCurrent()
         guard let (displayLabArray, srcBuffer, displayLabBuffer) = gpu.rgbToOklab(
@@ -234,7 +236,9 @@ enum ColorRegionsProcessor {
     ) -> Result? {
         let total = width * height
         let numShades = overclusterK ?? max(2, config.numShades)
-        let luminanceExponent = config.quantizationBias.luminanceExponent
+        let luminanceExponent = QuantizationBias.luminanceExponent(
+            for: config.quantizationBias
+        )
 
         var stepStart = CFAbsoluteTimeGetCurrent()
         var displayPoints = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
@@ -1046,7 +1050,15 @@ enum ColorRegionsProcessor {
         pixelQuantizedLabels: [Int32],
         centroidToRecipe: [Int32]
     ) -> [Int32] {
-        pixelQuantizedLabels.map { centroidToRecipe[Int($0)] }
+        guard !centroidToRecipe.isEmpty else {
+            return [Int32](repeating: 0, count: pixelQuantizedLabels.count)
+        }
+
+        return pixelQuantizedLabels.map { label in
+            let centroidIndex = Int(label)
+            guard centroidToRecipe.indices.contains(centroidIndex) else { return 0 }
+            return centroidToRecipe[centroidIndex]
+        }
     }
 
     /// Compute recipe centroids and counts using the small quantized centroid set.

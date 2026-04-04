@@ -1,5 +1,7 @@
+import ImageIO
 import SwiftUI
 import Observation
+import UniformTypeIdentifiers
 
 @Observable
 @MainActor
@@ -103,6 +105,7 @@ class AppState {
     @ObservationIgnored private var kuwaharaTask: Task<Void, Never>? = nil
 
     @ObservationIgnored private var loadingTask: Task<Void, Never>? = nil
+    @ObservationIgnored private(set) var sourceImageMetadata: SourceImageMetadata = .empty
     private var processedPixelBands: [Int] = []
 
     @ObservationIgnored private let depthMapOperation: DepthMapOperation
@@ -121,7 +124,7 @@ class AppState {
     }
 
     /// Kuwahara neighbourhood radius derived from `kuwaharaStrength`.
-    /// Returns 0 when the filter is off, and a value clamped to 1…16 otherwise.
+    /// Returns 0 when the filter is off, and a value clamped to 1...16 otherwise.
     var kuwaharaRadius: Int {
         guard kuwaharaStrength > 0 else { return 0 }
         return min(max(Int((kuwaharaStrength * 16).rounded()), 1), 16)
@@ -171,7 +174,7 @@ class AppState {
             let origW = origCG.width
             let origH = origCG.height
 
-            // The radius (1–8) is defined relative to a ~600 px reference image.
+            // The radius is defined relative to a ~600 px reference image.
             // Raw CGImages on Retina devices are often 2–4× larger in each dimension
             // (e.g. 4032 px at 3× scale), making the effect invisible at the raw
             // pixel level.  Downsample to ≤600 px on the longest side, apply the
@@ -246,6 +249,12 @@ class AppState {
     }
 
     func loadImage(_ image: UIImage) {
+        loadImage(ImportedImagePayload(image: image))
+    }
+
+    func loadImage(_ payload: ImportedImagePayload) {
+        let image = payload.image
+
         // Cancel any in-flight work before starting fresh.
         loadingTask?.cancel()
         processingDebounceTask?.cancel()
@@ -257,6 +266,7 @@ class AppState {
 
         // Show the picked image immediately, then swap in the scaled version
         // once preprocessing finishes so the canvas never blanks out.
+        sourceImageMetadata        = payload.metadata
         fullResolutionOriginalImage   = image
         originalImage             = image
         sourceImage               = image
@@ -404,6 +414,14 @@ class AppState {
     func setMode(_ mode: RefPlaneMode) {
         guard mode != activeMode else { return }
         activeMode = mode
+        switch mode {
+        case .original, .color:
+            valueConfig.grayscaleConversion = .none
+        case .tonal, .value:
+            if valueConfig.grayscaleConversion == .none {
+                valueConfig.grayscaleConversion = .luminance
+            }
+        }
         isolatedBand = nil
         processedImage = nil
         isolatedProcessedImage = nil
@@ -432,6 +450,249 @@ class AppState {
             rendered = renderContoursOnto(rendered)
         }
         return rendered
+    }
+
+    func exportCurrentImagePayload() -> ExportedImagePayload? {
+        guard let image = exportCurrentImage() else { return nil }
+        let contentType = preferredExportContentType(for: image)
+
+        if let encoded = encodeExportImage(image, as: contentType) {
+            return ExportedImagePayload(imageData: encoded, contentType: contentType)
+        }
+
+        guard contentType != .png,
+              let fallbackData = encodeExportImage(image, as: .png)
+        else { return nil }
+
+        return ExportedImagePayload(imageData: fallbackData, contentType: .png)
+    }
+
+    private func preferredExportContentType(for image: UIImage) -> UTType {
+        guard let typeIdentifier = sourceImageMetadata.uniformTypeIdentifier,
+              let sourceType = UTType(typeIdentifier),
+              sourceType.conforms(to: .image),
+              Self.supportedExportTypeIdentifiers.contains(sourceType.identifier)
+        else {
+            return .png
+        }
+
+        if imageContainsAlpha(image), !Self.alphaCapableExportTypes.contains(sourceType.identifier) {
+            return .png
+        }
+
+        return sourceType
+    }
+
+    private static let supportedExportTypeIdentifiers: Set<String> = {
+        let identifiers = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
+        return Set(identifiers)
+    }()
+
+    private static let alphaCapableExportTypes: Set<String> = [
+        UTType.png.identifier,
+        UTType.heic.identifier,
+        UTType.heif.identifier,
+        UTType.tiff.identifier,
+        "public.heics"
+    ]
+
+    private func encodeExportImage(_ image: UIImage, as contentType: UTType) -> Data? {
+        let normalizedImage = normalizedImageForExport(image)
+        guard let cgImage = normalizedImage.cgImage else { return nil }
+
+        let properties = exportProperties(
+            for: normalizedImage,
+            contentType: contentType
+        )
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output,
+            contentType.identifier as CFString,
+            1,
+            nil
+        ) else {
+            return nil
+        }
+
+        CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
+    }
+
+    private func normalizedImageForExport(_ image: UIImage) -> UIImage {
+        if image.imageOrientation == .up, image.cgImage != nil {
+            return image
+        }
+
+        let pixelSize = exportPixelSize(for: image)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        return UIGraphicsImageRenderer(size: pixelSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: pixelSize))
+        }
+    }
+
+    private func exportProperties(
+        for image: UIImage,
+        contentType: UTType
+    ) -> [String: Any] {
+        let pixelSize = exportPixelSize(for: image)
+        let pixelWidth = Int(pixelSize.width.rounded())
+        let pixelHeight = Int(pixelSize.height.rounded())
+        let provenanceJSON = makeExportProvenanceJSON()
+        let softwareDescription = makeExportSoftwareDescription()
+
+        var properties = sourceImageMetadata.properties
+        properties[kCGImagePropertyPixelWidth as String] = pixelWidth
+        properties[kCGImagePropertyPixelHeight as String] = pixelHeight
+        properties[kCGImagePropertyOrientation as String] = CGImagePropertyOrientation.up.rawValue
+
+        var tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any] ?? [:]
+        tiff[kCGImagePropertyTIFFSoftware as String] = softwareDescription
+        tiff[kCGImagePropertyTIFFImageDescription as String] = provenanceJSON
+        tiff[kCGImagePropertyTIFFOrientation as String] = CGImagePropertyOrientation.up.rawValue
+        properties[kCGImagePropertyTIFFDictionary as String] = tiff
+
+        var exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any] ?? [:]
+        exif[kCGImagePropertyExifPixelXDimension as String] = pixelWidth
+        exif[kCGImagePropertyExifPixelYDimension as String] = pixelHeight
+        exif[kCGImagePropertyExifUserComment as String] = provenanceJSON
+        properties[kCGImagePropertyExifDictionary as String] = exif
+
+        if contentType.conforms(to: .png) {
+            var png = properties[kCGImagePropertyPNGDictionary as String] as? [String: Any] ?? [:]
+            png[kCGImagePropertyPNGSoftware as String] = softwareDescription
+            png[kCGImagePropertyPNGDescription as String] = provenanceJSON
+            properties[kCGImagePropertyPNGDictionary as String] = png
+        }
+
+        if contentType != .png {
+            properties[kCGImageDestinationLossyCompressionQuality as String] = 1.0
+        }
+
+        return properties
+    }
+
+    private func makeExportSoftwareDescription() -> String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        let gitRevision = makeExportGitRevision()
+        return "RefPlane \(version) (\(build), git \(gitRevision))"
+    }
+
+    private func makeExportProvenanceJSON() -> String {
+        let payload = ExportProvenanceMetadata(
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0",
+            buildNumber: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1",
+            gitRevision: makeExportGitRevision(),
+            exportedAt: ISO8601DateFormatter().string(from: Date()),
+            mode: activeMode.rawValue,
+            settings: makeExportSettingsSnapshot(),
+            sourceMetadata: MetadataJSONValue(sourceImageMetadata.properties)
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(payload),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            return "{}"
+        }
+        return json
+    }
+
+    private func makeExportGitRevision() -> String {
+        if let revision = Bundle.main.object(forInfoDictionaryKey: "RefPlaneGitRevision") as? String,
+           !revision.isEmpty {
+            return revision
+        }
+
+        guard let url = Bundle.main.url(
+            forResource: "RefPlaneBuildMetadata",
+            withExtension: "plist"
+        ),
+        let metadata = NSDictionary(contentsOf: url) as? [String: Any],
+        let revision = metadata["gitRevision"] as? String,
+        !revision.isEmpty
+        else {
+            return "unknown"
+        }
+
+        return revision
+    }
+
+    private func makeExportSettingsSnapshot() -> ExportSettingsMetadata {
+        ExportSettingsMetadata(
+            abstractionStrength: abstractionStrength,
+            abstractionMethod: abstractionMethod.rawValue,
+            kuwaharaStrength: kuwaharaStrength,
+            grayscaleConversion: valueConfig.grayscaleConversion.rawValue,
+            valueLevels: valueConfig.levels,
+            valueQuantizationBias: valueConfig.quantizationBias,
+            paletteSelectionEnabled: colorConfig.paletteSelectionEnabled,
+            colorLimit: colorConfig.numShades,
+            colorQuantizationBias: colorConfig.quantizationBias,
+            paletteSpread: colorConfig.paletteSpread,
+            maxPigmentsPerMix: colorConfig.maxPigmentsPerMix,
+            minConcentration: colorConfig.minConcentration,
+            enabledPigmentIDs: colorConfig.enabledPigmentIDs.sorted(),
+            backgroundProcessingEnabled: depthConfig.enabled,
+            backgroundMode: depthConfig.backgroundMode.rawValue,
+            foregroundDepthCutoff: depthConfig.foregroundCutoff,
+            backgroundDepthCutoff: depthConfig.backgroundCutoff,
+            depthEffectIntensity: depthConfig.effectIntensity,
+            gridEnabled: gridConfig.enabled,
+            gridDivisions: gridConfig.divisions,
+            gridShowDiagonals: gridConfig.showDiagonals,
+            gridLineStyle: gridConfig.lineStyle.rawValue,
+            gridCustomColor: metadataDescription(for: gridConfig.customColor),
+            gridOpacity: gridConfig.opacity,
+            contourEnabled: contourConfig.enabled,
+            contourLevels: contourConfig.levels,
+            contourLineStyle: contourConfig.lineStyle.rawValue,
+            contourCustomColor: metadataDescription(for: contourConfig.customColor),
+            contourOpacity: contourConfig.opacity
+        )
+    }
+
+    private func metadataDescription(for color: Color) -> String {
+        let resolvedColor = UIColor(color)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        guard resolvedColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return resolvedColor.description
+        }
+
+        return String(
+            format: "#%02X%02X%02X%02X",
+            Int((red * 255).rounded()),
+            Int((green * 255).rounded()),
+            Int((blue * 255).rounded()),
+            Int((alpha * 255).rounded())
+        )
+    }
+
+    private func exportPixelSize(for image: UIImage) -> CGSize {
+        if let cgImage = image.cgImage {
+            return CGSize(width: cgImage.width, height: cgImage.height)
+        }
+
+        return CGSize(
+            width: image.size.width * image.scale,
+            height: image.size.height * image.scale
+        )
+    }
+
+    private func imageContainsAlpha(_ image: UIImage) -> Bool {
+        switch image.cgImage?.alphaInfo {
+        case .none?, .noneSkipFirst?, .noneSkipLast?, nil:
+            return false
+        default:
+            return true
+        }
     }
 
     private func renderGridOnto(_ image: UIImage) -> UIImage {
@@ -617,6 +878,31 @@ class AppState {
         refreshIsolatedProcessedImage()
     }
 
+    func toggleIsolatedBand(atNormalizedPoint point: CGPoint) {
+        guard activeMode == .value || activeMode == .color,
+              let processedImage,
+              let cgImage = processedImage.cgImage,
+              !processedPixelBands.isEmpty
+        else { return }
+
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return }
+
+        let x = min(max(Int((point.x * CGFloat(width)).rounded(.down)), 0), width - 1)
+        let y = min(max(Int((point.y * CGFloat(height)).rounded(.down)), 0), height - 1)
+        let pixelIndex = y * width + x
+        guard processedPixelBands.indices.contains(pixelIndex) else { return }
+
+        toggleIsolatedBand(processedPixelBands[pixelIndex])
+    }
+
+    func clearIsolatedBandSelection() {
+        guard isolatedBand != nil else { return }
+        isolatedBand = nil
+        refreshIsolatedProcessedImage()
+    }
+
     private func refreshIsolatedProcessedImage() {
         guard activeMode == .value || activeMode == .color,
               let isolatedBand,
@@ -667,6 +953,7 @@ class AppState {
                     // preserve the user’s chosen value.
                     if isFirstCompute {
                         let span = range.upperBound - range.lowerBound
+                        self.depthConfig.foregroundCutoff = range.lowerBound + span / 3.0
                         self.depthConfig.backgroundCutoff = range.lowerBound + span * 2.0 / 3.0
                     }
                     self.processingIsIndeterminate = false
@@ -752,6 +1039,7 @@ class AppState {
             return
         }
         depthConfig.backgroundCutoff = newValue
+        depthConfig.foregroundCutoff = min(depthConfig.foregroundCutoff, newValue)
         refreshDepthThresholdOutput()
     }
 
@@ -880,4 +1168,113 @@ class AppState {
         }
     }
 
+}
+
+private struct ExportProvenanceMetadata: Encodable {
+    var appVersion: String
+    var buildNumber: String
+    var gitRevision: String
+    var exportedAt: String
+    var mode: String
+    var settings: ExportSettingsMetadata
+    var sourceMetadata: MetadataJSONValue
+}
+
+private struct ExportSettingsMetadata: Encodable {
+    var abstractionStrength: Double
+    var abstractionMethod: String
+    var kuwaharaStrength: Double
+    var grayscaleConversion: String
+    var valueLevels: Int
+    var valueQuantizationBias: Double
+    var paletteSelectionEnabled: Bool
+    var colorLimit: Int
+    var colorQuantizationBias: Double
+    var paletteSpread: Double
+    var maxPigmentsPerMix: Int
+    var minConcentration: Float
+    var enabledPigmentIDs: [String]
+    var backgroundProcessingEnabled: Bool
+    var backgroundMode: String
+    var foregroundDepthCutoff: Double
+    var backgroundDepthCutoff: Double
+    var depthEffectIntensity: Double
+    var gridEnabled: Bool
+    var gridDivisions: Int
+    var gridShowDiagonals: Bool
+    var gridLineStyle: String
+    var gridCustomColor: String
+    var gridOpacity: Double
+    var contourEnabled: Bool
+    var contourLevels: Int
+    var contourLineStyle: String
+    var contourCustomColor: String
+    var contourOpacity: Double
+}
+
+private enum MetadataJSONValue: Encodable {
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case array([MetadataJSONValue])
+    case object([String: MetadataJSONValue])
+    case null
+
+    init(_ value: Any?) {
+        guard let value else {
+            self = .null
+            return
+        }
+
+        switch value {
+        case let string as String:
+            self = .string(string)
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                self = .bool(number.boolValue)
+            } else {
+                self = .number(number.doubleValue)
+            }
+        case let dictionary as [String: Any]:
+            self = .object(
+                dictionary.reduce(into: [String: MetadataJSONValue]()) { result, entry in
+                    result[entry.key] = MetadataJSONValue(entry.value)
+                }
+            )
+        case let dictionary as NSDictionary:
+            var object: [String: MetadataJSONValue] = [:]
+            for (key, value) in dictionary {
+                object[String(describing: key)] = MetadataJSONValue(value)
+            }
+            self = .object(object)
+        case let array as [Any]:
+            self = .array(array.map(MetadataJSONValue.init))
+        case let array as NSArray:
+            self = .array(array.map(MetadataJSONValue.init))
+        case let date as Date:
+            self = .string(ISO8601DateFormatter().string(from: date))
+        case let data as Data:
+            self = .string(data.base64EncodedString())
+        default:
+            self = .string(String(describing: value))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value):
+            try container.encode(value)
+        case .number(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
+        case .null:
+            try container.encodeNil()
+        }
+    }
 }

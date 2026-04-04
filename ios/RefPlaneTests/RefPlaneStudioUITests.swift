@@ -65,7 +65,10 @@ final class RefPlaneStudioUITests: XCTestCase {
         setGrayscaleRenderingEnabled(true)
         setQuantizationEnabled(true)
         waitForProcessingToSettle()
+        hideStudioIfNeeded()
+        focusCanvasBand()
         try captureScreenshot("04-value-study")
+        openStudioIfNeeded()
 
         let paletteCard = app.otherElements["studio.card.palette"]
         scrollInspector(to: paletteCard, direction: .down)
@@ -180,10 +183,17 @@ final class RefPlaneStudioUITests: XCTestCase {
     }
 
     private func setGrayscaleRenderingEnabled(_ enabled: Bool) {
-        let button = app.buttons[enabled ? "Grayscale" : "Color"]
-        scrollInspector(to: button, direction: .up)
-        XCTAssertTrue(button.waitForExistence(timeout: 3))
-        button.tap()
+        let picker = app.buttons["studio.grayscale-conversion-picker"]
+        scrollInspector(to: picker, direction: .up)
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+
+        let targetOption = enabled ? "Luminance" : "None"
+        if picker.label != targetOption && picker.value as? String != targetOption {
+            picker.tap()
+            let option = app.buttons[targetOption].firstMatch
+            XCTAssertTrue(option.waitForExistence(timeout: 2))
+            option.tap()
+        }
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
@@ -221,11 +231,20 @@ final class RefPlaneStudioUITests: XCTestCase {
                 return
             }
 
-            switch direction {
-            case .up:
-                scrollView.swipeDown()
-            case .down:
-                scrollView.swipeUp()
+            let elementFrame = element.frame
+            let scrollFrame = scrollView.frame
+
+            if !elementFrame.isEmpty, elementFrame.midY < scrollFrame.minY {
+                drag(scrollView: scrollView, direction: .up)
+            } else if !elementFrame.isEmpty, elementFrame.midY > scrollFrame.maxY {
+                drag(scrollView: scrollView, direction: .down)
+            } else {
+                switch direction {
+                case .up:
+                    drag(scrollView: scrollView, direction: .up)
+                case .down:
+                    drag(scrollView: scrollView, direction: .down)
+                }
             }
         }
     }
@@ -241,6 +260,43 @@ final class RefPlaneStudioUITests: XCTestCase {
 
     private func tapSwitch(_ toggle: XCUIElement) {
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+    }
+
+    private func focusCanvasBand() {
+        let canvas = app.otherElements["canvas.image"]
+        XCTAssertTrue(canvas.waitForExistence(timeout: 3))
+        canvas.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48)
+        ).tap()
+        XCTAssertTrue(
+            app.otherElements["canvas.band-callout"].waitForExistence(timeout: 3)
+        )
+    }
+
+    private func drag(scrollView: XCUIElement, direction: ScrollDirection) {
+        let scrollFrame = scrollView.frame
+        let screenFrame = app.frame
+        let centerX = scrollFrame.midX / max(screenFrame.width, 1)
+        let upperY = scrollFrame.minY / max(screenFrame.height, 1) + 0.08
+        let lowerY = scrollFrame.maxY / max(screenFrame.height, 1) - 0.08
+        let startOffset: CGVector
+        let endOffset: CGVector
+
+        switch direction {
+        case .up:
+            startOffset = CGVector(dx: centerX, dy: upperY)
+            endOffset = CGVector(dx: centerX, dy: lowerY)
+        case .down:
+            startOffset = CGVector(dx: centerX, dy: lowerY)
+            endOffset = CGVector(dx: centerX, dy: upperY)
+        }
+
+        app.coordinate(withNormalizedOffset: startOffset)
+            .press(
+                forDuration: 0.01,
+                thenDragTo: app.coordinate(withNormalizedOffset: endOffset)
+            )
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
     }
 }
 

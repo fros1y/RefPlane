@@ -9,6 +9,26 @@ struct AboutPrivacyView: View {
         return "v\(version) (\(build))"
     }
 
+    private var gitRevisionString: String {
+        if let revision = Bundle.main.object(forInfoDictionaryKey: "RefPlaneGitRevision") as? String,
+           !revision.isEmpty {
+            return revision
+        }
+
+        guard let url = Bundle.main.url(
+            forResource: "RefPlaneBuildMetadata",
+            withExtension: "plist"
+        ),
+        let metadata = NSDictionary(contentsOf: url) as? [String: Any],
+        let revision = metadata["gitRevision"] as? String,
+        !revision.isEmpty
+        else {
+            return "unknown"
+        }
+
+        return revision
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -30,6 +50,11 @@ struct AboutPrivacyView: View {
                         Text("Created by Martin Galese.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+
+                        Text("Build \(gitRevisionString)")
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
                     }
                     .padding(.vertical, 4)
                 }

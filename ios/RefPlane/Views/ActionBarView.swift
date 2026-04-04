@@ -40,9 +40,16 @@ struct ActionBarView: View {
 
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
+    var onCompletion: (() -> Void)? = nil
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        vc.completionWithItemsHandler = { _, _, _, _ in
+            DispatchQueue.main.async {
+                onCompletion?()
+            }
+        }
+
         // iPad requires a source anchor for UIActivityViewController's popover presentation.
         if let popover = vc.popoverPresentationController,
            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,

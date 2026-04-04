@@ -10,6 +10,7 @@ struct ControlPanelView: View {
     @Environment(AppState.self) private var state
 
     let presentation: Presentation
+    let onExport: () -> Void
     var onClose: (() -> Void)? = nil
 
     @State private var abstractionStrengthAtDragStart: Double? = nil
@@ -32,6 +33,8 @@ struct ControlPanelView: View {
                 .padding(.bottom, presentation == .bottomPanel ? 48 : 24)
             }
             .scrollIndicators(.hidden)
+            Divider().opacity(0.18)
+            exportBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
@@ -40,18 +43,7 @@ struct ControlPanelView: View {
     }
 
     private var headerView: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Pipeline")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.primary)
-
-                Text("Edit top to bottom.")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
+        HStack {
             Spacer()
 
             if onClose != nil {
@@ -68,7 +60,7 @@ struct ControlPanelView: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, presentation == .bottomPanel ? 26 : 18)
-        .padding(.bottom, 14)
+        .padding(.bottom, 12)
     }
 
     private var backgroundSection: some View {
@@ -93,19 +85,20 @@ struct ControlPanelView: View {
 
     private var tonalSection: some View {
         StudioPanelCard(
-            title: "Grayscale",
+            title: "Grayscale Conversion",
             systemImage: "circle.lefthalf.filled",
             accessibilityID: "studio.card.tonal"
         ) {
-            Picker("Rendering", selection: Binding(
-                get: { usesTonalRendering },
-                set: { setUsesTonalRendering($0) }
+            Picker("Method", selection: Binding(
+                get: { grayscaleConversionSelection },
+                set: selectGrayscaleConversion
             )) {
-                Text("Color").tag(false)
-                Text("Grayscale").tag(true)
+                ForEach(GrayscaleConversion.allCases) { conversion in
+                    Text(conversion.rawValue).tag(conversion)
+                }
             }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("studio.rendering-mode")
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("studio.grayscale-conversion-picker")
         }
     }
 
@@ -198,6 +191,10 @@ struct ControlPanelView: View {
         state.activeMode == .value || state.activeMode == .color
     }
 
+    private var grayscaleConversionSelection: GrayscaleConversion {
+        usesTonalRendering ? state.valueConfig.grayscaleConversion : .none
+    }
+
     private var abstractionControls: some View {
         VStack(spacing: 14) {
             LabeledSlider(
@@ -243,6 +240,20 @@ struct ControlPanelView: View {
         }
     }
 
+    private var exportBar: some View {
+        Button(action: onExport) {
+            Label("Export", systemImage: "square.and.arrow.up")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 52)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(state.currentDisplayImage == nil)
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, presentation == .bottomPanel ? 34 : 18)
+        .accessibilityIdentifier("studio.export")
+    }
+
     private func closePanel() {
         guard let onClose else { return }
 
@@ -286,6 +297,8 @@ struct ControlPanelView: View {
     }
 
     private func setUsesTonalRendering(_ newValue: Bool) {
+        state.valueConfig.grayscaleConversion = newValue ? .luminance : .none
+
         let targetMode: RefPlaneMode
         if newValue {
             targetMode = usesQuantization ? .value : .tonal
@@ -313,6 +326,24 @@ struct ControlPanelView: View {
         guard state.colorConfig.paletteSelectionEnabled != enabled else { return }
         state.colorConfig.paletteSelectionEnabled = enabled
         state.scheduleProcessing()
+    }
+
+    private func selectGrayscaleConversion(_ conversion: GrayscaleConversion) {
+        guard conversion != grayscaleConversionSelection else { return }
+        state.valueConfig.grayscaleConversion = conversion
+
+        let targetMode: RefPlaneMode
+        if conversion == .none {
+            targetMode = usesQuantization ? .color : .original
+        } else {
+            targetMode = usesQuantization ? .value : .tonal
+        }
+
+        if targetMode == state.activeMode {
+            state.scheduleProcessing()
+        } else {
+            state.setMode(targetMode)
+        }
     }
 }
 
@@ -382,7 +413,8 @@ private struct ControlPanelPreviewHarness: View {
 
     var body: some View {
         ControlPanelView(
-            presentation: .sidebar
+            presentation: .sidebar,
+            onExport: {}
         )
         .environment(state)
         .frame(width: 392, height: 860)

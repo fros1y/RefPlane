@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var presentedSheet: StudioSheet?
     @State private var exportItem: ExportItem?
     @State private var exportDocument: ExportImageDocument?
+    @State private var exportContentType: UTType = .png
     @State private var showExportFileExporter = false
     @State private var isInspectorCollapsed = true
     @State private var didSetInitialInspectorState = false
@@ -35,12 +36,14 @@ struct ContentView: View {
         .environment(state)
         .sheet(item: $presentedSheet, content: presentedSheetView)
         .sheet(item: $exportItem) { item in
-            ShareSheet(items: [item.image])
+            ShareSheet(items: [item.fileURL]) {
+                removeTemporaryExport(at: item.fileURL)
+            }
         }
         .fileExporter(
             isPresented: $showExportFileExporter,
             document: exportDocument,
-            contentType: .png,
+            contentType: exportContentType,
             defaultFilename: exportFilename,
             onCompletion: handleExportCompletion
         )
@@ -82,6 +85,7 @@ struct ContentView: View {
 
                     ControlPanelView(
                         presentation: .sidebar,
+                        onExport: exportImage,
                         onClose: collapseInspector
                     )
                     .frame(width: 392)
@@ -103,10 +107,11 @@ struct ContentView: View {
             } else {
                 ControlPanelView(
                     presentation: .bottomPanel,
+                    onExport: exportImage,
                     onClose: collapseInspector
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: min(maxHeight * 0.72, 560))
+                .frame(height: min(maxHeight * 0.8, 700))
                 .clipShape(.rect(topLeadingRadius: 32, topTrailingRadius: 32))
                 .overlay(alignment: .top) {
                     drawerDragHandle
@@ -249,7 +254,11 @@ struct ContentView: View {
     }
 
     private func loadImage(_ image: UIImage) {
-        state.loadImage(image)
+        loadImage(ImportedImagePayload(image: image))
+    }
+
+    private func loadImage(_ payload: ImportedImagePayload) {
+        state.loadImage(payload)
 
         if currentWorkspaceLayout == .sidebar {
             isInspectorCollapsed = false
@@ -257,13 +266,41 @@ struct ContentView: View {
     }
 
     private func exportImage() {
-        guard let image = state.exportCurrentImage() else { return }
+        guard let exportPayload = state.exportCurrentImagePayload() else { return }
+        exportContentType = exportPayload.contentType
 
         if prefersDesktopFileExport {
-            exportDocument = ExportImageDocument(image: image)
+            exportDocument = ExportImageDocument(imageData: exportPayload.imageData)
             showExportFileExporter = true
         } else {
-            exportItem = ExportItem(image: image)
+            do {
+                exportItem = ExportItem(fileURL: try writeTemporaryExport(exportPayload))
+            } catch {
+                state.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func writeTemporaryExport(_ payload: ExportedImagePayload) throws -> URL {
+        let fileExtension = payload.contentType.preferredFilenameExtension ?? "png"
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RefPlaneExports", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+
+        let fileURL = directory
+            .appendingPathComponent("\(exportFilename)-\(UUID().uuidString)")
+            .appendingPathExtension(fileExtension)
+        try payload.imageData.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
+    private func removeTemporaryExport(at fileURL: URL) {
+        try? FileManager.default.removeItem(at: fileURL)
+        if exportItem?.fileURL == fileURL {
+            exportItem = nil
         }
     }
 
@@ -272,6 +309,7 @@ struct ContentView: View {
             state.errorMessage = error.localizedDescription
         }
         exportDocument = nil
+        exportContentType = .png
     }
 
     private var exportFilename: String {
@@ -545,16 +583,16 @@ private struct StudioModeDock: View {
 
 private struct ExportItem: Identifiable {
     let id = UUID()
-    let image: UIImage
+    let fileURL: URL
 }
 
 private struct ExportImageDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.png] }
+    static var readableContentTypes: [UTType] { [.png, .jpeg, .heic, .heif, .tiff] }
 
     let imageData: Data
 
-    init(image: UIImage) {
-        self.imageData = image.pngData() ?? Data()
+    init(imageData: Data) {
+        self.imageData = imageData
     }
 
     init(configuration: ReadConfiguration) throws {

@@ -12,7 +12,10 @@ struct ValueSettingsView: View {
                     set: { newVal in
                         let level = Int(newVal.rounded())
                         state.valueConfig.levels = level
-                        state.valueConfig.thresholds = state.valueConfig.distribution.thresholds(for: level)
+                        state.valueConfig.thresholds = QuantizationBias.thresholds(
+                            for: level,
+                            bias: state.valueConfig.quantizationBias
+                        )
                     }
                 ),
                 range: 2...16,
@@ -25,20 +28,27 @@ struct ValueSettingsView: View {
                 }
             )
 
-            Picker("Bias", selection: Binding(
-                get: { state.valueConfig.distribution },
-                set: { newDist in
-                    state.valueConfig.distribution = newDist
-                    if newDist != .custom {
-                        state.valueConfig.thresholds = newDist.thresholds(for: state.valueConfig.levels)
+            QuantizationBiasSlider(
+                value: Binding(
+                    get: { state.valueConfig.quantizationBias },
+                    set: { newBias in
+                        let clampedBias = QuantizationBias.clamped(newBias)
+                        state.valueConfig.quantizationBias = clampedBias
+                        state.valueConfig.distribution = QuantizationBias.distribution(
+                            for: clampedBias
+                        )
+                        state.valueConfig.thresholds = QuantizationBias.thresholds(
+                            for: state.valueConfig.levels,
+                            bias: clampedBias
+                        )
+                    }
+                ),
+                onEditingChanged: { editing in
+                    if !editing {
                         state.scheduleProcessing()
                     }
                 }
-            )) {
-                ForEach(ThresholdDistribution.allCases) { dist in
-                    Text(dist.rawValue).tag(dist)
-                }
-            }
+            )
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Bands")

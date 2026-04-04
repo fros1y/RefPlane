@@ -17,6 +17,30 @@ struct ImageCanvasView: View {
         state.currentDisplayImage
     }
 
+    private var focusedBandSummary: CanvasBandSummary? {
+        guard (state.activeMode == .value || state.activeMode == .color),
+              let isolatedBand = state.isolatedBand,
+              let paletteIndex = state.paletteBands.firstIndex(of: isolatedBand),
+              state.paletteColors.indices.contains(paletteIndex)
+        else {
+            return nil
+        }
+
+        let recipe = state.pigmentRecipes.flatMap { recipes in
+            recipes.indices.contains(paletteIndex) ? recipes[paletteIndex] : nil
+        }
+        let title = recipe?.components.max(by: {
+            $0.concentration < $1.concentration
+        })?.pigmentName ?? "Swatch"
+
+        return CanvasBandSummary(
+            band: isolatedBand,
+            title: title,
+            color: state.paletteColors[paletteIndex],
+            recipe: recipe
+        )
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack {
@@ -45,6 +69,17 @@ struct ImageCanvasView: View {
                 if state.isProcessing {
                     processingOverlay
                 }
+
+                if let focusedBandSummary {
+                    CanvasBandSummaryCard(
+                        summary: focusedBandSummary,
+                        onClose: clearFocusedBand
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 90)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
         }
         .environment(\.colorScheme, .dark)
@@ -68,8 +103,19 @@ struct ImageCanvasView: View {
                 && state.depthConfig.enabled
                 && !state.isEditingDepthThreshold
         )
+        .contentShape(Rectangle())
         .scaleEffect(combinedScale)
         .offset(combinedOffset)
+        .highPriorityGesture(
+            SpatialTapGesture()
+                .onEnded { value in
+                    selectBand(
+                        at: value.location,
+                        image: image,
+                        containerSize: containerSize
+                    )
+                }
+        )
         .gesture(
             MagnificationGesture()
                 .updating($gestureScale) { value, gestureState, _ in
@@ -204,12 +250,156 @@ struct ImageCanvasView: View {
         }
     }
 
+    private func selectBand(
+        at location: CGPoint,
+        image: UIImage,
+        containerSize: CGSize
+    ) {
+        guard state.activeMode == .value || state.activeMode == .color else {
+            return
+        }
+
+        let imageRect = transformedImageRect(
+            for: image,
+            in: containerSize,
+            scale: currentScale,
+            offset: currentOffset
+        )
+        guard imageRect.width > 0, imageRect.height > 0,
+              imageRect.contains(location)
+        else {
+            state.clearIsolatedBandSelection()
+            return
+        }
+
+        let normalizedPoint = CGPoint(
+            x: (location.x - imageRect.minX) / imageRect.width,
+            y: (location.y - imageRect.minY) / imageRect.height
+        )
+        state.toggleIsolatedBand(atNormalizedPoint: normalizedPoint)
+    }
+
+    private func transformedImageRect(
+        for image: UIImage,
+        in containerSize: CGSize,
+        scale: CGFloat,
+        offset: CGSize
+    ) -> CGRect {
+        let fittedRect = fittedImageRect(for: image, in: containerSize)
+        let scaledWidth = fittedRect.width * scale
+        let scaledHeight = fittedRect.height * scale
+
+        return CGRect(
+            x: fittedRect.midX - scaledWidth / 2 + offset.width,
+            y: fittedRect.midY - scaledHeight / 2 + offset.height,
+            width: scaledWidth,
+            height: scaledHeight
+        )
+    }
+
+    private func fittedImageRect(
+        for image: UIImage,
+        in containerSize: CGSize
+    ) -> CGRect {
+        guard containerSize.width > 0,
+              containerSize.height > 0,
+              image.size.width > 0,
+              image.size.height > 0
+        else {
+            return .zero
+        }
+
+        let imageAspect = image.size.width / image.size.height
+        let containerAspect = containerSize.width / containerSize.height
+        let fittedSize: CGSize
+
+        if imageAspect > containerAspect {
+            fittedSize = CGSize(
+                width: containerSize.width,
+                height: containerSize.width / imageAspect
+            )
+        } else {
+            fittedSize = CGSize(
+                width: containerSize.height * imageAspect,
+                height: containerSize.height
+            )
+        }
+
+        return CGRect(
+            x: (containerSize.width - fittedSize.width) / 2,
+            y: (containerSize.height - fittedSize.height) / 2,
+            width: fittedSize.width,
+            height: fittedSize.height
+        )
+    }
+
+    private func clearFocusedBand() {
+        state.clearIsolatedBandSelection()
+    }
+
     private func openPhotoPicker() {
         showImagePicker = true
     }
 
     private func openSamplePicker() {
         showSamplePicker = true
+    }
+}
+
+private struct CanvasBandSummary {
+    let band: Int
+    let title: String
+    let color: Color
+    let recipe: PigmentRecipe?
+}
+
+private struct CanvasBandSummaryCard: View {
+    let summary: CanvasBandSummary
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(summary.color)
+                    .frame(width: 44, height: 36)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+                    }
+
+                Text(summary.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .frame(width: 28, height: 28)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide swatch")
+            }
+
+            if let recipe = summary.recipe {
+                RecipeView(recipe: recipe)
+                    .foregroundStyle(.white)
+            }
+        }
+        .padding(14)
+        .frame(width: 260, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("canvas.band-callout")
     }
 }
 

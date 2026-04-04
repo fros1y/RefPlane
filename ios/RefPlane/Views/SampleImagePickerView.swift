@@ -47,7 +47,7 @@ private let sampleImages: [SampleItem] = [
 ]
 
 struct SampleImagePickerView: View {
-    let onImageSelected: (UIImage) -> Void
+    let onImageSelected: (ImportedImagePayload) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var failedSample: SampleItem?
 
@@ -63,7 +63,7 @@ struct SampleImagePickerView: View {
                     ForEach(sampleImages) { sample in
                         SampleThumbnailButton(sample: sample) {
                             if let image = UIImage(named: sample.assetName) {
-                                onImageSelected(image)
+                                onImageSelected(ImportedImagePayload(image: image))
                                 dismiss()
                             } else {
                                 failedSample = sample

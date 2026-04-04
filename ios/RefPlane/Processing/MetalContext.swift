@@ -18,7 +18,7 @@ final class MetalContext {
         if ctx == nil {
             print("[MetalContext] ⚠️ MetalContext init failed (library or pipeline error)")
         } else {
-            print("[MetalContext] ✅ All 16 compute pipelines compiled successfully")
+            print("[MetalContext] ✅ All 15 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -43,7 +43,6 @@ final class MetalContext {
     let depthGaussianBlurHPipeline: MTLComputePipelineState
     let depthGaussianBlurVPipeline: MTLComputePipelineState
     let depthRemoveBackgroundPipeline: MTLComputePipelineState
-    let depthThresholdPreviewPipeline: MTLComputePipelineState
 
     private init?(device: MTLDevice) {
         self.device = device
@@ -68,7 +67,6 @@ final class MetalContext {
             depthGaussianBlurHPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_h")
             depthGaussianBlurVPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_v")
             depthRemoveBackgroundPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_remove_background")
-            depthThresholdPreviewPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_threshold_preview")
         } catch {
             print("[MetalContext] Pipeline creation failed: \(error)")
             return nil
@@ -510,7 +508,7 @@ final class MetalContext {
         var params = DepthEffectParamsSwift(
             width: UInt32(width),
             height: UInt32(height),
-            foregroundCutoff: 0,
+            foregroundCutoff: Float(config.foregroundCutoff),
             backgroundCutoff: Float(config.backgroundCutoff),
             intensity: Float(config.effectIntensity),
             backgroundMode: UInt32(backgroundModeRaw(config.backgroundMode))
@@ -628,74 +626,23 @@ final class MetalContext {
         }
     }
 
-    // MARK: - Depth threshold preview (GPU)
-
-    /// Generate a zone-colored depth preview: orange=foreground, gray=midground, blue=background.
-    /// Uses a cached depth texture for speed during interactive slider drags.
-    func depthThresholdPreview(depthTexture: MTLTexture, foregroundCutoff: Float, backgroundCutoff: Float) -> UIImage? {
-        let width = depthTexture.width
-        let height = depthTexture.height
-        guard width > 0, height > 0 else { return nil }
-
-        let rgbaDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm,
-            width: width, height: height,
-            mipmapped: false
-        )
-        rgbaDesc.usage = [.shaderWrite]
-        rgbaDesc.storageMode = .shared
-
-        guard let dstTex = device.makeTexture(descriptor: rgbaDesc) else { return nil }
-
-        var params = DepthEffectParamsSwift(
-            width: UInt32(width),
-            height: UInt32(height),
-            foregroundCutoff: foregroundCutoff,
-            backgroundCutoff: backgroundCutoff,
-            intensity: 0,
-            backgroundMode: 0
-        )
-        guard let paramBuf = device.makeBuffer(
-            bytes: &params,
-            length: MemoryLayout<DepthEffectParamsSwift>.stride,
-            options: .storageModeShared
-        ) else { return nil }
-
-        let tgs = MTLSize(width: 8, height: 8, depth: 1)
-        let grd = MTLSize(
-            width:  (width  + 7) / 8,
-            height: (height + 7) / 8,
-            depth:  1
-        )
-
-        guard let cmdBuf = commandQueue.makeCommandBuffer() else { return nil }
-
-        if let encoder = cmdBuf.makeComputeCommandEncoder() {
-            encoder.setComputePipelineState(depthThresholdPreviewPipeline)
-            encoder.setTexture(depthTexture, index: 0)
-            encoder.setTexture(dstTex, index: 1)
-            encoder.setBuffer(paramBuf, offset: 0, index: 0)
-            encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
-            encoder.endEncoding()
-        }
-
-        cmdBuf.commit()
-        cmdBuf.waitUntilCompleted()
-        return uiImageFromTexture(dstTex, width: width, height: height)
-    }
-
-    /// Create a depth texture from a grayscale UIImage for caching across preview updates.
-    func makeDepthTexture(from depthImage: UIImage) -> MTLTexture? {
-        guard let cg = depthImage.cgImage else { return nil }
-        return makeGrayscaleTexture(cg, width: cg.width, height: cg.height)
-    }
-
     private func backgroundModeRaw(_ mode: BackgroundMode) -> Int {
         switch mode {
         case .depthEffects: return 0
         case .blur:         return 1
         case .remove:       return 2
         }
+    }
+
+    func makeDepthTexture(from depthMap: UIImage) -> MTLTexture? {
+        guard let cgImage = depthMap.cgImage else {
+            return nil
+        }
+        return makeGrayscaleTexture(
+            cgImage,
+            width: cgImage.width,
+            height: cgImage.height
+        )
     }
 
     /// Create a single-channel (R8Unorm) texture from a grayscale CGImage,
