@@ -14,7 +14,6 @@ struct ControlPanelView: View {
     var onClose: (() -> Void)? = nil
 
     @State private var abstractionStrengthAtDragStart: Double? = nil
-    @State private var postSimplificationStrengthAtDragStart: Double? = nil
     @State private var savePresetPromptPresented = false
     @State private var renamePresetPromptPresented = false
     @State private var deletePresetPromptPresented = false
@@ -36,7 +35,6 @@ struct ControlPanelView: View {
                     tonalSection
                     quantizationSection
                     paletteSection
-                    postSimplificationSection
                     overlaysSection
                 }
                 .padding(.horizontal, 20)
@@ -311,29 +309,6 @@ struct ControlPanelView: View {
         }
     }
 
-    private var postSimplificationSection: some View {
-        StudioPanelCard(
-            title: "Post-Simplify",
-            systemImage: "wand.and.rays",
-            accessibilityID: "studio.card.post-simplify"
-        ) {
-            LabeledSlider(
-                label: "Kuwahara",
-                value: Binding(
-                    get: { state.postSimplificationStrength },
-                    set: { state.postSimplificationStrength = $0 }
-                ),
-                range: 0...1,
-                step: 0.0625,
-                displayFormat: { value in
-                    guard value > 0 else { return "Off" }
-                    return "R\(Int((value * 16).rounded()))"
-                },
-                onEditingChanged: handlePostSimplificationDrag
-            )
-        }
-    }
-
     private var usesTonalRendering: Bool {
         state.activeMode == .tonal || state.activeMode == .value
     }
@@ -477,20 +452,6 @@ struct ControlPanelView: View {
             state.applyAbstraction()
         } else {
             state.applyKuwahara()
-        }
-    }
-
-    private func handlePostSimplificationDrag(_ editing: Bool) {
-        if editing {
-            postSimplificationStrengthAtDragStart = state.postSimplificationStrength
-            return
-        }
-
-        let didChange = postSimplificationStrengthAtDragStart.map { $0 != state.postSimplificationStrength } ?? false
-        postSimplificationStrengthAtDragStart = nil
-
-        if didChange {
-            state.applyPostSimplification()
         }
     }
 
