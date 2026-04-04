@@ -59,8 +59,8 @@ struct GridConfig {
 
 enum ThresholdDistribution: String, CaseIterable, Identifiable {
     case even     = "Even"
-    case shadows  = "Compress Darks"
-    case lights   = "Compress Lights"
+    case shadows  = "Shadow Detail"
+    case lights   = "Light Detail"
     case custom   = "Custom"
 
     var id: String { rawValue }
@@ -71,9 +71,9 @@ enum ThresholdDistribution: String, CaseIterable, Identifiable {
         case .even:
             return QuantizationBias.thresholds(for: levels, bias: 0)
         case .shadows:
-            return QuantizationBias.thresholds(for: levels, bias: -1)
-        case .lights:
             return QuantizationBias.thresholds(for: levels, bias: 1)
+        case .lights:
+            return QuantizationBias.thresholds(for: levels, bias: -1)
         case .custom:
             // Custom returns even as a starting point; user adjusts manually.
             return QuantizationBias.thresholds(for: levels, bias: 0)
@@ -203,10 +203,9 @@ enum QuantizationBias {
             return "Even"
         }
 
-        let percentage = Int((abs(clampedBias) * 100).rounded())
         return clampedBias < 0
-            ? "Darks \(percentage)%"
-            : "Lights \(percentage)%"
+            ? "Light Detail"
+            : "Shadow Detail"
     }
 
     static func luminanceExponent(for bias: Double) -> Float {
@@ -226,7 +225,7 @@ enum QuantizationBias {
         if abs(clampedBias) < 0.04 {
             return .even
         }
-        return clampedBias < 0 ? .shadows : .lights
+        return clampedBias < 0 ? .lights : .shadows
     }
 
     static func clamped(_ bias: Double) -> Double {

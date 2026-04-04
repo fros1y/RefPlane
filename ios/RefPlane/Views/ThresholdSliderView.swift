@@ -360,11 +360,11 @@ struct QuantizationBiasSlider: View {
             }
 
             HStack {
-                Text("Darks")
+                Text("Light Detail")
                 Spacer()
                 Text("Even")
                 Spacer()
-                Text("Lights")
+                Text("Shadow Detail")
             }
             .font(.caption2)
             .foregroundStyle(.secondary)

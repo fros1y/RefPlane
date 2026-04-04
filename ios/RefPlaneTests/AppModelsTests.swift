@@ -67,3 +67,31 @@ func minRegionSizeFactorMapping() {
     #expect(MinRegionSize.medium.factor == 0.005)
     #expect(MinRegionSize.large.factor  == 0.01)
 }
+
+// MARK: - QuantizationBias
+
+@Test
+func quantizationBiasDirectionMatchesLightAndShadowLabels() {
+    let even = QuantizationBias.thresholds(for: 5, bias: 0)
+    let lightDetail = QuantizationBias.thresholds(for: 5, bias: -1)
+    let shadowDetail = QuantizationBias.thresholds(for: 5, bias: 1)
+
+    #expect(lightDetail.count == even.count)
+    #expect(shadowDetail.count == even.count)
+
+    for index in even.indices {
+        #expect(lightDetail[index] > even[index])
+        #expect(shadowDetail[index] < even[index])
+    }
+
+    #expect(QuantizationBias.distribution(for: -1) == .lights)
+    #expect(QuantizationBias.distribution(for: 0) == .even)
+    #expect(QuantizationBias.distribution(for: 1) == .shadows)
+}
+
+@Test
+func quantizationBiasDisplayNamesAreQualitative() {
+    #expect(QuantizationBias.displayName(for: -0.5) == "Light Detail")
+    #expect(QuantizationBias.displayName(for: 0) == "Even")
+    #expect(QuantizationBias.displayName(for: 0.5) == "Shadow Detail")
+}
