@@ -289,6 +289,8 @@ class AppState {
 
     // Depth results
     var depthMap: UIImage? = nil
+    var embeddedDepthMap: UIImage? = nil
+    var depthSource: DepthSource? = nil
     var depthProcessedImage: UIImage? = nil
     /// Actual min/max depth values found in the current depth map (0–1 scale).
     var depthRange: ClosedRange<Double> = 0...1
@@ -531,6 +533,8 @@ class AppState {
         processedImage            = nil
         isolatedProcessedImage    = nil
         depthMap                  = nil
+        embeddedDepthMap          = payload.embeddedDepthMap
+        depthSource               = nil
         depthProcessedImage       = nil
         depthThresholdPreview     = nil
         cachedDepthTexture        = nil
@@ -1694,6 +1698,7 @@ class AppState {
 
     func computeDepthMap() {
         depthTask?.cancel()
+        depthTask = nil
 
         guard let source = displayBaseImage else {
             depthProcessedImage = nil
@@ -1707,6 +1712,23 @@ class AppState {
 
         depthGeneration += 1
         let generation = depthGeneration
+
+        if let embedded = embeddedDepthMap {
+            let resized = DepthEstimator.resize(embedded, toMatch: source)
+            let range = DepthEstimator.depthRange(from: resized)
+            let isFirstCompute = depthMap == nil
+            depthMap = resized
+            depthRange = range
+            depthSource = .embedded
+            if isFirstCompute {
+                let span = range.upperBound - range.lowerBound
+                depthConfig.foregroundCutoff = range.lowerBound + span / 3.0
+                depthConfig.backgroundCutoff = range.lowerBound + span * 2.0 / 3.0
+            }
+            applyDepthEffects()
+            recomputeContours()
+            return
+        }
 
         isProcessing = true
         processingLabel = "Estimating depth…"
@@ -1724,6 +1746,7 @@ class AppState {
                     let isFirstCompute = self.depthMap == nil
                     self.depthMap = result
                     self.depthRange = range
+                    self.depthSource = .estimated
                     // Only set default cutoff on the first depth compute;
                     // subsequent re-computes (e.g. after simplification changes)
                     // preserve the user’s chosen value.

@@ -292,6 +292,11 @@ struct ContourConfig {
     var opacity: Double      = 0.7
 }
 
+enum DepthSource {
+    case embedded
+    case estimated
+}
+
 // MARK: - Image import/export payloads
 
 struct SourceImageMetadata {
@@ -304,10 +309,16 @@ struct SourceImageMetadata {
 struct ImportedImagePayload {
     var image: UIImage
     var metadata: SourceImageMetadata
+    var embeddedDepthMap: UIImage?
 
-    init(image: UIImage, metadata: SourceImageMetadata = .empty) {
+    init(
+        image: UIImage,
+        metadata: SourceImageMetadata = .empty,
+        embeddedDepthMap: UIImage? = nil
+    ) {
         self.image = image
         self.metadata = metadata
+        self.embeddedDepthMap = embeddedDepthMap
     }
 }
 

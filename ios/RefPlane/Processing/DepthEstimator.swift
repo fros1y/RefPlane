@@ -1,6 +1,8 @@
 import UIKit
 import CoreML
 import CoreImage
+import ImageIO
+import AVFoundation
 
 // MARK: - Depth map generation via Depth Anything V2 (CoreML)
 
@@ -99,6 +101,53 @@ enum DepthEstimator {
         return minValue...maxValue
     }
 
+    // MARK: - Embedded depth extraction
+
+    /// Extract an embedded depth or disparity map from raw image data.
+    /// Returns nil when the image carries no auxiliary depth payload.
+    static func extractEmbeddedDepth(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return nil
+        }
+
+        let auxiliaryTypes: [(type: CFString, shouldInvert: Bool, pixelFormat: OSType)] = [
+            (kCGImageAuxiliaryDataTypeDisparity, true, kCVPixelFormatType_DisparityFloat32),
+            (kCGImageAuxiliaryDataTypeDepth, false, kCVPixelFormatType_DepthFloat32)
+        ]
+
+        for auxiliaryType in auxiliaryTypes {
+            guard
+                let info = CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, auxiliaryType.type) as? [AnyHashable: Any],
+                let depthData = try? AVDepthData(fromDictionaryRepresentation: info)
+            else {
+                continue
+            }
+
+            let converted = depthData.converting(toDepthDataType: auxiliaryType.pixelFormat)
+            let pixelBuffer = converted.depthDataMap
+            guard let cgImage = try? cgImageFromGrayscaleBuffer(pixelBuffer, invert: auxiliaryType.shouldInvert) else {
+                continue
+            }
+
+            let width = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+            let resized = resizeGrayscale(cgImage, toWidth: width, height: height)
+            return UIImage(cgImage: resized)
+        }
+
+        return nil
+    }
+
+    static func resize(_ depthMap: UIImage, toMatch source: UIImage) -> UIImage {
+        guard let cgImage = depthMap.cgImage else {
+            return depthMap
+        }
+
+        let width = source.cgImage?.width ?? max(Int((source.size.width * source.scale).rounded()), 1)
+        let height = source.cgImage?.height ?? max(Int((source.size.height * source.scale).rounded()), 1)
+        return UIImage(cgImage: resizeGrayscale(cgImage, toWidth: width, height: height))
+    }
+
     // MARK: - Model loading
 
     private static func loadModel() async throws -> MLModel {
@@ -169,11 +218,11 @@ enum DepthEstimator {
     /// Extract a CGImage from a grayscale (or single-channel float16) CVPixelBuffer.
     /// The model outputs disparity (bright = near), so we invert to match the
     /// pipeline convention (0 = near, 1 = far).
-    private static func cgImageFromGrayscaleBuffer(_ buffer: CVPixelBuffer) throws -> CGImage {
+    private static func cgImageFromGrayscaleBuffer(_ buffer: CVPixelBuffer, invert: Bool = true) throws -> CGImage {
         var ciImage = CIImage(cvPixelBuffer: buffer)
-        if let invert = CIFilter(name: "CIColorInvert") {
-            invert.setValue(ciImage, forKey: kCIInputImageKey)
-            if let inverted = invert.outputImage {
+        if invert, let invertFilter = CIFilter(name: "CIColorInvert") {
+            invertFilter.setValue(ciImage, forKey: kCIInputImageKey)
+            if let inverted = invertFilter.outputImage {
                 ciImage = inverted
             }
         }

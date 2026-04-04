@@ -491,6 +491,51 @@ func isSimplifyingIsFalseAfterResetAbstraction() {
     #expect(state.isSimplifying == false)
 }
 
+@MainActor
+@Test
+func computeDepthMapUsesEmbeddedDepthAndSkipsML() async throws {
+    var mlWasCalled = false
+    let state = AppState(depthMapOperation: { _ in
+        mlWasCalled = true
+        throw DepthEstimatorError.modelUnavailable
+    })
+
+    let baseImage = TestImageFactory.makeSolid(width: 100, height: 100, color: .gray)
+    let fakeDepth = TestImageFactory.makeHorizontalDepthRamp(width: 50, height: 50)
+
+    state.loadImage(ImportedImagePayload(image: baseImage, embeddedDepthMap: fakeDepth))
+    state.depthConfig.enabled = true
+    state.computeDepthMap()
+
+    try await Task.sleep(for: .milliseconds(200))
+
+    #expect(mlWasCalled == false)
+    #expect(state.depthSource == .embedded)
+    #expect(state.depthMap != nil)
+    #expect(state.depthMap?.cgImage?.width == 100)
+    #expect(state.depthMap?.cgImage?.height == 100)
+}
+
+@MainActor
+@Test
+func loadImageClearsDepthSourceAndEmbeddedMap() {
+    let state = AppState()
+    let fakeDepth = TestImageFactory.makeHorizontalDepthRamp(width: 50, height: 50)
+
+    state.loadImage(
+        ImportedImagePayload(
+            image: TestImageFactory.makeSolid(width: 100, height: 100, color: .gray),
+            embeddedDepthMap: fakeDepth
+        )
+    )
+    state.depthSource = .embedded
+
+    state.loadImage(TestImageFactory.makeSolid(width: 100, height: 100, color: .red))
+
+    #expect(state.embeddedDepthMap == nil)
+    #expect(state.depthSource == nil)
+}
+
 // MARK: -
 
 private actor AbstractionOperationProbe {

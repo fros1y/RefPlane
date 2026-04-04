@@ -58,6 +58,12 @@ struct DepthSettingsView: View {
                     }
                 )
             }
+
+            if let source = state.depthSource {
+                Text(source == .embedded ? "Using photo depth" : "Using estimated depth")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .accessibilityIdentifier("studio.depth-settings")
     }

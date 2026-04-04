@@ -31,6 +31,7 @@
 		0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */; };
 		0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */; };
 		0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */; };
+		0A11B22C33D44E55F6677120 /* DepthEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677121 /* DepthEstimatorTests.swift */; };
 		0A11B22C33D44E55F6677201 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677202 /* XCTest.framework */; };
 		18900E3DD6FA4EBFB2BCC1A3 /* ImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */; };
 		240039E8209342798ACFEEFF /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A5CCCFD76564CEA842044F7 /* AppModels.swift */; };
@@ -117,6 +118,7 @@
 		0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KMeansClustererTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrayscaleProcessorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValueStudyProcessorTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677121 /* DepthEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthEstimatorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677202 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		0A11B22C33D44E55F6677401 /* RefPlaneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RefPlaneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		25800C7CC7D04D37A930959D /* GrayscaleProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GrayscaleProcessor.swift; path = Processing/GrayscaleProcessor.swift; sourceTree = "<group>"; };
@@ -210,6 +212,7 @@
 				0A11B22C33D44E55F6677115 /* AppModelsTests.swift */,
 				0A11B22C33D44E55F6677108 /* AppStateTests.swift */,
 				0A11B22C33D44E55F6677111 /* BandIsolationRendererTests.swift */,
+				0A11B22C33D44E55F6677121 /* DepthEstimatorTests.swift */,
 				0A11B22C33D44E55F667710A /* ExportContractTests.swift */,
 				0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */,
 				0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */,
@@ -448,6 +451,7 @@
 				0A11B22C33D44E55F6677114 /* AppModelsTests.swift in Sources */,
 				0A11B22C33D44E55F6677107 /* AppStateTests.swift in Sources */,
 				0A11B22C33D44E55F6677110 /* BandIsolationRendererTests.swift in Sources */,
+				0A11B22C33D44E55F6677120 /* DepthEstimatorTests.swift in Sources */,
 				0A11B22C33D44E55F6677109 /* ExportContractTests.swift in Sources */,
 				0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */,
 				0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */,
