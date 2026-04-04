@@ -7,7 +7,8 @@ struct PaywallView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            VStack(spacing: 0) {
+                Spacer()
                 VStack(spacing: 28) {
                     heroSection
                     featureList
@@ -15,8 +16,7 @@ struct PaywallView: View {
                     footerLinks
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 20)
-                .padding(.bottom, 40)
+                Spacer()
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Unlock Underpaint")
@@ -62,9 +62,6 @@ struct PaywallView: View {
     private var featureList: some View {
         VStack(alignment: .leading, spacing: 16) {
             featureRow(icon: "photo.on.rectangle", text: "Load any photo from your library")
-            featureRow(icon: "circle.lefthalf.filled", text: "Tonal, Value, and Color studies")
-            featureRow(icon: "paintbrush.pointed", text: "Kubelka-Munk pigment recipes")
-            featureRow(icon: "square.and.arrow.up", text: "Full-resolution export")
             featureRow(icon: "person.2", text: "Supports Family Sharing")
         }
         .padding(20)
