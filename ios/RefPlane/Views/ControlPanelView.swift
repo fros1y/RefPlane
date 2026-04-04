@@ -42,11 +42,11 @@ struct ControlPanelView: View {
     private var headerView: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Processing Pipeline")
+                Text("Pipeline")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.primary)
 
-                Text("Apply each stage from top to bottom so the study stays predictable and easy to revise.")
+                Text("Edit top to bottom.")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -73,8 +73,7 @@ struct ControlPanelView: View {
 
     private var backgroundSection: some View {
         StudioPanelCard(
-            title: "1. Process Background",
-            subtitle: "Separate the subject from the background before simplifying or quantizing the image.",
+            title: "Process Background",
             systemImage: "camera.aperture",
             accessibilityID: "studio.card.background"
         ) {
@@ -84,8 +83,7 @@ struct ControlPanelView: View {
 
     private var simplificationSection: some View {
         StudioPanelCard(
-            title: "2. Simplify",
-            subtitle: "Reduce small texture and noise so the dominant shapes and edges read first.",
+            title: "Simplify",
             systemImage: "wand.and.stars",
             accessibilityID: "studio.card.simplify"
         ) {
@@ -95,8 +93,7 @@ struct ControlPanelView: View {
 
     private var tonalSection: some View {
         StudioPanelCard(
-            title: "3. Grayscale",
-            subtitle: "Choose whether the study keeps hue/chroma or collapses to tonal grayscale first.",
+            title: "Grayscale",
             systemImage: "circle.lefthalf.filled",
             accessibilityID: "studio.card.tonal"
         ) {
@@ -114,13 +111,12 @@ struct ControlPanelView: View {
 
     private var quantizationSection: some View {
         StudioPanelCard(
-            title: "4. Quantize",
-            subtitle: "Limit the image to a small number of values or colors, and choose how bands are distributed.",
+            title: "Quantize",
             systemImage: "square.stack.3d.up",
             accessibilityID: "studio.card.quantize"
         ) {
             VStack(spacing: 14) {
-                Toggle("Limit Palette", isOn: Binding(
+                Toggle(usesTonalRendering ? "Limit Values" : "Limit Colors", isOn: Binding(
                     get: { usesQuantization },
                     set: { setUsesQuantization($0) }
                 ))
@@ -133,9 +129,7 @@ struct ControlPanelView: View {
                         ColorQuantizationSettingsView()
                     }
                 } else {
-                    Text(usesTonalRendering
-                        ? "Quantization is off, so the canvas shows a continuous grayscale conversion."
-                        : "Quantization is off, so the canvas keeps the simplified full-color image.")
+                    Text(usesTonalRendering ? "Continuous grayscale." : "Full color.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -146,20 +140,26 @@ struct ControlPanelView: View {
 
     private var paletteSection: some View {
         StudioPanelCard(
-            title: "5. Palette Approximation",
-            subtitle: "Use the quantized bands to derive swatches and, for color studies, mix recipes from the selected tubes.",
+            title: "Palette Selection",
             systemImage: "paintpalette",
             accessibilityID: "studio.card.palette"
         ) {
             VStack(spacing: 14) {
-                if usesQuantization && !usesTonalRendering {
-                    PaletteApproximationSettingsView()
-                    Divider().opacity(0.18)
-                    PaletteView()
-                } else if usesQuantization && usesTonalRendering {
+                Toggle("Use Pigments", isOn: Binding(
+                    get: { state.colorConfig.paletteSelectionEnabled },
+                    set: setPaletteSelectionEnabled
+                ))
+                .disabled(!usesQuantization)
+                .accessibilityIdentifier("studio.palette-selection-toggle")
+
+                if usesQuantization {
+                    if state.colorConfig.paletteSelectionEnabled {
+                        PaletteSelectionSettingsView()
+                        Divider().opacity(0.18)
+                    }
                     PaletteView()
                 } else {
-                    Text("Enable quantization first to generate a compact palette from the current image.")
+                    Text("Turn on Limit Colors or Limit Values.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -170,8 +170,7 @@ struct ControlPanelView: View {
 
     private var overlaysSection: some View {
         StudioPanelCard(
-            title: "6. Overlays",
-            subtitle: "Superimpose contour lines and/or a proportional grid over the current study.",
+            title: "Overlays",
             systemImage: "square.grid.3x3",
             accessibilityID: "studio.card.overlays"
         ) {
@@ -179,7 +178,7 @@ struct ControlPanelView: View {
                 if state.depthMap != nil {
                     ContourSettingsView()
                 } else {
-                    Text("Turn on background processing first to derive depth contours. The grid can be enabled independently.")
+                    Text("Contours need Process Background.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -297,6 +296,10 @@ struct ControlPanelView: View {
     }
 
     private func setUsesQuantization(_ newValue: Bool) {
+        if !newValue {
+            state.colorConfig.paletteSelectionEnabled = false
+        }
+
         let targetMode: RefPlaneMode
         if newValue {
             targetMode = usesTonalRendering ? .value : .color
@@ -305,24 +308,27 @@ struct ControlPanelView: View {
         }
         state.setMode(targetMode)
     }
+
+    private func setPaletteSelectionEnabled(_ enabled: Bool) {
+        guard state.colorConfig.paletteSelectionEnabled != enabled else { return }
+        state.colorConfig.paletteSelectionEnabled = enabled
+        state.scheduleProcessing()
+    }
 }
 
 private struct StudioPanelCard<Content: View>: View {
     let title: String
-    let subtitle: String
     let systemImage: String
     var accessibilityID: String? = nil
     private let content: Content
 
     init(
         title: String,
-        subtitle: String,
         systemImage: String,
         accessibilityID: String? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
-        self.subtitle = subtitle
         self.systemImage = systemImage
         self.accessibilityID = accessibilityID
         self.content = content()
@@ -337,15 +343,10 @@ private struct StudioPanelCard<Content: View>: View {
                     .frame(width: 34, height: 34)
                     .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-
-                    Text(subtitle)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)

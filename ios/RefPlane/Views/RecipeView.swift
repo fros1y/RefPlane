@@ -11,15 +11,6 @@ struct RecipeView: View {
                         .font(component.pigmentId == dominantPigmentID ? .footnote.weight(.semibold) : .footnote)
                         .foregroundStyle(component.pigmentId == dominantPigmentID ? .primary : .secondary)
 
-                    if component.pigmentId == dominantPigmentID {
-                        Text("Dominant")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.primary.opacity(0.06), in: Capsule())
-                    }
-
                     Spacer()
 
                     Text(partsLabel(for: component.concentration))

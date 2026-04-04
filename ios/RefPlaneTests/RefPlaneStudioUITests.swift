@@ -67,6 +67,18 @@ final class RefPlaneStudioUITests: XCTestCase {
         waitForProcessingToSettle()
         try captureScreenshot("04-value-study")
 
+        let paletteCard = app.otherElements["studio.card.palette"]
+        scrollInspector(to: paletteCard, direction: .down)
+        XCTAssertTrue(paletteCard.waitForExistence(timeout: 3))
+        setPaletteSelectionEnabled(true)
+        waitForProcessingToSettle(timeout: 14)
+        let firstValueMixCard = app.buttons.matching(identifier: "mix-card.0").firstMatch
+        if firstValueMixCard.waitForExistence(timeout: 8) {
+            scrollInspector(to: firstValueMixCard, direction: .down)
+            firstValueMixCard.tap()
+        }
+        try captureScreenshot("05-value-mixing")
+
         let showGridSwitch = app.switches["Show Grid"]
         scrollInspector(to: showGridSwitch, direction: .down)
         XCTAssertTrue(showGridSwitch.waitForExistence(timeout: 3))
@@ -74,17 +86,16 @@ final class RefPlaneStudioUITests: XCTestCase {
             tapSwitch(showGridSwitch)
             waitForSwitch(showGridSwitch, enabled: true)
         }
-        try captureScreenshot("05-grid-overlay")
+        try captureScreenshot("06-grid-overlay")
 
         app.buttons["chrome.compare"].tap()
         XCTAssertTrue(app.otherElements["compare.canvas"].waitForExistence(timeout: 3))
-        try captureScreenshot("06-compare-value")
+        try captureScreenshot("07-compare-value")
         app.buttons["chrome.compare"].tap()
 
         setGrayscaleRenderingEnabled(false)
         waitForProcessingToSettle(timeout: 14)
 
-        let paletteCard = app.otherElements["studio.card.palette"]
         scrollInspector(to: paletteCard, direction: .down)
         XCTAssertTrue(paletteCard.waitForExistence(timeout: 3))
         let firstMixCard = app.buttons.matching(identifier: "mix-card.0").firstMatch
@@ -92,7 +103,7 @@ final class RefPlaneStudioUITests: XCTestCase {
             scrollInspector(to: firstMixCard, direction: .down)
             firstMixCard.tap()
         }
-        try captureScreenshot("07-color-mixing")
+        try captureScreenshot("08-color-mixing")
 
         let contourSwitch = app.switches["Surface Contours"]
         scrollInspector(to: contourSwitch, direction: .down)
@@ -102,7 +113,7 @@ final class RefPlaneStudioUITests: XCTestCase {
             waitForSwitch(contourSwitch, enabled: true)
         }
         waitForProcessingToSettle(timeout: 14)
-        try captureScreenshot("08-depth-effects")
+        try captureScreenshot("09-depth-effects")
     }
 
     private func waitForProcessingToSettle(timeout: TimeInterval = 10) {
@@ -177,7 +188,17 @@ final class RefPlaneStudioUITests: XCTestCase {
     }
 
     private func setQuantizationEnabled(_ enabled: Bool) {
-        let toggle = app.switches["Limit Palette"]
+        let toggle = app.switches["studio.quantize-toggle"]
+        scrollInspector(to: toggle, direction: .down)
+        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
+        if toggle.value as? String != (enabled ? "1" : "0") {
+            tapSwitch(toggle)
+        }
+        waitForSwitch(toggle, enabled: enabled)
+    }
+
+    private func setPaletteSelectionEnabled(_ enabled: Bool) {
+        let toggle = app.switches["studio.palette-selection-toggle"]
         scrollInspector(to: toggle, direction: .down)
         XCTAssertTrue(toggle.waitForExistence(timeout: 3))
         if toggle.value as? String != (enabled ? "1" : "0") {

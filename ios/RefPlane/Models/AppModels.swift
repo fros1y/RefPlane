@@ -133,6 +133,7 @@ enum PigmentPreset: String, CaseIterable, Identifiable {
 }
 
 struct ColorConfig {
+    var paletteSelectionEnabled: Bool = false
     var numShades: Int         = 24
     var enabledPigmentIDs: Set<String> = {
         ColorConfig.loadEnabledPigmentIDs()

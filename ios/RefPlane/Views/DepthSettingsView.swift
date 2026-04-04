@@ -5,7 +5,7 @@ struct DepthSettingsView: View {
 
     var body: some View {
         Group {
-            Toggle("Process Background", isOn: Binding(
+            Toggle("On", isOn: Binding(
                 get: { state.depthConfig.enabled },
                 set: { newValue in
                     state.depthConfig.enabled = newValue
@@ -16,13 +16,14 @@ struct DepthSettingsView: View {
                     }
                 }
             ))
+            .accessibilityLabel("Process Background")
 
             if state.depthConfig.enabled {
                 let range = state.depthRange
                 let step = max(0.01, (range.upperBound - range.lowerBound) / 100.0)
 
                 LabeledSlider(
-                    label: "Background Split",
+                    label: "Split",
                     value: Binding(
                         get: { state.depthConfig.backgroundCutoff },
                         set: { newValue in
@@ -56,7 +57,7 @@ struct DepthSettingsView: View {
                 }
 
                 LabeledSlider(
-                    label: "Intensity",
+                    label: "Amount",
                     value: Binding(
                         get: { state.depthConfig.effectIntensity },
                         set: { state.depthConfig.effectIntensity = $0 }

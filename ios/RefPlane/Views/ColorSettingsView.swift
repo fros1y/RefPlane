@@ -6,7 +6,7 @@ struct ColorQuantizationSettingsView: View {
     var body: some View {
         VStack(spacing: 14) {
             LabeledSlider(
-                label: "Colors",
+                label: "Count",
                 value: Binding(
                     get: { Double(state.colorConfig.numShades) },
                     set: { state.colorConfig.numShades = Int($0.rounded()) }
@@ -21,7 +21,7 @@ struct ColorQuantizationSettingsView: View {
                 }
             )
 
-            Picker("Band Bias", selection: Binding(
+            Picker("Bias", selection: Binding(
                 get: { state.colorConfig.quantizationBias },
                 set: { newBias in
                     state.colorConfig.quantizationBias = newBias
@@ -35,7 +35,7 @@ struct ColorQuantizationSettingsView: View {
             .pickerStyle(.segmented)
 
             LabeledSlider(
-                label: "Group By",
+                label: "Group",
                 value: Binding(
                     get: { state.colorConfig.paletteSpread },
                     set: { state.colorConfig.paletteSpread = $0 }
@@ -57,7 +57,7 @@ struct ColorQuantizationSettingsView: View {
     }
 }
 
-struct PaletteApproximationSettingsView: View {
+struct PaletteSelectionSettingsView: View {
     @Environment(AppState.self) private var state
     @State private var pigmentListExpanded: Bool = false
 
@@ -114,7 +114,7 @@ struct PaletteApproximationSettingsView: View {
             .accessibilityIdentifier("studio.palette-tubes")
 
             LabeledSlider(
-                label: "Max Pigments",
+                label: "Mix Size",
                 value: Binding(
                     get: { Double(state.colorConfig.maxPigmentsPerMix) },
                     set: { state.colorConfig.maxPigmentsPerMix = Int($0.rounded()) }
@@ -175,7 +175,7 @@ struct ColorSettingsView: View {
 
             if state.activeMode == .color {
                 Divider()
-                PaletteApproximationSettingsView()
+                PaletteSelectionSettingsView()
             }
         }
     }

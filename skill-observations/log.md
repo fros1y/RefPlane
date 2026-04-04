@@ -39,3 +39,18 @@ DECLINED = user decided not to pursue
 **Suggested improvement:** When driving labeled toggles in XCUITest, tap a trailing-edge coordinate inside the switch element and then assert the `value` changed to `1` or `0`. If a toggle appears to no-op, inspect the accessibility attachment to verify whether the element frame includes both label and thumb.
 
 **Principle:** For UI automation, validate state after every control action and bias taps toward the actual interactive affordance when an accessibility element's frame spans non-interactive label content.
+
+### Observation 3: Keep inspector cards action-named and make optional pipeline stages explicit
+**Status:** OPEN
+
+**Date:** 2026-04-03
+**Session context:** Simplified a SwiftUI image-processing inspector after user feedback that numbered sections and explanatory subtitles made the panel feel cluttered and that quantization should not imply palette fitting.
+**Skill:** build-ios-apps:swiftui-ui-patterns
+**Type:** internal
+**Phase/Area:** Inspector IA, labels, and feature toggles
+
+**Issue:** Numbered section titles plus per-card helper copy made the panel read like documentation instead of controls, and bundling pigment palette fitting into the Quantize stage hid a distinct optional processing step.
+
+**Suggested improvement:** For settings inspectors, use short action-oriented card titles without numeric prefixes, avoid descriptive subtitles unless a control is unavailable, and represent optional downstream processing stages with a dedicated default-off toggle and independent state flag.
+
+**Principle:** In dense tool UIs, reduce copy before adding layout complexity, and model conceptually separate pipeline stages as separate state so the interface matches the mental model.

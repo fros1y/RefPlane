@@ -12,15 +12,14 @@ struct PaletteView: View {
         )
 
         if sections.isEmpty {
-            Text("Palette swatches appear here after quantization finishes. Pigment recipes are added for color studies.")
+            Text("No swatches yet.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             VStack(spacing: 12) {
-                ForEach(Array(sections.enumerated()), id: \.element.band) { index, section in
+                ForEach(sections, id: \.band) { section in
                     PaletteMixCard(
-                        mixNumber: index + 1,
                         bandID: section.band,
                         section: section,
                         colors: colors(for: section),
@@ -74,7 +73,6 @@ struct PaletteView: View {
 }
 
 private struct PaletteMixCard: View {
-    let mixNumber: Int
     let bandID: Int
     let section: PaletteBandSection
     let colors: [Color]
@@ -86,7 +84,7 @@ private struct PaletteMixCard: View {
         Button(action: onToggleIsolation) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
-                    Text("Mix \(mixNumber)")
+                    Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
 
@@ -145,10 +143,22 @@ private struct PaletteMixCard: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Mix \(mixNumber), \(colors.count) colors")
+        .accessibilityLabel(title)
         .accessibilityValue(isIsolated ? "Isolated on canvas" : "Showing all mixes")
         .accessibilityHint(isIsolated ? "Double tap to show all mixes" : "Double tap to isolate this mix")
         .accessibilityIdentifier("mix-card.\(bandID)")
+    }
+
+    private var title: String {
+        guard let firstRecipe = recipes.first,
+              let dominantPigment = firstRecipe.components.max(by: {
+                  $0.concentration < $1.concentration
+              })
+        else {
+            return "Swatch"
+        }
+
+        return dominantPigment.pigmentName
     }
 }
 

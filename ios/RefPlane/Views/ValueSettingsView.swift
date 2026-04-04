@@ -6,7 +6,7 @@ struct ValueSettingsView: View {
     var body: some View {
         Group {
             LabeledSlider(
-                label: "Values",
+                label: "Count",
                 value: Binding(
                     get: { Double(state.valueConfig.levels) },
                     set: { newVal in
@@ -25,7 +25,7 @@ struct ValueSettingsView: View {
                 }
             )
 
-            Picker("Band Bias", selection: Binding(
+            Picker("Bias", selection: Binding(
                 get: { state.valueConfig.distribution },
                 set: { newDist in
                     state.valueConfig.distribution = newDist
@@ -41,7 +41,7 @@ struct ValueSettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Thresholds")
+                Text("Bands")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.primary)
 
