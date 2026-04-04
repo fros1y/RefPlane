@@ -467,6 +467,73 @@ class AppState {
         return ExportedImagePayload(imageData: fallbackData, contentType: .png)
     }
 
+    func currentSettingsDescription() -> String {
+        let settings = makeExportSettingsSnapshot()
+        let pigmentSummary = selectedPigmentDescription(
+            for: settings.enabledPigmentIDs
+        )
+        let generatedPalette = makeGeneratedPaletteSnapshot()
+
+        var lines = [
+            "Application",
+            makeExportSoftwareDescription(),
+            "",
+            "Mode",
+            activeMode.label,
+            "",
+            "Background",
+            "Enabled: \(displayDescription(for: settings.backgroundProcessingEnabled))",
+            "Mode: \(settings.backgroundMode)",
+            "Foreground Cutoff: \(formattedScalar(settings.foregroundDepthCutoff))",
+            "Background Cutoff: \(formattedScalar(settings.backgroundDepthCutoff))",
+            "Intensity: \(formattedScalar(settings.depthEffectIntensity))",
+            "",
+            "Simplification",
+            "Method: \(settings.abstractionMethod)",
+            "Strength: \(formattedScalar(settings.abstractionStrength))",
+            "Kuwahara: \(formattedScalar(settings.kuwaharaStrength))",
+            "",
+            "Grayscale Conversion",
+            settings.grayscaleConversion,
+            "",
+            "Limit Colors / Values",
+            "Values: \(settings.valueLevels)",
+            "Value Bias: \(QuantizationBias.displayName(for: settings.valueQuantizationBias)) (\(formattedSignedScalar(settings.valueQuantizationBias)))",
+            "Colors: \(settings.colorLimit)",
+            "Color Bias: \(QuantizationBias.displayName(for: settings.colorQuantizationBias)) (\(formattedSignedScalar(settings.colorQuantizationBias)))",
+            "",
+            "Palette Selection",
+            "Enabled: \(displayDescription(for: settings.paletteSelectionEnabled))",
+            "Spread: \(formattedSignedScalar(settings.paletteSpread))",
+            "Max Pigments per Mix: \(settings.maxPigmentsPerMix)",
+            "Min Concentration: \(formattedScalar(Double(settings.minConcentration)))",
+            "Pigments (\(settings.enabledPigmentIDs.count)): \(pigmentSummary)",
+            "",
+            "Contours",
+            "Enabled: \(displayDescription(for: settings.contourEnabled))",
+            "Levels: \(settings.contourLevels)",
+            "Line Style: \(settings.contourLineStyle)",
+            "Color: \(settings.contourCustomColor)",
+            "Opacity: \(formattedScalar(settings.contourOpacity))",
+            "",
+            "Grid",
+            "Enabled: \(displayDescription(for: settings.gridEnabled))",
+            "Divisions: \(settings.gridDivisions)",
+            "Diagonals: \(displayDescription(for: settings.gridShowDiagonals))",
+            "Line Style: \(settings.gridLineStyle)",
+            "Color: \(settings.gridCustomColor)",
+            "Opacity: \(formattedScalar(settings.gridOpacity))"
+        ]
+
+        if !generatedPalette.isEmpty {
+            lines.append("")
+            lines.append("Generated Palette")
+            lines.append(contentsOf: generatedPaletteDescription(from: generatedPalette))
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
     private func preferredExportContentType(for image: UIImage) -> UTType {
         guard let typeIdentifier = sourceImageMetadata.uniformTypeIdentifier,
               let sourceType = UTType(typeIdentifier),
@@ -588,6 +655,7 @@ class AppState {
             exportedAt: ISO8601DateFormatter().string(from: Date()),
             mode: activeMode.rawValue,
             settings: makeExportSettingsSnapshot(),
+            generatedPalette: makeGeneratedPaletteSnapshot(),
             sourceMetadata: MetadataJSONValue(sourceImageMetadata.properties)
         )
 
@@ -672,6 +740,107 @@ class AppState {
             Int((green * 255).rounded()),
             Int((blue * 255).rounded()),
             Int((alpha * 255).rounded())
+        )
+    }
+
+    private func selectedPigmentDescription(for pigmentIDs: [String]) -> String {
+        let namesByID = Dictionary(
+            uniqueKeysWithValues: SpectralDataStore.essentialPigments.map {
+                ($0.id, $0.name)
+            }
+        )
+
+        return pigmentIDs
+            .map { pigmentID in
+                if let name = namesByID[pigmentID] {
+                    return "\(name) [\(pigmentID)]"
+                }
+                return pigmentID
+            }
+            .joined(separator: ", ")
+    }
+
+    private func makeGeneratedPaletteSnapshot() -> [ExportGeneratedPaletteMetadata] {
+        guard !paletteColors.isEmpty else { return [] }
+
+        var pixelCounts = [Int](repeating: 0, count: paletteColors.count)
+        for band in processedPixelBands where pixelCounts.indices.contains(band) {
+            pixelCounts[band] += 1
+        }
+        let totalPixels = max(1, pixelCounts.reduce(0, +))
+        let clippedIndices = Set(clippedRecipeIndices)
+
+        return paletteColors.indices.map { index in
+            let recipe = pigmentRecipes.flatMap { recipes in
+                recipes.indices.contains(index) ? recipes[index] : nil
+            }
+
+            return ExportGeneratedPaletteMetadata(
+                index: index,
+                color: metadataDescription(for: paletteColors[index]),
+                pixelCount: pixelCounts[index],
+                pixelShare: Double(pixelCounts[index]) / Double(totalPixels),
+                recipe: recipe.map { exportGeneratedRecipeMetadata(from: $0) },
+                clipped: clippedIndices.contains(index)
+            )
+        }
+    }
+
+    private func exportGeneratedRecipeMetadata(
+        from recipe: PigmentRecipe
+    ) -> ExportGeneratedRecipeMetadata {
+        ExportGeneratedRecipeMetadata(
+            deltaE: recipe.deltaE,
+            components: recipe.components.map { component in
+                ExportGeneratedRecipeComponentMetadata(
+                    pigmentID: component.pigmentId,
+                    pigmentName: component.pigmentName,
+                    concentration: component.concentration
+                )
+            }
+        )
+    }
+
+    private func generatedPaletteDescription(
+        from entries: [ExportGeneratedPaletteMetadata]
+    ) -> [String] {
+        entries.map { entry in
+            var parts = [
+                "Swatch \(entry.index + 1)",
+                entry.color,
+                "\(formattedScalar(entry.pixelShare * 100))% (\(entry.pixelCount) px)"
+            ]
+
+            if let recipe = entry.recipe {
+                let mix = recipe.components
+                    .map { component in
+                        "\(component.pigmentName) \(formattedScalar(Double(component.concentration * 100)))%"
+                    }
+                    .joined(separator: " + ")
+                parts.append(mix)
+                parts.append("Delta E \(formattedScalar(Double(recipe.deltaE)))")
+                if entry.clipped {
+                    parts.append("Clipped")
+                }
+            }
+
+            return parts.joined(separator: " | ")
+        }
+    }
+
+    private func displayDescription(for isEnabled: Bool) -> String {
+        isEnabled ? "On" : "Off"
+    }
+
+    private func formattedScalar(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...3)))
+    }
+
+    private func formattedSignedScalar(_ value: Double) -> String {
+        value.formatted(
+            .number
+                .precision(.fractionLength(0...3))
+                .sign(strategy: .always(includingZero: false))
         )
     }
 
@@ -1177,6 +1346,7 @@ private struct ExportProvenanceMetadata: Encodable {
     var exportedAt: String
     var mode: String
     var settings: ExportSettingsMetadata
+    var generatedPalette: [ExportGeneratedPaletteMetadata]
     var sourceMetadata: MetadataJSONValue
 }
 
@@ -1210,6 +1380,26 @@ private struct ExportSettingsMetadata: Encodable {
     var contourLineStyle: String
     var contourCustomColor: String
     var contourOpacity: Double
+}
+
+private struct ExportGeneratedPaletteMetadata: Encodable {
+    var index: Int
+    var color: String
+    var pixelCount: Int
+    var pixelShare: Double
+    var recipe: ExportGeneratedRecipeMetadata?
+    var clipped: Bool
+}
+
+private struct ExportGeneratedRecipeMetadata: Encodable {
+    var deltaE: Float
+    var components: [ExportGeneratedRecipeComponentMetadata]
+}
+
+private struct ExportGeneratedRecipeComponentMetadata: Encodable {
+    var pigmentID: String
+    var pigmentName: String
+    var concentration: Float
 }
 
 private enum MetadataJSONValue: Encodable {

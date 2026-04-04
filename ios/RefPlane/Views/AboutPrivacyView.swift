@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct AboutPrivacyView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var state
+    @State private var didCopySettings = false
 
     private var appVersionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -57,6 +60,14 @@ struct AboutPrivacyView: View {
                             .textSelection(.enabled)
                     }
                     .padding(.vertical, 4)
+
+                    Button(action: copyCurrentSettings) {
+                        Label(
+                            didCopySettings ? "Copied Settings" : "Copy Settings",
+                            systemImage: didCopySettings ? "checkmark.circle.fill" : "doc.on.doc"
+                        )
+                    }
+                    .accessibilityIdentifier("about.copy-settings")
                 }
 
                 Section("Privacy") {
@@ -78,6 +89,16 @@ struct AboutPrivacyView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func copyCurrentSettings() {
+        UIPasteboard.general.string = state.currentSettingsDescription()
+        didCopySettings = true
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            didCopySettings = false
         }
     }
 }

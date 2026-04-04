@@ -6,6 +6,137 @@ import Testing
 struct PaintPaletteBuilderTests {
     let database = SpectralDataStore.shared
     let pigments = SpectralDataStore.essentialPigments
+
+    private func loadSampleImage(named sampleName: String) throws -> UIImage {
+        let repoRoot = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let imageURL = repoRoot
+            .appendingPathComponent("ios/RefPlane/Assets.xcassets")
+            .appendingPathComponent("\(sampleName).imageset")
+
+        let fileNames = try FileManager.default.contentsOfDirectory(
+            atPath: imageURL.path(percentEncoded: false)
+        )
+        let imageFile = try #require(
+            fileNames.first { fileName in
+                fileName.hasSuffix(".jpg") ||
+                fileName.hasSuffix(".jpeg") ||
+                fileName.hasSuffix(".png")
+            }
+        )
+        let data = try Data(contentsOf: imageURL.appendingPathComponent(imageFile))
+        return try #require(UIImage(data: data))
+    }
+
+    private func assertPaletteSelectionKeepsGreenAccent(
+        from image: UIImage,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) throws {
+        var config = ColorConfig()
+        config.paletteSelectionEnabled = true
+        config.numShades = 8
+        config.maxPigmentsPerMix = 3
+        config.minConcentration = 0.02
+
+        let regions = try #require(
+            ColorRegionsProcessor.process(
+                image: image,
+                config: config,
+                overclusterK: 16
+            ),
+            sourceLocation: sourceLocation
+        )
+
+        let greenCentroidIndex = try #require(
+            regions.quantizedCentroids.indices.max { lhs, rhs in
+                let lhsColor = regions.quantizedCentroids[lhs]
+                let rhsColor = regions.quantizedCentroids[rhs]
+                return (lhsColor.a * -1 + lhsColor.b) < (rhsColor.a * -1 + rhsColor.b)
+            },
+            sourceLocation: sourceLocation
+        )
+        let greenQuantizedCentroid = regions.quantizedCentroids[greenCentroidIndex]
+        #expect(
+            greenQuantizedCentroid.a < -0.03 && greenQuantizedCentroid.b > 0.03,
+            "Still Life sample should include a green/yellow-green quantized centroid",
+            sourceLocation: sourceLocation
+        )
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: pigments
+        )
+        let recipeDebugSummary = result.recipes.enumerated()
+            .map { index, recipe in
+                let mix = recipe.components
+                    .map { "\($0.pigmentName) \(Int(($0.concentration * 100).rounded()))%" }
+                    .joined(separator: " + ")
+                return String(
+                    format: "#%d L=%.3f a=%.3f b=%.3f ΔE=%.3f %@",
+                    index + 1,
+                    recipe.predictedColor.L,
+                    recipe.predictedColor.a,
+                    recipe.predictedColor.b,
+                    recipe.deltaE,
+                    mix
+                )
+            }
+            .joined(separator: " || ")
+
+        let hasGreenRecipe = result.recipes.contains { recipe in
+            recipe.predictedColor.a < -0.02 && recipe.predictedColor.b > 0.03
+        }
+        let centroidDebugSummary = String(
+            format: "Green centroid L=%.3f a=%.3f b=%.3f Recipes: %@",
+            greenQuantizedCentroid.L,
+            greenQuantizedCentroid.a,
+            greenQuantizedCentroid.b,
+            recipeDebugSummary
+        )
+        #expect(
+            hasGreenRecipe,
+            "Palette selection should preserve a greenish recipe for the Still Life lime. \(centroidDebugSummary)",
+            sourceLocation: sourceLocation
+        )
+
+        var mappedRecipeCounts = [Int: Int]()
+        for pixelIndex in 0..<min(regions.pixelLabels.count, result.pixelLabels.count)
+            where Int(regions.pixelLabels[pixelIndex]) == greenCentroidIndex {
+            mappedRecipeCounts[Int(result.pixelLabels[pixelIndex]), default: 0] += 1
+        }
+
+        let dominantMappedRecipeIndex = try #require(
+            mappedRecipeCounts.max(by: { lhs, rhs in lhs.value < rhs.value })?.key,
+            sourceLocation: sourceLocation
+        )
+        let dominantMappedRecipe = try #require(
+            result.recipes.indices.contains(dominantMappedRecipeIndex)
+                ? result.recipes[dominantMappedRecipeIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let mappingDebugSummary = String(
+            format: "Green centroid L=%.3f a=%.3f b=%.3f dominant recipe L=%.3f a=%.3f b=%.3f mapped counts=%@ recipes=%@",
+            greenQuantizedCentroid.L,
+            greenQuantizedCentroid.a,
+            greenQuantizedCentroid.b,
+            dominantMappedRecipe.predictedColor.L,
+            dominantMappedRecipe.predictedColor.a,
+            dominantMappedRecipe.predictedColor.b,
+            String(describing: mappedRecipeCounts),
+            recipeDebugSummary
+        )
+        #expect(
+            dominantMappedRecipe.predictedColor.a < -0.02 &&
+            dominantMappedRecipe.predictedColor.b > 0.03,
+            "Still Life green pixels should still map to a green/yellow-green recipe. \(mappingDebugSummary)",
+            sourceLocation: sourceLocation
+        )
+    }
     
     @Test
     func buildLimitsToMaxShades() throws {
@@ -256,6 +387,28 @@ struct PaintPaletteBuilderTests {
 
         #expect(result.recipes.count > 2)
         #expect(Set(result.pixelLabels).count > 2)
+    }
+
+    @Test
+    func stillLifePaletteSelectionKeepsGreenAccent() throws {
+        let image = try loadSampleImage(named: "sample-still-life")
+        try assertPaletteSelectionKeepsGreenAccent(from: image)
+    }
+
+    @Test
+    func stillLifePaletteSelectionKeepsGreenAccentAfterAPISRSimplification() async throws {
+        let image = try loadSampleImage(named: "sample-still-life")
+        let referenceResolution: CGFloat = 1600.0
+        let maxDimension = max(image.size.width, image.size.height)
+        let resolutionScale = maxDimension / referenceResolution
+        let downscale = max(1.0, (2.0 + 0.5 * 10.0) * resolutionScale)
+        let simplified = try await ImageAbstractor.abstract(
+            image: image,
+            downscale: downscale,
+            method: .apisr
+        )
+
+        try assertPaletteSelectionKeepsGreenAccent(from: simplified)
     }
 
     @Test

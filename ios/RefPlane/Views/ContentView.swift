@@ -190,6 +190,7 @@ struct ContentView: View {
             SampleImagePickerView(onImageSelected: loadImage)
         case .about:
             AboutPrivacyView()
+                .environment(state)
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }

@@ -116,3 +116,33 @@ DECLINED = user decided not to pursue
 **Suggested improvement:** Capture ImageIO properties from picker byte data before decoding, keep that snapshot in app state, and write exports through `CGImageDestination` with a merged metadata dictionary plus app-specific provenance JSON. For build identity, generate a dedicated bundle resource in an Xcode run script instead of editing `Info.plist` in place.
 
 **Principle:** Metadata survives reliably when captured and rewritten at file-encoding boundaries; once an image is reduced to `UIImage`, provenance must be carried in parallel state.
+
+### Observation 8: Scale planning gates to change scope
+**Status:** OPEN
+
+**Date:** 2026-04-04
+**Session context:** Added a one-tap “Copy Settings” action to the About sheet and backed it with a shared plain-text formatter from `AppState`.
+**Skill:** brainstorming
+**Type:** open-source
+**Phase/Area:** Lightweight implementation requests with known local context
+
+**Issue:** The brainstorming skill’s hard “design then approval” gate is too heavy for a narrow, clearly scoped UI addition in an already-understood codebase, and conflicts with a user workflow that expects direct implementation plus verification.
+
+**Suggested improvement:** Allow a fast path for bounded one-screen or one-function changes: state a one-paragraph design inline, proceed with implementation, and reserve explicit approval gates for broad UX, architecture, or product-behavior decisions.
+
+**Principle:** Planning rigor should scale with blast radius; a mandatory stop-the-world design gate can be counterproductive for small, reversible edits with obvious acceptance criteria.
+
+### Observation 9: Inject Observation environment explicitly into modal sheets
+**Status:** OPEN
+
+**Date:** 2026-04-04
+**Session context:** Fixed a crash when presenting the About sheet after adding `@Environment(AppState.self)` to `AboutPrivacyView`.
+**Skill:** build-ios-apps:ios-debugger-agent
+**Type:** internal
+**Phase/Area:** SwiftUI sheet presentation and Observation environment propagation
+
+**Issue:** `AboutPrivacyView` read `@Environment(AppState.self)`, but the sheet presentation path instantiated the view without explicitly attaching `.environment(state)`, causing a fatal runtime crash when the sheet opened.
+
+**Suggested improvement:** For every sheet/popover/full-screen modal whose content reads a custom Observation environment object, attach the object explicitly at the modal content root and verify by opening the modal in a simulator smoke test.
+
+**Principle:** Don’t rely on implicit environment propagation across presentation boundaries for app-critical state; make modal dependencies explicit and exercise the presentation path in UI verification.

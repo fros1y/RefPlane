@@ -615,7 +615,13 @@ enum PigmentDecomposer {
 
     private static func targetDistanceChromaWeight(for target: OklabColor) -> Float {
         let chroma = sqrtf((target.a * target.a) + (target.b * target.b))
-        return chroma < 0.01 ? 0.08 : 1
+        guard chroma >= 0.01 else {
+            return 0.08
+        }
+
+        // For chromatic targets, keep hue/chroma errors from being traded away
+        // too easily for a slightly closer value match.
+        return min(32.0, 6.0 + chroma * 180.0)
     }
 
     private static func recipeDistanceSquared(
