@@ -146,3 +146,18 @@ DECLINED = user decided not to pursue
 **Suggested improvement:** For every sheet/popover/full-screen modal whose content reads a custom Observation environment object, attach the object explicitly at the modal content root and verify by opening the modal in a simulator smoke test.
 
 **Principle:** Don’t rely on implicit environment propagation across presentation boundaries for app-critical state; make modal dependencies explicit and exercise the presentation path in UI verification.
+
+### Observation 10: Reproduce solver regressions in suite order and print stage snapshots
+**Status:** OPEN
+
+**Date:** 2026-04-04
+**Session context:** Fixed a Still Life palette-collapse bug where APISR-simplified lime regions lost their green pigment recipe only during the full `PaintPaletteBuilderTests` suite, not in isolated test runs.
+**Skill:** build-ios-apps:ios-debugger-agent
+**Type:** internal
+**Phase/Area:** Algorithmic regression tests and failure localization
+
+**Issue:** The failing behavior appeared only after earlier tests ran first, and the final symptom (“no green recipe in the output palette”) didn’t reveal whether quantization, direct pigment decomposition, snap/refit, or pruning dropped the green cluster.
+
+**Suggested improvement:** Always rerun image/solver regressions in full-suite order after an isolated pass. When final-output assertions fail, add staged diagnostics for the source centroid, one-shot decomposition, batch decomposition, first assignment, and first refit so the failure message identifies the exact stage that loses the signal.
+
+**Principle:** For multi-stage optimization pipelines, encode stage snapshots into regression failures; a final output diff alone is usually too late to identify where a small but perceptually important feature was discarded.

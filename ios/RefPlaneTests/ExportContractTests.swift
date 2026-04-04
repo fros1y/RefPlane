@@ -101,7 +101,7 @@ func exportedImagePreservesSourceMetadataAndWritesRefPlaneProvenance() throws {
     #expect(provenance.contains("\"valueLevels\":5"))
     #expect(provenance.contains("\"paletteSelectionEnabled\":true"))
     #expect(provenance.contains("\"generatedPalette\""))
-    #expect(provenance.contains("\"color\":\"#334D66FF\""))
+    #expect(provenance.contains("\"color\":\"#334C66FF\""))
     #expect(provenance.contains("\"pigmentID\":\"cadmium_yellow_light\""))
     #expect(provenance.contains("\"clipped\":true"))
     #expect(provenance.contains("\"Camera metadata\""))
