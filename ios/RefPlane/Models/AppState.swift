@@ -83,7 +83,7 @@ class AppState {
     var abstractionStrength: Double = 0.5
     var abstractionMethod: AbstractionMethod = .apisr
     /// Kuwahara post-filter strength 0–1. `0` disables the filter; positive
-    /// values map to a neighbourhood radius of 1–8 applied after the SR model.
+    /// values map to a neighbourhood radius of 1...16 applied after the SR model.
     var kuwaharaStrength: Double = 0
 
     // Abstracted image (after upscale/denoise)
@@ -118,6 +118,7 @@ class AppState {
 
     @ObservationIgnored private var contourTask: Task<Void, Never>? = nil
     @ObservationIgnored private var contourGeneration: Int = 0
+    @ObservationIgnored private var memoryWarningObserver: NSObjectProtocol? = nil
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
@@ -214,7 +215,7 @@ class AppState {
             DepthProcessor.applyEffects(to: image, depthMap: depthMap, config: config)
         }
 
-        NotificationCenter.default.addObserver(
+        memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
             queue: .main
@@ -222,6 +223,22 @@ class AppState {
             ImageAbstractor.clearModelCache()
             DepthEstimator.clearModelCache()
         }
+    }
+
+    deinit {
+        if let observer = memoryWarningObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        loadingTask?.cancel()
+        processingDebounceTask?.cancel()
+        processingTask?.cancel()
+        abstractionTask?.cancel()
+        kuwaharaTask?.cancel()
+        depthTask?.cancel()
+        depthEffectTask?.cancel()
+        depthPreviewDismissTask?.cancel()
+        contourTask?.cancel()
     }
 
     var displayBaseImage: UIImage? { kuwaharaFilteredImage ?? abstractedImage ?? sourceImage }
@@ -263,6 +280,15 @@ class AppState {
         kuwaharaTask?.cancel()
         depthTask?.cancel()
         depthEffectTask?.cancel()
+        depthPreviewDismissTask?.cancel()
+        contourTask?.cancel()
+
+        // Invalidate stale completions in case any task ignores cancellation.
+        processingGeneration += 1
+        abstractionGeneration += 1
+        depthGeneration += 1
+        depthEffectGeneration += 1
+        contourGeneration += 1
 
         // Show the picked image immediately, then swap in the scaled version
         // once preprocessing finishes so the canvas never blanks out.
@@ -1193,6 +1219,8 @@ class AppState {
         depthPreviewDismissTask?.cancel()
         contourTask?.cancel()
         depthGeneration += 1
+        depthEffectGeneration += 1
+        contourGeneration += 1
         depthMap = nil
         depthProcessedImage = nil
         isEditingDepthThreshold = false
