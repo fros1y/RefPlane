@@ -65,7 +65,7 @@ struct ControlPanelView: View {
 
     private var backgroundSection: some View {
         StudioPanelCard(
-            title: "Process Background",
+            title: "Adjust Background",
             systemImage: "camera.aperture",
             accessibilityID: "studio.card.background"
         ) {
@@ -171,7 +171,7 @@ struct ControlPanelView: View {
                 if state.depthMap != nil {
                     ContourSettingsView()
                 } else {
-                    Text("Contours need Process Background.")
+                    Text("Contours need Adjust Background.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

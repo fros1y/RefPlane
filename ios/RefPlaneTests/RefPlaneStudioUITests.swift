@@ -59,7 +59,7 @@ final class RefPlaneStudioUITests: XCTestCase {
         try captureScreenshot("03-original-sculpture")
 
         openStudioIfNeeded()
-        setBackgroundProcessingEnabled(true)
+        setBackgroundMode("Compress")
         waitForProcessingToSettle(timeout: 14)
 
         setGrayscaleRenderingEnabled(true)
@@ -172,14 +172,18 @@ final class RefPlaneStudioUITests: XCTestCase {
         waitForProcessingToSettle()
     }
 
-    private func setBackgroundProcessingEnabled(_ enabled: Bool) {
-        let toggle = app.switches["Process Background"]
-        scrollInspector(to: toggle, direction: .up)
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
-        if toggle.value as? String != (enabled ? "1" : "0") {
-            tapSwitch(toggle)
+    private func setBackgroundMode(_ mode: String) {
+        let picker = app.buttons["studio.background-mode-picker"]
+        scrollInspector(to: picker, direction: .up)
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+
+        if picker.label != mode && picker.value as? String != mode {
+            picker.tap()
+            let option = app.buttons[mode].firstMatch
+            XCTAssertTrue(option.waitForExistence(timeout: 2))
+            option.tap()
         }
-        waitForSwitch(toggle, enabled: enabled)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
     private func setGrayscaleRenderingEnabled(_ enabled: Bool) {

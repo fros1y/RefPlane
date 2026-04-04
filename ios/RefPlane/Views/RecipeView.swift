@@ -13,9 +13,11 @@ struct RecipeView: View {
 
                     Spacer()
 
-                    Text(partsLabel(for: component.concentration))
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(component.pigmentId == dominantPigmentID ? .primary : .secondary)
+                    if showsPartsLabel {
+                        Text(partsLabel(for: component.concentration))
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(component.pigmentId == dominantPigmentID ? .primary : .secondary)
+                    }
                 }
             }
         }
@@ -25,6 +27,10 @@ struct RecipeView: View {
 
     private var dominantPigmentID: String? {
         recipe.components.max(by: { $0.concentration < $1.concentration })?.pigmentId
+    }
+
+    private var showsPartsLabel: Bool {
+        recipe.components.count > 1
     }
 
     private func partsLabel(for concentration: Float) -> String {

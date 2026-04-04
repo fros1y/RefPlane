@@ -528,6 +528,9 @@ final class MetalContext {
 
         // Choose processing path based on background mode
         switch config.backgroundMode {
+        case .none:
+            return uiImageFromTexture(srcTex, width: width, height: height)
+
         case .blur:
             // Step 1: Horizontal blur pass
             guard let tmpTex = device.makeTexture(descriptor: rgbaDesc),
@@ -605,7 +608,7 @@ final class MetalContext {
             cmdBuf.waitUntilCompleted()
             return uiImageFromTexture(dstTex, width: width, height: height)
 
-        case .depthEffects:
+        case .compress:
             // Single pass: painterly effects only
             guard let dstTex = device.makeTexture(descriptor: rgbaDesc) else { return nil }
             guard let cmdBuf = commandQueue.makeCommandBuffer() else { return nil }
@@ -628,7 +631,8 @@ final class MetalContext {
 
     private func backgroundModeRaw(_ mode: BackgroundMode) -> Int {
         switch mode {
-        case .depthEffects: return 0
+        case .none:         return 0
+        case .compress:     return 0
         case .blur:         return 1
         case .remove:       return 2
         }

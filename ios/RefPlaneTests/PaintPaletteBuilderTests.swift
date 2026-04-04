@@ -58,10 +58,119 @@ struct PaintPaletteBuilderTests {
             sourceLocation: sourceLocation
         )
         let greenQuantizedCentroid = regions.quantizedCentroids[greenCentroidIndex]
+        let greenQuantizedPixelCount = regions.clusterPixelCounts[greenCentroidIndex]
+        let greenQuantizedSalience = regions.clusterSalience[greenCentroidIndex]
         #expect(
             greenQuantizedCentroid.a < -0.03 && greenQuantizedCentroid.b > 0.03,
             "Still Life sample should include a green/yellow-green quantized centroid",
             sourceLocation: sourceLocation
+        )
+
+        let directGreenRecipe = try #require(
+            PigmentDecomposer.decompose(
+                targetColors: [greenQuantizedCentroid],
+                pigments: pigments,
+                database: database,
+                maxPigments: config.maxPigmentsPerMix,
+                minConcentration: config.minConcentration,
+                concurrent: false,
+                lookupTable: SpectralDataStore.sharedLookupTable
+            ).first,
+            sourceLocation: sourceLocation
+        )
+        let directGreenRecipeSummary = String(
+            format: "Direct green recipe L=%.3f a=%.3f b=%.3f ΔE=%.3f %@",
+            directGreenRecipe.predictedColor.L,
+            directGreenRecipe.predictedColor.a,
+            directGreenRecipe.predictedColor.b,
+            directGreenRecipe.deltaE,
+            directGreenRecipe.components
+                .map { "\($0.pigmentName) \(Int(($0.concentration * 100).rounded()))%" }
+                .joined(separator: " + ")
+        )
+
+        let batchRecipes = PigmentDecomposer.decompose(
+            targetColors: regions.quantizedCentroids,
+            pigments: pigments,
+            database: database,
+            maxPigments: config.maxPigmentsPerMix,
+            minConcentration: config.minConcentration,
+            concurrent: false,
+            lookupTable: SpectralDataStore.sharedLookupTable
+        )
+        let batchGreenRecipe = try #require(
+            batchRecipes.indices.contains(greenCentroidIndex)
+                ? batchRecipes[greenCentroidIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let batchLabels = ColorRegionsProcessor.assignQuantizedToRecipes(
+            quantizedCentroids: regions.quantizedCentroids,
+            recipeCentroids: batchRecipes.map { $0.predictedColor },
+            lWeight: 0.3
+        )
+        let batchAssignedRecipeIndex = Int(batchLabels[greenCentroidIndex])
+        let batchAssignedRecipe = try #require(
+            batchRecipes.indices.contains(batchAssignedRecipeIndex)
+                ? batchRecipes[batchAssignedRecipeIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let batchGreenRecipeSummary = String(
+            format: "Batch green recipe L=%.3f a=%.3f b=%.3f ΔE=%.3f",
+            batchGreenRecipe.predictedColor.L,
+            batchGreenRecipe.predictedColor.a,
+            batchGreenRecipe.predictedColor.b,
+            batchGreenRecipe.deltaE
+        )
+        let batchAssignedRecipeSummary = String(
+            format: "First-pass assigned recipe #%d L=%.3f a=%.3f b=%.3f ΔE=%.3f",
+            batchAssignedRecipeIndex + 1,
+            batchAssignedRecipe.predictedColor.L,
+            batchAssignedRecipe.predictedColor.a,
+            batchAssignedRecipe.predictedColor.b,
+            batchAssignedRecipe.deltaE
+        )
+        let (firstPassCentroids, firstPassCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+            quantizedCentroids: regions.quantizedCentroids,
+            quantizedPixelCounts: regions.clusterPixelCounts,
+            centroidToRecipe: batchLabels,
+            recipeCount: batchRecipes.count
+        )
+        let firstPassCentroid = try #require(
+            firstPassCentroids.indices.contains(batchAssignedRecipeIndex)
+                ? firstPassCentroids[batchAssignedRecipeIndex]
+                : nil,
+            sourceLocation: sourceLocation
+        )
+        let firstPassCount = firstPassCounts.indices.contains(batchAssignedRecipeIndex)
+            ? firstPassCounts[batchAssignedRecipeIndex]
+            : 0
+        let firstPassRefitRecipe = try #require(
+            PigmentDecomposer.decompose(
+                targetColors: [firstPassCentroid],
+                pigments: pigments,
+                database: database,
+                maxPigments: config.maxPigmentsPerMix,
+                minConcentration: config.minConcentration,
+                concurrent: false,
+                lookupTable: SpectralDataStore.sharedLookupTable
+            ).first,
+            sourceLocation: sourceLocation
+        )
+        let firstPassRefitSummary = String(
+            format: "First-pass centroid count=%d L=%.3f a=%.3f b=%.3f refit L=%.3f a=%.3f b=%.3f ΔE=%.3f %@",
+            firstPassCount,
+            firstPassCentroid.L,
+            firstPassCentroid.a,
+            firstPassCentroid.b,
+            firstPassRefitRecipe.predictedColor.L,
+            firstPassRefitRecipe.predictedColor.a,
+            firstPassRefitRecipe.predictedColor.b,
+            firstPassRefitRecipe.deltaE,
+            firstPassRefitRecipe.components
+                .map { "\($0.pigmentName) \(Int(($0.concentration * 100).rounded()))%" }
+                .joined(separator: " + ")
         )
 
         let result = try PaintPaletteBuilder.build(
@@ -91,10 +200,16 @@ struct PaintPaletteBuilderTests {
             recipe.predictedColor.a < -0.02 && recipe.predictedColor.b > 0.03
         }
         let centroidDebugSummary = String(
-            format: "Green centroid L=%.3f a=%.3f b=%.3f Recipes: %@",
+            format: "Green centroid L=%.3f a=%.3f b=%.3f count=%d salience=%.3f %@ %@ %@ %@ Recipes: %@",
             greenQuantizedCentroid.L,
             greenQuantizedCentroid.a,
             greenQuantizedCentroid.b,
+            greenQuantizedPixelCount,
+            greenQuantizedSalience,
+            directGreenRecipeSummary,
+            batchGreenRecipeSummary,
+            batchAssignedRecipeSummary,
+            firstPassRefitSummary,
             recipeDebugSummary
         )
         #expect(

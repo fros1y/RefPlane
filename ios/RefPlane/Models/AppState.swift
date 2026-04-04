@@ -1118,8 +1118,12 @@ class AppState {
     func computeDepthMap() {
         depthTask?.cancel()
 
-        guard depthConfig.enabled, let source = displayBaseImage else {
-            depthMap = nil
+        guard let source = displayBaseImage else {
+            depthProcessedImage = nil
+            return
+        }
+
+        guard depthConfig.enabled else {
             depthProcessedImage = nil
             return
         }

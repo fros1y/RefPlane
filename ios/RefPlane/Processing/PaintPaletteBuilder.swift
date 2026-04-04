@@ -16,6 +16,8 @@ enum PaintPaletteBuilder {
     }
 
     private static let adaptivePruneErrorThreshold: Float = 0.005 // Per-pixel weighted error increase threshold
+    private static let chromaticAnchorThreshold: Float = 0.04
+    private static let hueAnchorSeparation: Float = 0.55
 
     static func build(
         colorRegions: ColorRegionsProcessor.Result,
@@ -44,6 +46,7 @@ enum PaintPaletteBuilder {
             database: database,
             maxPigments: config.maxPigmentsPerMix,
             minConcentration: config.minConcentration,
+            concurrent: false,
             lookupTable: lookupTable
         )
         
@@ -65,6 +68,7 @@ enum PaintPaletteBuilder {
             database: database,
             maxPigments: config.maxPigmentsPerMix,
             minConcentration: config.minConcentration,
+            concurrent: false,
             lookupTable: lookupTable
         )
 
@@ -120,19 +124,12 @@ enum PaintPaletteBuilder {
         )
 
         // Stage 5A - Adaptive shade count
-        let anchors5A: Set<Int> = {
-            let threshold = max(1, colorRegions.clusterPixelCounts.reduce(0, +) / 100)
-            var minL: Float = .greatestFiniteMagnitude
-            var maxL: Float = -.greatestFiniteMagnitude
-            var darkest: Int? = nil
-            var lightest: Int? = nil
-            for i in 0..<finalRecipes.count where finalCounts[i] > threshold {
-                let L = finalRecipes[i].predictedColor.L
-                if L < minL { minL = L; darkest = i }
-                if L > maxL { maxL = L; lightest = i }
-            }
-            return Set([darkest, lightest].compactMap { $0 })
-        }()
+        let anchors5A = makePruningAnchors(
+            recipes: finalRecipes,
+            counts: finalCounts,
+            importances: finalImportances,
+            maxAnchors: max(2, config.numShades)
+        )
 
         finalRecipes = adaptivePrune(
             recipes: finalRecipes,
@@ -468,34 +465,12 @@ enum PaintPaletteBuilder {
     ) -> [PigmentRecipe] {
         var survivors = Array(0..<recipes.count)
         guard !survivors.isEmpty else { return [] }
-        
-        // Identify anchors
-        let nonTrivialThreshold = max(1, counts.reduce(0, +) / 100)
-        var darkest: Int? = nil
-        var lightest: Int? = nil
-        var neutral: Int? = nil
-        var minL: Float = .greatestFiniteMagnitude
-        var maxL: Float = -.greatestFiniteMagnitude
-        var minChroma: Float = .greatestFiniteMagnitude
-        
-        for i in 0..<recipes.count where counts[i] > nonTrivialThreshold {
-            let c = recipes[i].predictedColor
-            if c.L < minL {
-                minL = c.L
-                darkest = i
-            }
-            if c.L > maxL {
-                maxL = c.L
-                lightest = i
-            }
-            let chroma = sqrtf(c.a * c.a + c.b * c.b)
-            if chroma < minChroma && chroma < 0.05 { // neutral threshold
-                minChroma = chroma
-                neutral = i
-            }
-        }
-        
-        let anchors = Set([darkest, lightest, neutral].compactMap { $0 })
+        let anchors = makePruningAnchors(
+            recipes: recipes,
+            counts: counts,
+            importances: importances,
+            maxAnchors: maxShades
+        )
         
         while survivors.count > maxShades {
             // Find weakest non-anchor by perceptual importance
@@ -514,29 +489,176 @@ enum PaintPaletteBuilder {
             survivors.removeAll(where: { $0 == weakestIdx })
         }
         
-        // Reassign eliminated labels strictly logically to preserve Palette Spread spatial geometry
+        // Reassign eliminated labels to the nearest surviving recipe and compact
+        // survivor indices so labels and recipe arrays stay aligned.
+        var oldToNew = [Int: Int32]()
+        for (newIndex, oldIndex) in survivors.enumerated() {
+            oldToNew[oldIndex] = Int32(newIndex)
+        }
         var indexMap = [Int32](repeating: 0, count: recipes.count)
         for i in 0..<recipes.count {
-            if survivors.contains(i) {
-                indexMap[i] = Int32(i)
+            if let newIndex = oldToNew[i] {
+                indexMap[i] = newIndex
             } else {
                 let droppedColor = recipes[i].predictedColor
                 var bestDist = Float.greatestFiniteMagnitude
-                var bestSurv = survivors[0]
-                for s in survivors {
-                    let d = oklabDistance(droppedColor, recipes[s].predictedColor)
+                var bestSurvivor = survivors[0]
+                for survivor in survivors {
+                    let d = oklabDistance(
+                        droppedColor,
+                        recipes[survivor].predictedColor
+                    )
                     if d < bestDist {
                         bestDist = d
-                        bestSurv = s
+                        bestSurvivor = survivor
                     }
                 }
-                indexMap[i] = Int32(bestSurv)
+                indexMap[i] = oldToNew[bestSurvivor] ?? 0
             }
         }
         
         labels = labels.map { indexMap[Int($0)] }
-        
-        return recipes
+
+        return survivors.map { recipes[$0] }
+    }
+
+    private static func makePruningAnchors(
+        recipes: [PigmentRecipe],
+        counts: [Int],
+        importances: [Float],
+        maxAnchors: Int
+    ) -> Set<Int> {
+        let totalCount = max(1, counts.reduce(0, +))
+        let valueAnchorThreshold = max(1, totalCount / 100)
+        let chromaticAnchorThresholdCount = max(1, totalCount / 500)
+        let anchorLimit = min(max(recipes.count, 0), max(2, maxAnchors))
+
+        var darkest: Int?
+        var lightest: Int?
+        var neutral: Int?
+        var minL = Float.greatestFiniteMagnitude
+        var maxL = -Float.greatestFiniteMagnitude
+        var minChroma = Float.greatestFiniteMagnitude
+
+        for i in 0..<recipes.count where i < counts.count && counts[i] > valueAnchorThreshold {
+            let color = recipes[i].predictedColor
+            if color.L < minL {
+                minL = color.L
+                darkest = i
+            }
+            if color.L > maxL {
+                maxL = color.L
+                lightest = i
+            }
+
+            let chroma = sqrtf((color.a * color.a) + (color.b * color.b))
+            if chroma < minChroma && chroma < chromaticAnchorThreshold {
+                minChroma = chroma
+                neutral = i
+            }
+        }
+
+        var anchors = Set<Int>()
+        for index in [darkest, lightest, neutral].compactMap({ $0 }) where anchors.count < anchorLimit {
+            anchors.insert(index)
+        }
+
+        guard anchors.count < anchorLimit else { return anchors }
+
+        struct HueCandidate {
+            let index: Int
+            let hue: Float
+            let chroma: Float
+            let score: Float
+        }
+
+        let chromaticCandidates = recipes.indices.compactMap { index -> HueCandidate? in
+            guard index < counts.count,
+                  counts[index] > chromaticAnchorThresholdCount,
+                  !anchors.contains(index) else {
+                return nil
+            }
+
+            let color = recipes[index].predictedColor
+            let chroma = sqrtf((color.a * color.a) + (color.b * color.b))
+            guard chroma >= chromaticAnchorThreshold else { return nil }
+
+            let importance = index < importances.count
+                ? max(0, importances[index])
+                : Float(counts[index])
+            let chromaBoost = 1 + min(chroma / 0.2, 1)
+            return HueCandidate(
+                index: index,
+                hue: atan2f(color.b, color.a),
+                chroma: chroma,
+                score: importance * chromaBoost
+            )
+        }
+
+        for candidate in [
+            chromaticCandidates.min(by: { lhs, rhs in
+                let lhsA = recipes[lhs.index].predictedColor.a
+                let rhsA = recipes[rhs.index].predictedColor.a
+                if lhsA != rhsA { return lhsA < rhsA }
+                return lhs.score < rhs.score
+            }),
+            chromaticCandidates.max(by: { lhs, rhs in
+                let lhsA = recipes[lhs.index].predictedColor.a
+                let rhsA = recipes[rhs.index].predictedColor.a
+                if lhsA != rhsA { return lhsA < rhsA }
+                return lhs.score < rhs.score
+            }),
+            chromaticCandidates.min(by: { lhs, rhs in
+                let lhsB = recipes[lhs.index].predictedColor.b
+                let rhsB = recipes[rhs.index].predictedColor.b
+                if lhsB != rhsB { return lhsB < rhsB }
+                return lhs.score < rhs.score
+            }),
+            chromaticCandidates.max(by: { lhs, rhs in
+                let lhsB = recipes[lhs.index].predictedColor.b
+                let rhsB = recipes[rhs.index].predictedColor.b
+                if lhsB != rhsB { return lhsB < rhsB }
+                return lhs.score < rhs.score
+            })
+        ].compactMap({ $0 }) where anchors.count < anchorLimit {
+            anchors.insert(candidate.index)
+        }
+
+        guard anchors.count < anchorLimit else { return anchors }
+
+        let hueCandidates = chromaticCandidates
+            .filter { !anchors.contains($0.index) }
+        .sorted {
+            if $0.score != $1.score { return $0.score > $1.score }
+            if $0.chroma != $1.chroma { return $0.chroma > $1.chroma }
+            return $0.index < $1.index
+        }
+
+        var anchoredHues = anchors.compactMap { index -> Float? in
+            guard recipes.indices.contains(index) else { return nil }
+            let color = recipes[index].predictedColor
+            let chroma = sqrtf((color.a * color.a) + (color.b * color.b))
+            guard chroma >= chromaticAnchorThreshold else { return nil }
+            return atan2f(color.b, color.a)
+        }
+
+        for candidate in hueCandidates {
+            guard anchors.count < anchorLimit else { break }
+            let isHueSeparated = anchoredHues.allSatisfy { hue in
+                circularHueDistance(candidate.hue, hue) >= hueAnchorSeparation
+            }
+            guard isHueSeparated else { continue }
+
+            anchors.insert(candidate.index)
+            anchoredHues.append(candidate.hue)
+        }
+
+        return anchors
+    }
+
+    private static func circularHueDistance(_ lhs: Float, _ rhs: Float) -> Float {
+        let raw = abs(lhs - rhs)
+        return min(raw, (2 * Float.pi) - raw)
     }
 
     private static func recipeImportances(

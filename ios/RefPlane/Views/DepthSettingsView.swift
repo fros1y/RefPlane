@@ -2,81 +2,82 @@ import SwiftUI
 
 struct DepthSettingsView: View {
     @Environment(AppState.self) private var state
-    @State private var settingsExpanded = false
 
     var body: some View {
-        Group {
-            Toggle("On", isOn: Binding(
-                get: { state.depthConfig.enabled },
-                set: { newValue in
-                    state.depthConfig.enabled = newValue
-                    if newValue {
-                        state.computeDepthMap()
-                    } else {
-                        state.resetDepthProcessing()
-                    }
-                }
-            ))
-            .accessibilityLabel("Process Background")
+        let range = state.depthRange
+        let span = max(range.upperBound - range.lowerBound, 0.0001)
+        let step = max(0.01, span / 100.0)
 
-            if state.depthConfig.enabled {
-                DisclosureGroup("Settings", isExpanded: $settingsExpanded) {
-                    let range = state.depthRange
-                    let step = max(0.01, (range.upperBound - range.lowerBound) / 100.0)
-
-                    VStack(spacing: 14) {
-                        LabeledSlider(
-                            label: "Split",
-                            value: Binding(
-                                get: { state.depthConfig.backgroundCutoff },
-                                set: { newValue in
-                                    state.updateBackgroundDepthCutoff(newValue)
-                                }
-                            ),
-                            range: range.lowerBound...range.upperBound,
-                            step: step,
-                            displayFormat: { "\(Int(($0 - range.lowerBound) / (range.upperBound - range.lowerBound) * 100))%" },
-                            onEditingChanged: { editing in
-                                state.depthSliderActive = editing
-                                if editing {
-                                    state.updateDepthThresholdPreview()
-                                } else {
-                                    state.dismissDepthThresholdPreview()
-                                }
-                            }
-                        )
-
-                        Picker("Background", selection: Binding(
-                            get: { state.depthConfig.backgroundMode },
-                            set: { newMode in
-                                guard newMode != state.depthConfig.backgroundMode else { return }
-                                state.depthConfig.backgroundMode = newMode
-                                state.applyDepthEffects()
-                            }
-                        )) {
-                            ForEach(BackgroundMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-
-                        LabeledSlider(
-                            label: "Amount",
-                            value: Binding(
-                                get: { state.depthConfig.effectIntensity },
-                                set: { state.depthConfig.effectIntensity = $0 }
-                            ),
-                            range: 0...1,
-                            step: 0.05,
-                            displayFormat: { "\(Int($0 * 100))%" },
-                            onEditingChanged: { editing in
-                                if !editing {
-                                    state.applyDepthEffects()
-                                }
-                            }
-                        )
-                    }
+        VStack(spacing: 14) {
+            Picker("Adjust Background", selection: Binding(
+                get: { state.depthConfig.backgroundMode },
+                set: setBackgroundMode
+            )) {
+                ForEach(BackgroundMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
             }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("studio.background-mode-picker")
+
+            if state.depthConfig.backgroundMode != .none {
+                LabeledSlider(
+                    label: "Depth Threshold",
+                    value: Binding(
+                        get: { state.depthConfig.backgroundCutoff },
+                        set: { newValue in
+                            state.updateBackgroundDepthCutoff(newValue)
+                        }
+                    ),
+                    range: range.lowerBound...range.upperBound,
+                    step: step,
+                    displayFormat: { "\(Int(($0 - range.lowerBound) / span * 100))%" },
+                    onEditingChanged: { editing in
+                        state.depthSliderActive = editing
+                        if editing {
+                            state.updateDepthThresholdPreview()
+                        } else {
+                            state.dismissDepthThresholdPreview()
+                        }
+                    }
+                )
+
+                LabeledSlider(
+                    label: "Amount",
+                    value: Binding(
+                        get: { state.depthConfig.effectIntensity },
+                        set: { state.depthConfig.effectIntensity = $0 }
+                    ),
+                    range: 0...1,
+                    step: 0.05,
+                    displayFormat: { "\(Int($0 * 100))%" },
+                    onEditingChanged: { editing in
+                        if !editing {
+                            state.applyDepthEffects()
+                        }
+                    }
+                )
+            }
+        }
+        .accessibilityIdentifier("studio.depth-settings")
+    }
+
+    private func setBackgroundMode(_ newMode: BackgroundMode) {
+        guard newMode != state.depthConfig.backgroundMode else { return }
+
+        state.depthConfig.backgroundMode = newMode
+
+        if newMode == .none {
+            state.depthConfig.enabled = false
+            state.dismissDepthThresholdPreview()
+            return
+        }
+
+        state.depthConfig.enabled = true
+        if state.depthMap == nil {
+            state.computeDepthMap()
+        } else {
+            state.applyDepthEffects()
         }
     }
 }
