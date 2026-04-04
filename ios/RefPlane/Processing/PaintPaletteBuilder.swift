@@ -31,6 +31,9 @@ enum PaintPaletteBuilder {
         
         // Grab the shared precomputed table once (nil → falls back to runtime build).
         let lookupTable = SpectralDataStore.sharedLookupTable
+        let assignmentLWeight = centroidAssignmentLWeight(
+            for: colorRegions.quantizedCentroids
+        )
 
         let t0 = CFAbsoluteTimeGetCurrent()
 
@@ -81,6 +84,7 @@ enum PaintPaletteBuilder {
             database: database,
             maxPigments: config.maxPigmentsPerMix,
             minConcentration: config.minConcentration,
+            assignmentLWeight: assignmentLWeight,
             lookupTable: lookupTable
         )
 
@@ -220,7 +224,7 @@ enum PaintPaletteBuilder {
         var finalQToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
             quantizedCentroids: colorRegions.quantizedCentroids,
             recipeCentroids: refitRecipes.map { $0.predictedColor },
-            lWeight: 0.3
+            lWeight: assignmentLWeight
         )
 
         // Stage 5C - Dedup: merge recipes with identical quantized signatures.
@@ -268,6 +272,7 @@ enum PaintPaletteBuilder {
         database: SpectralDatabase,
         maxPigments: Int,
         minConcentration: Float,
+        assignmentLWeight: Float,
         iterations: Int = 2,
         lookupTable: PigmentLookupTable? = nil
     ) -> (recipes: [PigmentRecipe], centroidToRecipe: [Int32], counts: [Int]) {
@@ -286,7 +291,7 @@ enum PaintPaletteBuilder {
             let centroidToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
                 quantizedCentroids: qCentroids,
                 recipeCentroids: currentCentroids,
-                lWeight: 0.3
+                lWeight: assignmentLWeight
             )
 
             // O(K): compute new recipe centroids weighted by pixel counts.
@@ -326,7 +331,7 @@ enum PaintPaletteBuilder {
         let finalCentroidToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
             quantizedCentroids: qCentroids,
             recipeCentroids: currentCentroids,
-            lWeight: 0.3
+            lWeight: assignmentLWeight
         )
         let (_, finalCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
             quantizedCentroids: qCentroids,
@@ -556,5 +561,15 @@ enum PaintPaletteBuilder {
         }
 
         return importances
+    }
+
+    private static func centroidAssignmentLWeight(
+        for quantizedCentroids: [OklabColor]
+    ) -> Float {
+        let maxChroma = quantizedCentroids.reduce(0) { currentMax, color in
+            max(currentMax, sqrtf((color.a * color.a) + (color.b * color.b)))
+        }
+
+        return maxChroma < 0.01 ? 1.0 : 0.3
     }
 }

@@ -156,6 +156,109 @@ struct PaintPaletteBuilderTests {
     }
 
     @Test
+    func grayscaleBandsStaySeparatedWithYellowAndUltramarineTubes() throws {
+        let selectedPigments = [
+            try #require(SpectralDataStore.pigment(byId: "cadmium_yellow_light")),
+            try #require(SpectralDataStore.pigment(byId: "ultramarine_blue"))
+        ]
+
+        let bandCounts = [120, 120, 120]
+        let labels: [Int32] =
+            Array(repeating: 0, count: bandCounts[0]) +
+            Array(repeating: 1, count: bandCounts[1]) +
+            Array(repeating: 2, count: bandCounts[2])
+
+        let grayCentroids = [
+            OklabColor(L: 0.0, a: 0.0, b: 0.0),
+            OklabColor(L: 0.5, a: 0.0, b: 0.0),
+            OklabColor(L: 1.0, a: 0.0, b: 0.0)
+        ]
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: grayCentroids,
+            pixelLabels: labels,
+            pixelLab: [],
+            clusterPixelCounts: bandCounts,
+            clusterSalience: [1.0, 1.0, 1.0]
+        )
+
+        var config = ColorConfig()
+        config.numShades = 3
+        config.maxPigmentsPerMix = 2
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: selectedPigments
+        )
+
+        let uniqueLabels = Set(result.pixelLabels)
+        #expect(uniqueLabels.count >= 2, "Three grayscale bands should not collapse into one recipe")
+
+        let sortedRecipes = result.recipes.sorted {
+            $0.predictedColor.L < $1.predictedColor.L
+        }
+        let darkestRecipe = try #require(sortedRecipes.first)
+        let lightestRecipe = try #require(sortedRecipes.last)
+
+        #expect(
+            darkestRecipe.components.contains { $0.pigmentId == "ultramarine_blue" },
+            "Darkest grayscale band should keep an ultramarine-heavy recipe"
+        )
+        #expect(
+            lightestRecipe.components.contains { $0.pigmentId == "cadmium_yellow_light" },
+            "Lightest grayscale band should keep a cadmium yellow light recipe"
+        )
+    }
+
+    @Test
+    func sixGrayscaleBandsProduceMoreThanTwoRecipesWithYellowAndUltramarine() throws {
+        let selectedPigments = [
+            try #require(SpectralDataStore.pigment(byId: "cadmium_yellow_light")),
+            try #require(SpectralDataStore.pigment(byId: "ultramarine_blue"))
+        ]
+
+        let centroids = (0..<6).map { index in
+            OklabColor(L: Float(index) / 5.0, a: 0, b: 0)
+        }
+        let pixelsPerBand = 90
+        let labels = centroids.indices.flatMap { index in
+            Array(repeating: Int32(index), count: pixelsPerBand)
+        }
+
+        let regions = ColorRegionsProcessor.Result(
+            image: UIImage(),
+            palette: [],
+            paletteBands: [],
+            pixelBands: [],
+            quantizedCentroids: centroids,
+            pixelLabels: labels,
+            pixelLab: [],
+            clusterPixelCounts: [Int](repeating: pixelsPerBand, count: centroids.count),
+            clusterSalience: [Float](repeating: 1.0, count: centroids.count)
+        )
+
+        var config = ColorConfig()
+        config.numShades = 6
+        config.maxPigmentsPerMix = 2
+
+        let result = try PaintPaletteBuilder.build(
+            colorRegions: regions,
+            config: config,
+            database: database,
+            pigments: selectedPigments
+        )
+
+        #expect(result.recipes.count > 2)
+        #expect(Set(result.pixelLabels).count > 2)
+    }
+
+    @Test
     func snapAndReassignProducesValidLabels() throws {
         // 4 distinct clusters spread across Oklab space
         let centroids = [
