@@ -511,10 +511,17 @@ kernel void kuwahara_filter(
     float denom   = lambda1 + lambda2 + 1e-6f;
     float A       = (lambda1 - lambda2) / denom;
 
-    // Ellipse axes scaled by anisotropy
+    // Ellipse axes scaled by anisotropy.
+    // u is aligned with theta (dominant gradient direction, perpendicular to the edge);
+    // v is aligned with theta+π/2 (along the edge).
+    // For edge-preserving smoothing the ellipse must be elongated ALONG the edge (large ry)
+    // and narrow ACROSS the edge (small rx).  Swapping rx and ry from the naive assignment
+    // is the key correction: without it every along-edge sector contains only the centre
+    // pixel (ry < 1 px for high A), giving variance = 0 and always winning the selection,
+    // which causes the filter to output the original pixel unchanged ("does nothing").
     float R       = float(p.radius);
-    float rx      = R * (1.0f + A);      // semi-axis along dominant direction
-    float ry      = R * (1.0f - A + 0.1f); // semi-axis perpendicular, keep >0
+    float rx      = R * (1.0f - A + 0.1f); // semi-axis along dominant gradient direction, keep >0
+    float ry      = R * (1.0f + A);         // semi-axis along edge direction (large for anisotropic)
 
     float cosT = cos(theta);
     float sinT = sin(theta);

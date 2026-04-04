@@ -30,6 +30,7 @@
 		0A11B22C33D44E55F6677116 /* RegionCleanerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677117 /* RegionCleanerTests.swift */; };
 		0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */; };
 		0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */; };
+		0A11B22C33D44E55F667711E /* KuwaharaFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711F /* KuwaharaFilterTests.swift */; };
 		0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */; };
 		0A11B22C33D44E55F6677201 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677202 /* XCTest.framework */; };
 		18900E3DD6FA4EBFB2BCC1A3 /* ImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */; };
@@ -114,6 +115,7 @@
 		0A11B22C33D44E55F6677117 /* RegionCleanerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegionCleanerTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KMeansClustererTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrayscaleProcessorTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F667711F /* KuwaharaFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KuwaharaFilterTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValueStudyProcessorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677202 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		0A11B22C33D44E55F6677401 /* RefPlaneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RefPlaneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -209,6 +211,7 @@
 				0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */,
 				0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */,
 				B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */,
+				0A11B22C33D44E55F667711F /* KuwaharaFilterTests.swift */,
 				0A11B22C33D44E55F6677113 /* OklabColorSpaceTests.swift */,
 				0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */,
 				0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */,
@@ -445,6 +448,7 @@
 				0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */,
 				0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F205 /* KubelkaMunkMixerTests.swift in Sources */,
+				0A11B22C33D44E55F667711E /* KuwaharaFilterTests.swift in Sources */,
 				0A11B22C33D44E55F6677112 /* OklabColorSpaceTests.swift in Sources */,
 				0A11B22C33D44E55F6677103 /* PaletteSectionsTests.swift in Sources */,
 				0A11B22C33D44E55F667710E /* PropertyTestSupport.swift in Sources */,
