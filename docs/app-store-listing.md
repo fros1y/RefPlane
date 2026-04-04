@@ -113,17 +113,15 @@ Secondary: Education
 
 ## Pricing
 
-Paid (suggested: $4.99)
+Free with In-App Purchase ($9.99 non-consumable "Unlock Underpaint" — loads user photos from library). Family Sharing enabled.
 
 ## Support URL
 
-*(To be set when support page is published)*
+https://fros1y.github.io/RefPlane/support.html
 
 ## Privacy Policy URL
 
-*(To be set when privacy page is published. May reference the in-app privacy statement in the About sheet.)*
-
----
+https://fros1y.github.io/RefPlane/privacy.html
 
 ## What's New (initial release)
 

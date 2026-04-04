@@ -1,10 +1,13 @@
+import StoreKit
 import SwiftUI
 import UIKit
 
 struct AboutPrivacyView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var state
+    @Environment(UnlockManager.self) private var unlockManager
     @State private var didCopySettings = false
+    @State private var showPaywall = false
 
     private var appVersionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -70,6 +73,38 @@ struct AboutPrivacyView: View {
                     .accessibilityIdentifier("about.copy-settings")
                 }
 
+                Section("Purchase") {
+                    HStack {
+                        if unlockManager.isUnlocked {
+                            Label("Unlocked", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("Free — Samples Only", systemImage: "lock.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .font(.body)
+
+                    if !unlockManager.isUnlocked {
+                        Button(action: { showPaywall = true }) {
+                            Label("Unlock Full App", systemImage: "paintpalette")
+                        }
+                        .accessibilityIdentifier("about.unlock")
+                    }
+
+                    Button(action: { Task { await unlockManager.restorePurchases() } }) {
+                        Label("Restore Purchases", systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityIdentifier("about.restore")
+
+                    if !unlockManager.isUnlocked {
+                        Button(action: redeemCode) {
+                            Label("Redeem Code", systemImage: "giftcard")
+                        }
+                        .accessibilityIdentifier("about.redeem")
+                    }
+                }
+
                 Section("Privacy") {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Underpaint collects no personal data.")
@@ -89,6 +124,11 @@ struct AboutPrivacyView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -100,5 +140,17 @@ struct AboutPrivacyView: View {
             try? await Task.sleep(for: .seconds(1.5))
             didCopySettings = false
         }
+    }
+
+    private func redeemCode() {
+        #if !targetEnvironment(simulator)
+        Task {
+            do {
+                try await AppStore.presentOfferCodeRedeemSheet()
+            } catch {
+                unlockManager.errorMessage = error.localizedDescription
+            }
+        }
+        #endif
     }
 }

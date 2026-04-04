@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var isInspectorCollapsed = true
     @State private var didSetInitialInspectorState = false
     @State private var currentWorkspaceLayout: StudioWorkspaceLayout = .drawer
+    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -34,6 +35,11 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .environment(state)
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(item: $presentedSheet, content: presentedSheetView)
         .sheet(item: $exportItem) { item in
             ShareSheet(items: [item.fileURL]) {
@@ -242,8 +248,14 @@ struct ContentView: View {
         }
     }
 
+    @Environment(UnlockManager.self) private var unlockManager
+
     private func openPhotoLibrary() {
-        presentedSheet = .photoLibrary
+        if unlockManager.isUnlocked {
+            presentedSheet = .photoLibrary
+        } else {
+            showPaywall = true
+        }
     }
 
     private func openSampleLibrary() {
@@ -443,6 +455,7 @@ private struct StudioCanvasSurface: View {
 
 private struct StudioCanvasChrome: View {
     @Environment(AppState.self) private var state
+    @Environment(UnlockManager.self) private var unlockManager
 
     let isInspectorCollapsed: Bool
     let inspectorIcon: String
@@ -456,9 +469,10 @@ private struct StudioCanvasChrome: View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
                 chromeButton(
-                    title: "Library",
+                    title: unlockManager.isUnlocked ? "Library" : "Library (Locked)",
                     systemImage: "photo.on.rectangle",
                     accessibilityID: "chrome.library",
+                    showsLockBadge: !unlockManager.isUnlocked,
                     action: onOpenPhoto
                 )
 
@@ -521,6 +535,7 @@ private struct StudioCanvasChrome: View {
         systemImage: String,
         isEnabled: Bool = true,
         accessibilityID: String,
+        showsLockBadge: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -528,6 +543,16 @@ private struct StudioCanvasChrome: View {
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
+                .overlay(alignment: .bottomTrailing) {
+                    if showsLockBadge {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(3)
+                            .background(Color.accentColor, in: Circle())
+                            .offset(x: 2, y: 2)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .foregroundStyle(isEnabled ? .white : .white.opacity(0.25))
@@ -610,16 +635,19 @@ private struct ExportImageDocument: FileDocument {
 
 #Preview("iPhone Drawer") {
     ContentView()
+        .environment(UnlockManager())
         .frame(width: 393, height: 852)
 }
 
 #Preview("iPad Sidebar") {
     ContentView()
+        .environment(UnlockManager())
         .frame(width: 1180, height: 820)
 }
 
 #Preview("Large Type") {
     ContentView()
+        .environment(UnlockManager())
         .frame(width: 393, height: 852)
         .environment(\.dynamicTypeSize, .accessibility3)
 }

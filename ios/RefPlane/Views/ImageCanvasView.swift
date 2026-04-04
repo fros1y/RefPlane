@@ -428,6 +428,7 @@ struct StudyImageLayer: View {
 
 private struct CanvasEmptyStateCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(UnlockManager.self) private var unlockManager
 
     let isBreathing: Bool
     let onOpenPhoto: () -> Void
@@ -458,11 +459,15 @@ private struct CanvasEmptyStateCard: View {
 
             VStack(spacing: 12) {
                 Button(action: onOpenPhoto) {
-                    Label("Choose Photo", systemImage: "photo")
+                    Label(
+                        unlockManager.isUnlocked ? "Choose Photo" : "Choose Photo",
+                        systemImage: unlockManager.isUnlocked ? "photo" : "lock.fill"
+                    )
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 52)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel(unlockManager.isUnlocked ? "Choose Photo" : "Choose Photo (requires unlock)")
                 .accessibilityIdentifier("canvas.empty.library")
 
                 Button(action: onOpenSamples) {
@@ -494,6 +499,7 @@ private struct CanvasEmptyStateCard: View {
         showSamplePicker: .constant(false)
     )
     .environment(AppState())
+    .environment(UnlockManager())
 }
 
 private struct ImageCanvasPreviewHarness: View {
@@ -522,6 +528,7 @@ private struct ImageCanvasPreviewHarness: View {
             showSamplePicker: .constant(false)
         )
         .environment(state)
+        .environment(UnlockManager())
     }
 }
 
