@@ -296,6 +296,8 @@ class AppState {
     var depthThresholdPreview: UIImage? = nil
     /// Cached Metal texture of the depth map, reused across preview updates for speed.
     @ObservationIgnored var cachedDepthTexture: AnyObject? = nil
+    /// Cached Metal texture of the preview source image, reused during slider drags.
+    @ObservationIgnored var cachedSourceTexture: AnyObject? = nil
     /// True while the user's finger is actively on a depth cutoff slider.
     @ObservationIgnored var depthSliderActive: Bool = false
 
@@ -497,6 +499,7 @@ class AppState {
         depthProcessedImage       = nil
         depthThresholdPreview     = nil
         cachedDepthTexture        = nil
+        cachedSourceTexture       = nil
         depthRange                = 0...1
         contourSegments           = []
         processedPixelBands       = []
@@ -1669,14 +1672,7 @@ class AppState {
             return
         }
 
-        // Determine source: mode-processed output, or displayBaseImage in original mode
-        let source: UIImage?
-        if activeMode == .original {
-            source = displayBaseImage
-        } else {
-            source = isolatedProcessedImage ?? processedImage ?? displayBaseImage
-        }
-        guard let sourceImage = source else {
+        guard let sourceImage = depthEffectSourceImage() else {
             depthProcessedImage = nil
             return
         }
@@ -1703,6 +1699,14 @@ class AppState {
         }
     }
 
+    private func depthEffectSourceImage() -> UIImage? {
+        if activeMode == .original {
+            return displayBaseImage
+        }
+
+        return isolatedProcessedImage ?? processedImage ?? displayBaseImage
+    }
+
     func resetDepthProcessing() {
         depthTask?.cancel()
         depthEffectTask?.cancel()
@@ -1717,6 +1721,7 @@ class AppState {
         depthSliderActive = false
         depthThresholdPreview = nil
         cachedDepthTexture = nil
+        cachedSourceTexture = nil
         depthRange = 0...1
         contourSegments = []
     }
@@ -1733,23 +1738,25 @@ class AppState {
     /// Regenerate the depth-threshold preview image showing which pixels
     /// fall into the background zone. Called while the user drags a cutoff slider.
     func updateDepthThresholdPreview() {
-        guard let depth = depthMap else {
+        guard let depth = depthMap, let source = depthEffectSourceImage() else {
             isEditingDepthThreshold = false
             depthThresholdPreview = nil
             cachedDepthTexture = nil
+            cachedSourceTexture = nil
             return
         }
-        // Create the Metal texture once and cache it for the drag session
-        if cachedDepthTexture == nil {
-            cachedDepthTexture = MetalContext.shared?.makeDepthTexture(from: depth)
-        }
         let bg = depthConfig.backgroundCutoff
-        isEditingDepthThreshold = true
-        depthThresholdPreview = DepthProcessor.thresholdPreview(
+        let result = DepthProcessor.thresholdPreview(
+            sourceImage: source,
             depthMap: depth,
             backgroundCutoff: bg,
-            cachedDepthTexture: cachedDepthTexture
+            cachedDepthTexture: cachedDepthTexture,
+            cachedSourceTexture: cachedSourceTexture
         )
+        isEditingDepthThreshold = true
+        depthThresholdPreview = result.image
+        cachedDepthTexture = result.cachedDepthTexture
+        cachedSourceTexture = result.cachedSourceTexture
         if let coverage = backgroundCoverage(in: depth, cutoff: bg) {
             AppState.depthLogger.debug(
                 "Depth slider preview cutoff=\(bg, format: .fixed(precision: 4)) backgroundCoveragePct=\((coverage * 100.0), format: .fixed(precision: 2))"
@@ -1779,6 +1786,7 @@ class AppState {
         isEditingDepthThreshold = false
         depthThresholdPreview = nil
         cachedDepthTexture = nil
+        cachedSourceTexture = nil
         applyDepthEffects()
         recomputeContours()
     }
