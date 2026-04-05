@@ -117,13 +117,16 @@ struct ContentView: View {
                     onClose: collapseInspector
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: min(maxHeight * 0.8, 700))
+                .frame(height: state.isAnySliderActive
+                    ? min(maxHeight * 0.25, 180)
+                    : min(maxHeight * 0.8, 700))
                 .clipShape(.rect(topLeadingRadius: 32, topTrailingRadius: 32))
                 .overlay(alignment: .top) {
                     drawerDragHandle
                         .padding(.top, 10)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.25), value: state.isAnySliderActive)
                 .ignoresSafeArea(edges: .bottom)
             }
         }

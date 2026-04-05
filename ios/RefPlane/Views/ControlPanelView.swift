@@ -22,25 +22,38 @@ struct ControlPanelView: View {
     @State private var deletePresetID: UUID? = nil
     @State private var presetErrorMessage: String? = nil
 
+    /// On iPhone, hide chrome (header, preset bar, footer) while any slider
+    /// is being dragged so the panel collapses to just the scroll content and
+    /// the user can see the canvas preview.
+    private var isCompact: Bool {
+        presentation == .bottomPanel && state.isAnySliderActive
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            headerView
-            Divider().opacity(0.18)
+            if !isCompact {
+                headerView
+                Divider().opacity(0.18)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    presetSelectorBar
-                    Divider().opacity(0.18)
+                    if !isCompact {
+                        presetSelectorBar
+                        Divider().opacity(0.18)
+                    }
                     backgroundSection
                     simplificationSection
                     tonalSection
                     quantizationSection
                     paletteSection
                     overlaysSection
-                    Divider().opacity(0.18)
-                    footerBar
+                    if !isCompact {
+                        Divider().opacity(0.18)
+                        footerBar
+                    }
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 18)
+                .padding(.top, isCompact ? 10 : 18)
                 .padding(.bottom, presentation == .bottomPanel ? 48 : 24)
             }
             .scrollIndicators(.hidden)

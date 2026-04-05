@@ -236,6 +236,8 @@ private final class MultiHandleSliderControl: UIControl {
         isActivelyDragging = true
         setNeedsDisplay()
 
+        onEditingStarted?()
+
         // Haptic feedback
         let feedback = UISelectionFeedbackGenerator()
         feedback.selectionChanged()
@@ -269,17 +271,11 @@ private final class MultiHandleSliderControl: UIControl {
     }
 
     private func finishDrag() {
-        let didMove = activeHandleIndex != nil &&
-            activeHandleIndex! < thresholdValues.count &&
-            thresholdValues[activeHandleIndex!] != dragStartValue
-
         isActivelyDragging = false
         activeHandleIndex = nil
         setNeedsDisplay()
 
-        if didMove {
-            onEditingEnded?()
-        }
+        onEditingEnded?()
     }
 
     // MARK: - Layout
