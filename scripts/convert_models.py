@@ -21,7 +21,6 @@ Requirements:
 
 Notes:
   - RealESRGAN_x4 is already bundled and does not need conversion.
-  - The Kuwahara filter is a Metal shader and does not require a model file.
   - This script does NOT modify the Xcode project. After conversion, add the
     generated .mlpackage to the Xcode project manually.
 """

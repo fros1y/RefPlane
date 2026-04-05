@@ -243,11 +243,21 @@ func defaultThresholds(for levels: Int) -> [Double] {
 enum AbstractionProcessingKind {
     case superResolution4x
     case fullImageModel
-    case metalShader
 }
 
 enum AbstractionMethod: String, CaseIterable, Identifiable, Codable {
     case apisr = "APISR"
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = Self(rawValue: rawValue) ?? .apisr
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 
     var id: String { rawValue }
     var label: String {

@@ -73,15 +73,6 @@ Use Simplify to strip away photographic noise and see underlying forms more clea
 - *Simplify Image* toggle — enables or disables the simplification pass
 - *Strength* slider — controls how aggressively texture is smoothed (0 = off, 1 = maximum)
 
-### Kuwahara Filter
-
-The **Kuwahara** slider applies an anisotropic Kuwahara filter that gives the image a painterly, flat-color look by averaging local color regions while preserving edges. The filter radius ranges from R1 (subtle) to R16 (very aggressive simplification).
-
-Use Kuwahara to:
-- reduce photographic detail to broad, painterly shapes
-- get a stylized version of your reference that looks closer to a painting
-- combine with Simplify for even stronger abstraction
-
 Processing takes a moment, especially on older devices. The canvas shows a progress indicator while the model runs.
 
 ---
@@ -228,7 +219,7 @@ The current database includes 78 Golden Heavy Body Acrylic colors with full spec
 The recipes are physically meaningful approximations based on spectral pigment data, but paint behavior varies with medium, dilution, layering, and application technique. Treat the recipes as informed starting points, not exact formulas.
 
 **Why does processing take a moment?**
-The Value and Color modes run clustering algorithms across the full image. The Simplify pass and depth estimation both run on-device machine-learning models. The Kuwahara filter performs per-pixel region averaging. All of these can take a few seconds depending on device and image size. The canvas shows a progress indicator while work is underway.
+The Value and Color modes run clustering algorithms across the full image. The Simplify pass and depth estimation both run on-device machine-learning models. These operations can take a few seconds depending on device and image size. The canvas shows a progress indicator while work is underway.
 
 **The app asked for access to my photos. Why?**
 Underpaint needs photo library access to let you pick a reference image with the standard image picker. If you choose not to grant access, you can still use the app by sharing an image into it from Photos or another app.

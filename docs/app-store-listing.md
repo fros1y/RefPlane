@@ -70,8 +70,6 @@ SIMPLIFY
 
 The Simplify control runs your reference through an on-device super-resolution model that smooths texture and simplifies detail while keeping the major shapes intact. Use it to strip away photographic noise and see the underlying forms more clearly. A Strength slider lets you control how aggressively the image is simplified.
 
-The Kuwahara filter gives your image a painterly, flat-color look by averaging local color while preserving edges. Dial from R1 (subtle) to R16 (aggressive) and see your photo as broad, paintable shapes.
-
 —
 
 GRID OVERLAY
@@ -125,4 +123,4 @@ https://fros1y.github.io/RefPlane/privacy.html
 
 ## What's New (initial release)
 
-Underpaint is a new reference-preparation tool for painters and illustrators. Study any photo as a tonal image, a value map, or a simplified color breakdown — with physically accurate paint recipes, on-device depth effects, surface contour overlays, and a Kuwahara painterly filter, right on your device.
+Underpaint is a new reference-preparation tool for painters and illustrators. Study any photo as a tonal image, a value map, or a simplified color breakdown — with physically accurate paint recipes, on-device depth effects, surface contour overlays, and on-device simplification, right on your device.

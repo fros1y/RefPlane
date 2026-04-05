@@ -84,7 +84,6 @@ class AppState {
         var activeMode: RefPlaneMode
         var abstractionStrength: Double
         var abstractionMethod: AbstractionMethod
-        var kuwaharaStrength: Double
 
         var gridEnabled: Bool
         var gridDivisions: Int
@@ -124,7 +123,6 @@ class AppState {
             activeMode = try c.decode(RefPlaneMode.self, forKey: .activeMode)
             abstractionStrength = try c.decode(Double.self, forKey: .abstractionStrength)
             abstractionMethod = try c.decode(AbstractionMethod.self, forKey: .abstractionMethod)
-            kuwaharaStrength = try c.decode(Double.self, forKey: .kuwaharaStrength)
             gridEnabled = try c.decode(Bool.self, forKey: .gridEnabled)
             gridDivisions = try c.decode(Int.self, forKey: .gridDivisions)
             gridShowDiagonals = try c.decode(Bool.self, forKey: .gridShowDiagonals)
@@ -160,7 +158,6 @@ class AppState {
             activeMode: RefPlaneMode,
             abstractionStrength: Double,
             abstractionMethod: AbstractionMethod,
-            kuwaharaStrength: Double,
             gridEnabled: Bool,
             gridDivisions: Int,
             gridShowDiagonals: Bool,
@@ -193,7 +190,6 @@ class AppState {
             self.activeMode = activeMode
             self.abstractionStrength = abstractionStrength
             self.abstractionMethod = abstractionMethod
-            self.kuwaharaStrength = kuwaharaStrength
             self.gridEnabled = gridEnabled
             self.gridDivisions = gridDivisions
             self.gridShowDiagonals = gridShowDiagonals
@@ -245,9 +241,6 @@ class AppState {
         AbstractionMethod,
         @escaping @Sendable (Double) -> Void
     ) async throws -> UIImage
-
-    /// Apply the Kuwahara post-filter. Returns the filtered image, or nil on failure.
-    typealias KuwaharaOperation = @Sendable (UIImage, Int) async -> UIImage?
 
     typealias DepthMapOperation = @Sendable (UIImage) async throws -> UIImage
     typealias DepthEffectOperation = @Sendable (UIImage, UIImage, DepthConfig) -> UIImage?
@@ -316,14 +309,9 @@ class AppState {
     /// to the existing downscale-based abstraction range.
     var abstractionStrength: Double = 0.5
     var abstractionMethod: AbstractionMethod = .apisr
-    /// Kuwahara post-filter strength 0–1. `0` disables the filter; positive
-    /// values map to a neighbourhood radius of 1...16 applied after the SR model.
-    var kuwaharaStrength: Double = 0
 
     // Abstracted image (after upscale/denoise)
     var abstractedImage: UIImage? = nil
-    /// Kuwahara-filtered image applied on top of the abstracted (or source) image.
-    var kuwaharaFilteredImage: UIImage? = nil
 
     @ObservationIgnored private var processingTask: Task<Void, Never>? = nil
     @ObservationIgnored private var processingDebounceTask: Task<Void, Never>? = nil
@@ -334,9 +322,6 @@ class AppState {
     @ObservationIgnored private let abstractionOperation: AbstractionOperation
     @ObservationIgnored private var abstractionTask: Task<Void, Never>? = nil
     @ObservationIgnored private var abstractionGeneration: Int = 0
-
-    @ObservationIgnored private let kuwaharaOperation: KuwaharaOperation
-    @ObservationIgnored private var kuwaharaTask: Task<Void, Never>? = nil
 
     @ObservationIgnored private var loadingTask: Task<Void, Never>? = nil
     @ObservationIgnored private(set) var sourceImageMetadata: SourceImageMetadata = .empty
@@ -363,31 +348,18 @@ class AppState {
         abstractionStrength > 0
     }
 
-    /// Kuwahara neighbourhood radius derived from `kuwaharaStrength`.
-    /// Returns 0 when the filter is off, and a value clamped to 1...16 otherwise.
-    var kuwaharaRadius: Int {
-        guard kuwaharaStrength > 0 else { return 0 }
-        return min(max(Int((kuwaharaStrength * 16).rounded()), 1), 16)
-    }
-
     var availableAbstractionMethods: [AbstractionMethod] {
         AbstractionMethod.allCases.filter { method in
-            switch method.processingKind {
-            case .superResolution4x, .fullImageModel:
-                guard let name = method.modelBundleName else { return false }
-                return Bundle.main.url(forResource: name, withExtension: "mlmodelc") != nil
-                    || Bundle.main.url(forResource: name, withExtension: "mlpackage") != nil
-                    || Bundle.main.url(forResource: name, withExtension: "mlmodel") != nil
-            case .metalShader:
-                return MetalContext.shared != nil
-            }
+            guard let name = method.modelBundleName else { return false }
+            return Bundle.main.url(forResource: name, withExtension: "mlmodelc") != nil
+                || Bundle.main.url(forResource: name, withExtension: "mlpackage") != nil
+                || Bundle.main.url(forResource: name, withExtension: "mlmodel") != nil
         }
     }
 
     init(
         processOperation: ProcessOperation? = nil,
         abstractionOperation: AbstractionOperation? = nil,
-        kuwaharaOperation: KuwaharaOperation? = nil,
         depthMapOperation: DepthMapOperation? = nil,
         depthEffectOperation: DepthEffectOperation? = nil
     ) {
@@ -408,44 +380,6 @@ class AppState {
                 method: method,
                 onProgress: onProgress
             )
-        }
-        self.kuwaharaOperation = kuwaharaOperation ?? { image, radius in
-            guard let ctx = MetalContext.shared, let origCG = image.cgImage else { return nil }
-            let origW = origCG.width
-            let origH = origCG.height
-
-            // The radius is defined relative to a ~600 px reference image.
-            // Raw CGImages on Retina devices are often 2–4× larger in each dimension
-            // (e.g. 4032 px at 3× scale), making the effect invisible at the raw
-            // pixel level.  Downsample to ≤600 px on the longest side, apply the
-            // filter there, then upscale back so downstream processing sees the
-            // original pixel dimensions.
-            let maxWorkPx = 600
-            let longestSide = max(origW, origH)
-
-            let workCG: CGImage
-            if longestSide > maxWorkPx {
-                let s    = Double(maxWorkPx) / Double(longestSide)
-                let workW = max(1, Int((Double(origW) * s).rounded()))
-                let workH = max(1, Int((Double(origH) * s).rounded()))
-                let fmt  = UIGraphicsImageRendererFormat.default()
-                fmt.scale = 1.0
-                let small = UIGraphicsImageRenderer(size: CGSize(width: workW, height: workH), format: fmt)
-                    .image { _ in image.draw(in: CGRect(x: 0, y: 0, width: workW, height: workH)) }
-                guard let cg = small.cgImage else { return nil }
-                workCG = cg
-            } else {
-                workCG = origCG
-            }
-
-            guard let filtered = ctx.anisotropicKuwahara(workCG, radius: radius) else { return nil }
-
-            // Upscale back to original pixel dimensions if we downsampled.
-            guard workCG.width != origW || workCG.height != origH else { return filtered }
-            let fmt = UIGraphicsImageRendererFormat.default()
-            fmt.scale = 1.0
-            return UIGraphicsImageRenderer(size: CGSize(width: origW, height: origH), format: fmt)
-                .image { _ in filtered.draw(in: CGRect(x: 0, y: 0, width: origW, height: origH)) }
         }
         self.depthMapOperation = depthMapOperation ?? { image in
             try await DepthEstimator.estimateDepth(from: image)
@@ -476,7 +410,6 @@ class AppState {
         processingDebounceTask?.cancel()
         processingTask?.cancel()
         abstractionTask?.cancel()
-        kuwaharaTask?.cancel()
         depthTask?.cancel()
         depthEffectTask?.cancel()
         depthPreviewTask?.cancel()
@@ -485,7 +418,7 @@ class AppState {
         presetPersistenceTask?.cancel()
     }
 
-    var displayBaseImage: UIImage? { kuwaharaFilteredImage ?? abstractedImage ?? sourceImage }
+    var displayBaseImage: UIImage? { abstractedImage ?? sourceImage }
 
     var currentDisplayImage: UIImage? {
         // While adjusting depth thresholds, show the threshold preview
@@ -525,7 +458,6 @@ class AppState {
         processingDebounceTask?.cancel()
         processingTask?.cancel()
         abstractionTask?.cancel()
-        kuwaharaTask?.cancel()
         depthTask?.cancel()
         depthEffectTask?.cancel()
         depthPreviewDismissTask?.cancel()
@@ -545,7 +477,6 @@ class AppState {
         originalImage             = image
         sourceImage               = image
         abstractedImage           = nil
-        kuwaharaFilteredImage     = nil
         processedImage            = nil
         isolatedProcessedImage    = nil
         depthMap                  = nil
@@ -578,10 +509,6 @@ class AppState {
             sourceImage               = scaled
             if abstractionIsEnabled {
                 applyAbstraction()
-            } else if kuwaharaStrength > 0 {
-                processingLabel           = "Processing…"
-                processingIsIndeterminate = false
-                applyKuwahara()
             } else {
                 isSimplifying             = false
                 processingLabel           = "Processing…"
@@ -839,7 +766,6 @@ class AppState {
             activeMode: activeMode,
             abstractionStrength: abstractionStrength,
             abstractionMethod: abstractionMethod,
-            kuwaharaStrength: kuwaharaStrength,
             gridEnabled: gridConfig.enabled,
             gridDivisions: gridConfig.divisions,
             gridShowDiagonals: gridConfig.showDiagonals,
@@ -875,7 +801,6 @@ class AppState {
         activeMode = snapshot.activeMode
         abstractionStrength = snapshot.abstractionStrength
         abstractionMethod = snapshot.abstractionMethod
-        kuwaharaStrength = snapshot.kuwaharaStrength
 
         gridConfig = GridConfig(
             enabled: snapshot.gridEnabled,
@@ -927,8 +852,6 @@ class AppState {
 
         if abstractionIsEnabled {
             applyAbstraction()
-        } else if kuwaharaStrength > 0 {
-            applyKuwahara()
         } else {
             if depthConfig.enabled {
                 computeDepthMap()
@@ -1025,7 +948,6 @@ class AppState {
             activeMode: .original,
             abstractionStrength: 0.5,
             abstractionMethod: .apisr,
-            kuwaharaStrength: 0,
             gridEnabled: false,
             gridDivisions: 4,
             gridShowDiagonals: false,
@@ -1114,7 +1036,6 @@ class AppState {
             "Simplification",
             "Method: \(settings.abstractionMethod)",
             "Strength: \(formattedScalar(settings.abstractionStrength))",
-            "Kuwahara: \(formattedScalar(settings.kuwaharaStrength))",
             "",
             "Grayscale Conversion",
             settings.grayscaleConversion,
@@ -1316,7 +1237,6 @@ class AppState {
         ExportSettingsMetadata(
             abstractionStrength: abstractionStrength,
             abstractionMethod: abstractionMethod.rawValue,
-            kuwaharaStrength: kuwaharaStrength,
             grayscaleConversion: valueConfig.grayscaleConversion.rawValue,
             valueLevels: valueConfig.levels,
             valueQuantizationBias: valueConfig.quantizationBias,
@@ -1532,7 +1452,6 @@ class AppState {
         }
 
         abstractionTask?.cancel()
-        kuwaharaTask?.cancel()
         abstractionGeneration += 1
         let generation = abstractionGeneration
 
@@ -1548,7 +1467,6 @@ class AppState {
         let rawDownscale = 2.0 + abstractionStrength * 10.0
         let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
         let method = abstractionMethod
-        let kuwaharaRadius = self.kuwaharaRadius
 
         isProcessing = true
         isSimplifying = true
@@ -1569,22 +1487,9 @@ class AppState {
                 )
                 try Task.checkCancellation()
 
-                // Apply Kuwahara post-filter if enabled
-                var filteredImage: UIImage? = nil
-                if kuwaharaRadius > 0 {
-                    await MainActor.run {
-                        guard self.abstractionGeneration == generation else { return }
-                        self.processingLabel = "Filtering…"
-                        self.processingIsIndeterminate = true
-                    }
-                    filteredImage = await kuwaharaOperation(abstracted, kuwaharaRadius)
-                }
-                try Task.checkCancellation()
-
                 await MainActor.run {
                     guard self.abstractionGeneration == generation else { return }
                     self.abstractedImage = abstracted
-                    self.kuwaharaFilteredImage = filteredImage
                     self.isSimplifying   = false
                     self.isProcessing    = false
                     self.processingLabel = "Processing…"
@@ -1609,60 +1514,14 @@ class AppState {
 
     func resetAbstraction() {
         abstractionTask?.cancel()
-        kuwaharaTask?.cancel()
         abstractionGeneration += 1
         isSimplifying = false
         abstractedImage = nil
-        kuwaharaFilteredImage = nil
         isolatedProcessedImage = nil
         processedPixelBands = []
         processingLabel = "Processing…"
         processingIsIndeterminate = false
-        if kuwaharaStrength > 0 {
-            applyKuwahara()
-        } else {
-            triggerProcessing()
-        }
-    }
-
-    /// Apply the Kuwahara post-filter to the current base image
-    /// (abstractedImage if available, otherwise sourceImage).
-    /// Call this when only `kuwaharaStrength` changes without re-running the SR model.
-    func applyKuwahara() {
-        kuwaharaTask?.cancel()
-
-        guard kuwaharaStrength > 0 else {
-            kuwaharaFilteredImage = nil
-            triggerProcessing()
-            return
-        }
-
-        guard let source = abstractedImage ?? sourceImage else {
-            kuwaharaFilteredImage = nil
-            return
-        }
-
-        let radius = kuwaharaRadius
-
-        isProcessing = true
-        processingProgress = 0
-        processingLabel = "Filtering…"
-        processingIsIndeterminate = true
-
-        kuwaharaTask = Task {
-            let filtered = await kuwaharaOperation(source, radius)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self.kuwaharaFilteredImage = filtered
-                self.isProcessing = false
-                self.processingIsIndeterminate = false
-                self.processingLabel = "Processing…"
-                if self.depthConfig.enabled {
-                    self.computeDepthMap()
-                }
-                self.triggerProcessing()
-            }
-        }
+        triggerProcessing()
     }
 
     func toggleIsolatedBand(_ band: Int) {
@@ -2317,7 +2176,6 @@ private struct ExportProvenanceMetadata: Encodable {
 private struct ExportSettingsMetadata: Encodable {
     var abstractionStrength: Double
     var abstractionMethod: String
-    var kuwaharaStrength: Double
     var grayscaleConversion: String
     var valueLevels: Int
     var valueQuantizationBias: Double

@@ -136,18 +136,7 @@ enum ImageAbstractor {
         let origH = sourceCG.height
 
         // Load model (async) before entering the detached compute task
-        let loadedModel: MLModel?
-        switch method.processingKind {
-        case .superResolution4x, .fullImageModel:
-            loadedModel = try await loadModel(for: method)
-        case .metalShader:
-            loadedModel = nil
-        }
-
-        let metalCtx = (method.processingKind == .metalShader) ? MetalContext.shared : nil
-        if method.processingKind == .metalShader && metalCtx == nil {
-            throw AbstractionError.inferenceFailed(method)
-        }
+        let loadedModel = try await loadModel(for: method)
 
         return try await Task.detached(priority: .userInitiated) {
             let smallW = max(1, Int(round(Double(origW) / Double(downscale))))
@@ -156,28 +145,19 @@ enum ImageAbstractor {
 
             switch method.processingKind {
             case .superResolution4x:
-                guard let model = loadedModel,
-                      let smallCG = small.cgImage,
-                      let upscaled = processInTiles(smallCG, model: model, onProgress: onProgress) else {
+                guard let smallCG = small.cgImage,
+                      let upscaled = processInTiles(smallCG, model: loadedModel, onProgress: onProgress) else {
                     throw AbstractionError.inferenceFailed(method)
                 }
                 return resizeToPixels(upscaled, width: origW, height: origH)
 
             case .fullImageModel:
-                guard let model = loadedModel,
-                      let smallCG = small.cgImage,
-                      let result = runModel(model, input: smallCG) else {
+                guard let smallCG = small.cgImage,
+                      let result = runModel(loadedModel, input: smallCG) else {
                     throw AbstractionError.inferenceFailed(method)
                 }
                 return resizeToPixels(result, width: origW, height: origH)
 
-            case .metalShader:
-                guard let ctx = metalCtx,
-                      let smallCG = small.cgImage,
-                      let result = ctx.anisotropicKuwahara(smallCG) else {
-                    throw AbstractionError.inferenceFailed(method)
-                }
-                return resizeToPixels(result, width: origW, height: origH)
             }
         }.value
     }

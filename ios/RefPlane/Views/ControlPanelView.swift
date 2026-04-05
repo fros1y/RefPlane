@@ -348,22 +348,6 @@ struct ControlPanelView: View {
                 }
                 .pickerStyle(.segmented)
             }
-
-            LabeledSlider(
-                label: "Kuwahara",
-                value: Binding(
-                    get: { state.kuwaharaStrength },
-                    set: { state.kuwaharaStrength = $0 }
-                ),
-                range: 0...1,
-                step: 0.0625,
-                displayFormat: { value in
-                    guard value > 0 else { return "Off" }
-                    return "R\(Int((value * 16).rounded()))"
-                },
-                onEditingChanged: handleKuwaharaDrag
-            )
-
         }
     }
 
@@ -442,16 +426,6 @@ struct ControlPanelView: View {
 
         if didChange {
             state.applyAbstraction()
-        }
-    }
-
-    private func handleKuwaharaDrag(_ editing: Bool) {
-        guard !editing else { return }
-
-        if state.abstractionIsEnabled {
-            state.applyAbstraction()
-        } else {
-            state.applyKuwahara()
         }
     }
 

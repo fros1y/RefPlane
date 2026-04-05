@@ -116,7 +116,6 @@ func currentSettingsDescriptionIncludesAllPipelineSectionsAndPigments() {
     state.depthConfig.enabled = true
     state.depthConfig.backgroundMode = .blur
     state.abstractionStrength = 0.65
-    state.kuwaharaStrength = 0.3
     state.valueConfig.grayscaleConversion = .average
     state.valueConfig.levels = 5
     state.valueConfig.quantizationBias = -0.4
