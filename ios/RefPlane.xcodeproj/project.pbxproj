@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BB00AA11CC22DD33EE44FF03 /* AsyncAlgorithms in Frameworks */ = {isa = PBXBuildFile; productRef = BB00AA11CC22DD33EE44FF02 /* AsyncAlgorithms */; };
 		AA00000000000001 /* AppModelsExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000011 /* AppModelsExtendedTests.swift */; };
 		AA00000000000002 /* ColorRegionsProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000012 /* ColorRegionsProcessorTests.swift */; };
 		AA00000000000003 /* ContourLineColorResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000013 /* ContourLineColorResolverTests.swift */; };
@@ -228,6 +229,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB00AA11CC22DD33EE44FF03 /* AsyncAlgorithms in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -423,6 +425,9 @@
 			dependencies = (
 			);
 			name = RefPlane;
+			packageProductDependencies = (
+				BB00AA11CC22DD33EE44FF02 /* AsyncAlgorithms */,
+			);
 			productName = Underpaint;
 			productReference = E636B285F8FF462997175C6A /* Underpaint.app */;
 			productType = "com.apple.product-type.application";
@@ -456,6 +461,9 @@
 			);
 			mainGroup = AE223F6F391E40DE9E02CF75;
 			productRefGroup = 8B62BEE22E8D4E52A4A9828D /* Products */;
+			packageReferences = (
+				BB00AA11CC22DD33EE44FF01 /* XCRemoteSwiftPackageReference "swift-async-algorithms" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -862,6 +870,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		BB00AA11CC22DD33EE44FF01 /* XCRemoteSwiftPackageReference "swift-async-algorithms" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-async-algorithms.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BB00AA11CC22DD33EE44FF02 /* AsyncAlgorithms */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB00AA11CC22DD33EE44FF01 /* XCRemoteSwiftPackageReference "swift-async-algorithms" */;
+			productName = AsyncAlgorithms;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FE679CBE0A164F04966A82E9 /* Project object */;
 }

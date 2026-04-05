@@ -358,16 +358,41 @@ enum ImageAbstractor {
 
         var dstPixels = [UInt8](repeating: 0, count: newW * newH * 4)
 
-        for dy in 0..<newH {
-            let sy = reflectedCoordinate(dy - top, limit: h)
-            for dx in 0..<newW {
-                let sx = reflectedCoordinate(dx - left, limit: w)
-                let srcIdx = (sy * w + sx) * 4
-                let dstIdx = (dy * newW + dx) * 4
-                dstPixels[dstIdx] = srcPixels[srcIdx]
-                dstPixels[dstIdx + 1] = srcPixels[srcIdx + 1]
-                dstPixels[dstIdx + 2] = srcPixels[srcIdx + 2]
-                dstPixels[dstIdx + 3] = 255
+        dstPixels.withUnsafeMutableBufferPointer { dstBuf in
+            srcPixels.withUnsafeBufferPointer { srcBuf in
+                let dst = dstBuf.baseAddress!
+                let src = srcBuf.baseAddress!
+
+                for dy in 0..<newH {
+                    let sy = reflectedCoordinate(dy - top, limit: h)
+                    let srcRow = src + sy * w * 4
+                    let dstRow = dst + dy * newW * 4
+
+                    // Left padding: reflected x coordinates
+                    for dx in 0..<left {
+                        let sx = reflectedCoordinate(dx - left, limit: w)
+                        let si = sx * 4
+                        let di = dx * 4
+                        dstRow[di]     = srcRow[si]
+                        dstRow[di + 1] = srcRow[si + 1]
+                        dstRow[di + 2] = srcRow[si + 2]
+                        dstRow[di + 3] = 255
+                    }
+
+                    // Center: memcpy entire source row (bulk of pixels)
+                    memcpy(dstRow + left * 4, srcRow, w * 4)
+
+                    // Right padding: reflected x coordinates
+                    for dx in (left + w)..<newW {
+                        let sx = reflectedCoordinate(dx - left, limit: w)
+                        let si = sx * 4
+                        let di = dx * 4
+                        dstRow[di]     = srcRow[si]
+                        dstRow[di + 1] = srcRow[si + 1]
+                        dstRow[di + 2] = srcRow[si + 2]
+                        dstRow[di + 3] = 255
+                    }
+                }
             }
         }
 
