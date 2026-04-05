@@ -48,7 +48,7 @@ struct CompareSliderView: View {
     private var compareLabels: some View {
         VStack {
             HStack {
-                CompareTag(title: "Original", icon: "photo")
+                CompareTag(title: "Natural", icon: "photo")
                     .accessibilityIdentifier("compare.label.original")
                 Spacer()
                 CompareTag(title: "Processed", icon: "wand.and.stars")

@@ -26,24 +26,24 @@ struct ControlPanelView: View {
         VStack(spacing: 0) {
             headerView
             Divider().opacity(0.18)
-            presetSelectorBar
-            Divider().opacity(0.18)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    presetSelectorBar
+                    Divider().opacity(0.18)
                     backgroundSection
                     simplificationSection
                     tonalSection
                     quantizationSection
                     paletteSection
                     overlaysSection
+                    Divider().opacity(0.18)
+                    footerBar
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, presentation == .bottomPanel ? 48 : 24)
             }
             .scrollIndicators(.hidden)
-            Divider().opacity(0.18)
-            footerBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.regularMaterial)
@@ -163,9 +163,6 @@ struct ControlPanelView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 14)
     }
 
     private var headerView: some View {
@@ -192,7 +189,7 @@ struct ControlPanelView: View {
     private var backgroundSection: some View {
         StudioPanelCard(
             title: "Adjust Background",
-            systemImage: "camera.aperture",
+            systemImage: "cube",
             accessibilityID: "studio.card.background"
         ) {
             DepthSettingsView()
@@ -373,9 +370,6 @@ struct ControlPanelView: View {
             .disabled(state.currentDisplayImage == nil)
             .accessibilityIdentifier("studio.export")
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, presentation == .bottomPanel ? 34 : 18)
     }
 
     private func saveCurrentPreset() {

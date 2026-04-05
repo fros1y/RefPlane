@@ -77,30 +77,31 @@ Processing takes a moment, especially on older devices. The canvas shows a progr
 
 ---
 
-## Depth Effects
+## Spatial Depth
 
-Enable **Depth Effects** to separate your scene into foreground and background using an on-device depth estimation model. Once enabled, you can selectively treat the background while leaving the foreground crisp — useful for isolating the subject you plan to paint.
+Enable **Adjust Background** to separate your scene into foreground and background. Photos taken in **Spatial mode** on iPhone already contain a precision depth map — Underpaint reads it directly for the best possible separation. For any other photo, an on-device depth estimation model fills in automatically.
+
+**Tip:** For the sharpest foreground/background separation, shoot your reference in Spatial mode.
 
 ### Controls
 
 | Setting | Description |
 |---------|-------------|
-| *Depth Effects* toggle | Enables depth estimation and background processing |
-| *Background* slider | Sets the depth cutoff — everything further than this point is treated as background |
-| *Background* mode | How the background is treated (see modes below) |
-| *Intensity* slider | How strongly the background effect is applied (0–100%) |
+| *Adjust Background* picker | Choose a background treatment (see modes below) |
+| *Depth Threshold* slider | Sets the depth cutoff — everything further than this point is treated as background |
+| *Amount* slider | How strongly the background effect is applied (0–100%) |
 
 ### Background Modes
 
 | Mode | Effect |
 |------|--------|
-| **Depth Effects** | Applies a painterly de-emphasis: reduced contrast, muted color, and a warm-to-cool atmospheric shift that pushes the background visually into the distance |
+| **Compress** | Applies a painterly de-emphasis: reduced contrast, muted color, and a warm-to-cool atmospheric shift that pushes the background visually into the distance |
 | **Blur** | Gaussian blur that softens the background, simulating a shallow depth of field. The blur radius scales with intensity — at maximum, the background is heavily smoothed |
 | **Remove** | Replaces the background with a solid neutral tone, isolating the foreground subject entirely |
 
 ### Surface Contours
 
-When depth effects are active, you can overlay **surface contour lines** (isolines) on the image. These trace lines of equal depth across your scene, revealing the three-dimensional form of objects.
+When Spatial depth is active, you can overlay **surface contour lines** (isolines) on the image. These trace lines of equal depth across your scene, revealing the three-dimensional form of objects.
 
 Use contours to:
 - understand the spatial structure of your reference
@@ -219,7 +220,10 @@ The current database includes 78 Golden Heavy Body Acrylic colors with full spec
 The recipes are physically meaningful approximations based on spectral pigment data, but paint behavior varies with medium, dilution, layering, and application technique. Treat the recipes as informed starting points, not exact formulas.
 
 **Why does processing take a moment?**
-The Value and Color modes run clustering algorithms across the full image. The Simplify pass and depth estimation both run on-device machine-learning models. These operations can take a few seconds depending on device and image size. The canvas shows a progress indicator while work is underway.
+The Value and Color modes run clustering algorithms across the full image. The Simplify pass and depth estimation both run on-device machine-learning models. These operations can take a few seconds depending on device and image size. The canvas shows a progress indicator while work is underway. (Spatial photos skip the estimation step entirely, so depth loads much faster.)
+
+**What are Spatial photos?**
+Spatial photos are images captured in Spatial mode on supported iPhones. They include an embedded depth map recorded by the camera hardware. Underpaint reads this depth map directly, giving you more accurate foreground/background separation than software estimation alone.
 
 **The app asked for access to my photos. Why?**
 Underpaint needs photo library access to let you pick a reference image with the standard image picker. If you choose not to grant access, you can still use the app by sharing an image into it from Photos or another app.
@@ -228,7 +232,7 @@ Underpaint needs photo library access to let you pick a reference image with the
 Yes. On iPad (and on iPhone in landscape), the inspector panel appears alongside the canvas so you can adjust settings and view the image at the same time.
 
 **What image formats are supported?**
-Underpaint accepts any image format that iOS supports, including JPEG, PNG, HEIC, and RAW formats from the Photos library.
+Underpaint accepts any image format that iOS supports, including JPEG, PNG, HEIC, Spatial photos, and RAW formats from the Photos library.
 
 **Is there a limit on image size?**
 Images larger than 1,600 pixels on the long edge are scaled down before processing. This keeps processing fast and memory use reasonable on all supported devices.

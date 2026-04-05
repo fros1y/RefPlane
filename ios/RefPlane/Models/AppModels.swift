@@ -7,10 +7,10 @@ enum RefPlaneMode: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .original: return "Original"
+        case .original: return "Natural"
         case .tonal:    return "Tonal"
         case .value:    return "Value"
-        case .color:    return "Color"
+        case .color:    return "Paletted"
         }
     }
     var iconName: String {

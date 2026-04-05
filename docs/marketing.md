@@ -34,13 +34,13 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 
 ## Medium Description (≤ 500 characters — suitable for Instagram bio, press kit one-pager, or app directory)
 
-> Underpaint is a reference-preparation tool for painters and illustrators. Load a photograph, choose a study mode — Tonal, Value, or Color — and see your reference the way a painter sees it. The Color mode goes further: it decomposes each region into an actual paint recipe using real Golden Heavy Body Acrylic colors and Kubelka-Munk spectral mixing. On-device depth estimation lets you blur, remove, or de-emphasize the background while keeping your subject crisp. A configurable grid overlay, surface contour lines, a side-by-side compare view, and on-device simplification round out a focused, privacy-respecting studio tool.
+> Underpaint is a reference-preparation tool for painters and illustrators. Load a photograph, choose a study mode — Tonal, Value, or Color — and see your reference the way a painter sees it. The Color mode goes further: it decomposes each region into an actual paint recipe using real Golden Heavy Body Acrylic colors and Kubelka-Munk spectral mixing. Photos shot in Spatial mode get instant, precision depth separation — for everything else, on-device depth estimation fills in automatically. Blur, remove, or de-emphasize the background while keeping your subject crisp. A configurable grid overlay, surface contour lines, a side-by-side compare view, and on-device simplification round out a focused, privacy-respecting studio tool.
 
 ---
 
 ## Press Paragraph (≤ 1 000 characters — suitable for a press release body or a Product Hunt maker comment)
 
-> Underpaint is a native iPhone and iPad app for painters who work from photographic reference. It offers four study modes — Original, Tonal, Value, and Color — that progressively strip away photographic complexity and reveal the underlying structure of a scene. The Color mode is powered by Kubelka-Munk spectral mixing, the same physical model used in professional color-matching software. Rather than averaging RGB values, Underpaint simulates how real pigments absorb and scatter light to generate paint recipes from 78 Golden Heavy Body Acrylic colors. On-device depth estimation separates foreground from background so you can blur, remove, or atmospherically push back the background with a single slider. Surface contour lines trace equal-depth isolines across the scene, revealing the 3D form of your subject. An on-device super-resolution simplification pass, a configurable grid overlay, and a drag-split compare view complete the toolkit. No accounts. No analytics. Everything runs on device.
+> Underpaint is a native iPhone and iPad app for painters who work from photographic reference. It offers four study modes — Original, Tonal, Value, and Color — that progressively strip away photographic complexity and reveal the underlying structure of a scene. The Color mode is powered by Kubelka-Munk spectral mixing, the same physical model used in professional color-matching software. Rather than averaging RGB values, Underpaint simulates how real pigments absorb and scatter light to generate paint recipes from 78 Golden Heavy Body Acrylic colors. Shoot your reference in Spatial mode and Underpaint reads the embedded depth map directly for precision foreground/background separation; for any other photo, on-device depth estimation fills in automatically. Blur, remove, or atmospherically push back the background with a single slider. Surface contour lines trace equal-depth isolines across the scene, revealing the 3D form of your subject. An on-device super-resolution simplification pass, a configurable grid overlay, and a drag-split compare view complete the toolkit. No accounts. No analytics. Everything runs on device.
 
 ---
 
@@ -94,11 +94,11 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 >
 > [screenshot]
 
-### Feature spotlight: Depth Effects (X/Twitter)
+### Feature spotlight: Spatial Depth (X/Twitter)
 
-> Underpaint's Depth Effects use on-device depth estimation to separate your subject from the background.
+> Shoot in Spatial mode? Underpaint reads the depth map straight from your photo for instant foreground/background separation.
 >
-> Blur it. Remove it. Or push it back with atmospheric de-emphasis — like aerial perspective, on demand.
+> Blur it. Remove it. Or push it back with atmospheric de-emphasis — like aerial perspective, on demand. Works with any photo, but Spatial photos get the best results.
 >
 > [screenshot]
 
@@ -136,7 +136,7 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 >
 > The part that sets Underpaint apart: in Color mode it generates physically accurate paint mixture recipes. Not RGB blends — actual Kubelka-Munk spectral mixing using measured pigment data for 78 Golden Heavy Body Acrylic colors.
 >
-> It also runs on-device depth estimation so you can blur, remove, or atmospherically push back the background. Surface contour isolines reveal the 3D form of your subject. A super-resolution simplification pass lets you strip a photo down to broad, paintable shapes.
+> Photos shot in Spatial mode get instant, precision depth separation — Underpaint reads the embedded depth map directly. For any other photo, on-device depth estimation fills in automatically. Either way you can blur, remove, or atmospherically push back the background. Surface contour isolines reveal the 3D form of your subject. A super-resolution simplification pass lets you strip a photo down to broad, paintable shapes.
 >
 > Everything runs on device. No accounts, no analytics, no internet required. Open source under the AGPL.
 
@@ -164,7 +164,7 @@ A collection of ready-to-use marketing copy for Underpaint at different lengths 
 - Native iPhone and iPad app built with Swift and SwiftUI
 - Four study modes: Original, Tonal, Value, and Color
 - Kubelka-Munk spectral paint mixing with 78 Golden Heavy Body Acrylic colors
-- On-device depth estimation with background blur, removal, and atmospheric de-emphasis
+- Spatial photo depth support with instant foreground/background separation; on-device estimation for all other photos
 - Surface contour isolines that reveal the 3D form of your scene
 - On-device super-resolution simplification using a bundled Core ML model
 - Configurable grid overlay for proportion transfer

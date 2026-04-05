@@ -60,7 +60,7 @@ struct DepthSettingsView: View {
             }
 
             if let source = state.depthSource {
-                Text(source == .embedded ? "Using photo depth" : "Using estimated depth")
+                Text(source == .embedded ? "Using Spatial depth" : "Using estimated depth")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

@@ -8,6 +8,8 @@ struct ThresholdSliderView: View {
     let colorForLevel: (Int, Int) -> Color
     var onEditingEnded: (() -> Void)? = nil
 
+    @Environment(AppState.self) private var state
+
     var body: some View {
         let expectedHandles = max(0, levels - 1)
 
@@ -18,7 +20,11 @@ struct ThresholdSliderView: View {
             colorForLevel: { level in
                 colorForLevel(level, max(1, levels))
             },
-            onEditingEnded: onEditingEnded
+            onEditingStarted: { state.sliderEditingChanged(true) },
+            onEditingEnded: {
+                state.sliderEditingChanged(false)
+                onEditingEnded?()
+            }
         )
         .frame(height: 52)
         .accessibilityElement(children: .ignore)
@@ -47,6 +53,7 @@ private struct MultiHandleSliderRepresentable: UIViewRepresentable {
     let expectedHandles: Int
     let minimumGap: Double
     let colorForLevel: (Int) -> Color
+    let onEditingStarted: (() -> Void)?
     let onEditingEnded: (() -> Void)?
 
     func makeUIView(context: Context) -> MultiHandleSliderControl {
@@ -55,6 +62,7 @@ private struct MultiHandleSliderRepresentable: UIViewRepresentable {
         control.onThresholdsChanged = { newValues in
             thresholds = newValues
         }
+        control.onEditingStarted = onEditingStarted
         control.onEditingEnded = onEditingEnded
         updateControl(control)
         return control
@@ -88,6 +96,7 @@ private struct MultiHandleSliderRepresentable: UIViewRepresentable {
 private final class MultiHandleSliderControl: UIControl {
     var minimumGap: Double = 0.02
     var onThresholdsChanged: (([Double]) -> Void)?
+    var onEditingStarted: (() -> Void)?
     var onEditingEnded: (() -> Void)?
     var expectedHandles: Int = 0
 
@@ -290,6 +299,7 @@ struct LabeledSlider: View {
     let displayFormat: (Double) -> String
     var onEditingChanged: ((Bool) -> Void)? = nil
 
+    @Environment(AppState.self) private var state
     @State private var valueAtDragStart: Double? = nil
 
     var body: some View {
@@ -314,6 +324,7 @@ struct LabeledSlider: View {
                     if editing {
                         valueAtDragStart = value
                     }
+                    state.sliderEditingChanged(editing)
                     onEditingChanged?(editing)
                     if !editing {
                         valueAtDragStart = nil
@@ -327,6 +338,8 @@ struct LabeledSlider: View {
 struct QuantizationBiasSlider: View {
     @Binding var value: Double
     var onEditingChanged: ((Bool) -> Void)? = nil
+
+    @Environment(AppState.self) private var state
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -355,7 +368,10 @@ struct QuantizationBiasSlider: View {
                     value: $value,
                     range: QuantizationBias.range,
                     step: QuantizationBias.step,
-                    onEditingChanged: onEditingChanged
+                    onEditingChanged: { editing in
+                        state.sliderEditingChanged(editing)
+                        onEditingChanged?(editing)
+                    }
                 )
             }
 

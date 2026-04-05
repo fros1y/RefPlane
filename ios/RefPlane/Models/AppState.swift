@@ -305,6 +305,23 @@ class AppState {
     @ObservationIgnored var cachedDepthPreviewSourceTexture: AnyObject? = nil
     /// True while the user's finger is actively on a depth cutoff slider.
     @ObservationIgnored var depthSliderActive: Bool = false
+
+    // MARK: - Active slider tracking (for panel collapse on iPhone)
+
+    /// Number of sliders currently being dragged. Tracked so the bottom panel
+    /// can collapse while any slider is active, giving the user a clear view
+    /// of the canvas.  Incremented/decremented by `LabeledSlider`,
+    /// `QuantizationBiasSlider`, and `ThresholdSliderView` automatically.
+    var activeSliderCount: Int = 0
+
+    /// Convenience: true when any slider is being interacted with.
+    var isAnySliderActive: Bool { activeSliderCount > 0 }
+
+    func sliderEditingChanged(_ editing: Bool) {
+        activeSliderCount += editing ? 1 : -1
+        if activeSliderCount < 0 { activeSliderCount = 0 }
+    }
+
     /// Abstraction strength 0–1. `0` disables abstraction; positive values map
     /// to the existing downscale-based abstraction range.
     var abstractionStrength: Double = 0.5
