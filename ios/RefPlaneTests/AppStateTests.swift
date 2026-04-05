@@ -130,9 +130,11 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
 
     let pixels = state.currentDisplayImage?.toPixelData()?.data
     #expect(pixels != nil)
-    #expect(pixels?[0] == 255)
-    #expect(pixels?[1] == 255)
-    #expect(pixels?[2] == 255)
+    // Non-selected pixel (red) should be desaturated and dimmed — much darker than original
+    #expect(pixels![0] < 100)
+    #expect(pixels![1] < 100)
+    #expect(pixels![2] < 100)
+    // Selected band pixel (blue) should remain unchanged
     #expect(pixels?[4] == 0)
     #expect(pixels?[5] == 0)
     #expect(pixels?[6] == 255)

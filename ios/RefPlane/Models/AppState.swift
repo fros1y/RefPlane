@@ -1559,6 +1559,9 @@ class AppState {
               let isolatedBand,
               let processedImage else {
             isolatedProcessedImage = nil
+            if depthConfig.enabled && depthMap != nil {
+                applyDepthEffects()
+            }
             return
         }
 
@@ -1567,6 +1570,9 @@ class AppState {
             pixelBands: processedPixelBands,
             selectedBand: isolatedBand
         )
+        if depthConfig.enabled && depthMap != nil {
+            applyDepthEffects()
+        }
     }
 
     // MARK: - Depth processing
