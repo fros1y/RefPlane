@@ -16,6 +16,10 @@ class UnlockManager {
     private(set) var product: Product?
     var errorMessage: String?
 
+#if DEBUG
+    var debugUnlockOverride = false
+#endif
+
     // MARK: - Private
 
     @ObservationIgnored
@@ -101,6 +105,12 @@ class UnlockManager {
                 break
             }
         }
+
+#if DEBUG
+        if debugUnlockOverride {
+            foundEntitlement = true
+        }
+#endif
 
         isUnlocked = foundEntitlement
         purchaseState = foundEntitlement ? .unlocked : .locked

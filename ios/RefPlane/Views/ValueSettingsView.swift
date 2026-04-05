@@ -71,6 +71,7 @@ struct ValueSettingsView: View {
                         let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
                         return Color(white: t)
                     },
+                    onEditingChanged: state.sliderEditingChanged,
                     onEditingEnded: {
                         state.scheduleProcessing()
                     }

@@ -36,6 +36,7 @@ struct AboutPrivacyView: View {
     }
 
     var body: some View {
+        @Bindable var unlockManager = unlockManager
         NavigationStack {
             List {
                 Section("About") {
@@ -103,6 +104,15 @@ struct AboutPrivacyView: View {
                         }
                         .accessibilityIdentifier("about.redeem")
                     }
+
+#if DEBUG
+                    Toggle(isOn: $unlockManager.debugUnlockOverride) {
+                        Label("Force Paid Mode (Debug)", systemImage: "ladybug.fill")
+                    }
+                    .onChange(of: unlockManager.debugUnlockOverride) { _, _ in
+                        Task { await unlockManager.refreshPurchaseStatus() }
+                    }
+#endif
                 }
 
                 Section("Privacy") {

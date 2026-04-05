@@ -340,7 +340,7 @@ enum DepthEstimator {
 
         let lowPercentile = percentile(in: validValues, p: 0.005)
         let highPercentile = percentile(in: validValues, p: 0.998)
-        let gamma: Float = 0.92
+        let gamma = 0.92
 
         let minValue = validValues.first ?? lowPercentile
         let maxValue = validValues.last ?? highPercentile
@@ -348,7 +348,7 @@ enum DepthEstimator {
         let upperBound = max(highPercentile, lowPercentile + 1e-8)
 
         logger.info(
-            "Embedded depth normalization window rawMin=\(Double(minValue), format: .fixed(precision: 6)) rawMax=\(Double(maxValue), format: .fixed(precision: 6)) p0_5=\(Double(lowPercentile), format: .fixed(precision: 6)) p99_8=\(Double(highPercentile), format: .fixed(precision: 6)) gamma=\(Double(gamma), format: .fixed(precision: 3))"
+            "Embedded depth normalization window rawMin=\(Double(minValue), format: .fixed(precision: 6)) rawMax=\(Double(maxValue), format: .fixed(precision: 6)) p0_5=\(Double(lowPercentile), format: .fixed(precision: 6)) p99_8=\(Double(highPercentile), format: .fixed(precision: 6)) gamma=\(gamma, format: .fixed(precision: 3))"
         )
 
         var grayscale = [UInt8](repeating: 0, count: width * height)
@@ -364,7 +364,7 @@ enum DepthEstimator {
 
                 let normalized = (value - lowerBound) / (upperBound - lowerBound)
                 let clamped = max(0.0, min(1.0, normalized))
-                let curved = pow(clamped, gamma)
+                let curved = pow(Double(clamped), gamma)
                 let mapped = invert ? (1.0 - curved) : curved
                 grayscale[rowOffset + x] = UInt8((mapped * 255.0).rounded())
             }

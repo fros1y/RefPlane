@@ -1,4 +1,3 @@
-import AsyncAlgorithms
 import ImageIO
 import SwiftUI
 import Observation
@@ -9,11 +8,6 @@ import os
 @MainActor
 class AppState {
     @ObservationIgnored private static let depthLogger = Logger(subsystem: "com.refplane.app", category: "DepthPipeline")
-
-    private struct UnsafeTransferBox<Value>: @unchecked Sendable {
-        let value: Value
-    }
-
     enum TransformPresetSelection: Hashable {
         case previous
         case appDefault
@@ -302,25 +296,25 @@ class AppState {
     var depthThresholdPreview: UIImage? = nil
     /// Cached Metal texture of the depth map, reused across preview updates for speed.
     @ObservationIgnored var cachedDepthTexture: AnyObject? = nil
-    /// Cached Metal texture of the preview source image, reused across drag updates.
-    @ObservationIgnored var cachedDepthPreviewSourceTexture: AnyObject? = nil
     /// True while the user's finger is actively on a depth cutoff slider.
     @ObservationIgnored var depthSliderActive: Bool = false
 
-    // MARK: - Active slider tracking (for panel collapse on iPhone)
+    // MARK: - Active slider tracking
 
     /// Number of sliders currently being dragged. Tracked so the bottom panel
     /// can collapse while any slider is active, giving the user a clear view
-    /// of the canvas.  Incremented/decremented by `LabeledSlider`,
-    /// `QuantizationBiasSlider`, and `ThresholdSliderView` automatically.
-    var activeSliderCount: Int = 0
+    /// of the canvas.
+    @ObservationIgnored var activeSliderCount: Int = 0
 
     /// Convenience: true when any slider is being interacted with.
-    var isAnySliderActive: Bool { activeSliderCount > 0 }
+    var isAnySliderActive: Bool = false
 
     func sliderEditingChanged(_ editing: Bool) {
         activeSliderCount += editing ? 1 : -1
-        if activeSliderCount < 0 { activeSliderCount = 0 }
+        if activeSliderCount < 0 {
+            activeSliderCount = 0
+        }
+        isAnySliderActive = activeSliderCount > 0
     }
 
     /// Abstraction strength 0–1. `0` disables abstraction; positive values map
@@ -332,9 +326,7 @@ class AppState {
     var abstractedImage: UIImage? = nil
 
     @ObservationIgnored private var processingTask: Task<Void, Never>? = nil
-    @ObservationIgnored private var processingContinuation: AsyncStream<Int>.Continuation?
-    @ObservationIgnored private var processingDebounceListener: Task<Void, Never>?
-    @ObservationIgnored private var processingDebounceGeneration: Int = 0
+    @ObservationIgnored private var processingDebounceTask: Task<Void, Never>? = nil
     @ObservationIgnored private let processOperation: ProcessOperation
     /// Incremented on every triggerProcessing() call; lets each task know if it is still current.
     @ObservationIgnored private var processingGeneration: Int = 0
@@ -351,12 +343,9 @@ class AppState {
     @ObservationIgnored private let depthEffectOperation: DepthEffectOperation
     @ObservationIgnored private var depthTask: Task<Void, Never>? = nil
     @ObservationIgnored private var depthEffectTask: Task<Void, Never>? = nil
-    @ObservationIgnored private var depthPreviewContinuation: AsyncStream<Int>.Continuation?
-    @ObservationIgnored private var depthPreviewListener: Task<Void, Never>?
     @ObservationIgnored private var depthPreviewDismissTask: Task<Void, Never>? = nil
     @ObservationIgnored private var depthGeneration: Int = 0
     @ObservationIgnored private var depthEffectGeneration: Int = 0
-    @ObservationIgnored private var depthPreviewGeneration: Int = 0
 
     @ObservationIgnored private var contourTask: Task<Void, Never>? = nil
     @ObservationIgnored private var contourGeneration: Int = 0
@@ -371,10 +360,13 @@ class AppState {
 
     var availableAbstractionMethods: [AbstractionMethod] {
         AbstractionMethod.allCases.filter { method in
-            guard let name = method.modelBundleName else { return false }
-            return Bundle.main.url(forResource: name, withExtension: "mlmodelc") != nil
-                || Bundle.main.url(forResource: name, withExtension: "mlpackage") != nil
-                || Bundle.main.url(forResource: name, withExtension: "mlmodel") != nil
+            switch method.processingKind {
+            case .superResolution4x, .fullImageModel:
+                guard let name = method.modelBundleName else { return false }
+                return Bundle.main.url(forResource: name, withExtension: "mlmodelc") != nil
+                    || Bundle.main.url(forResource: name, withExtension: "mlpackage") != nil
+                    || Bundle.main.url(forResource: name, withExtension: "mlmodel") != nil
+            }
         }
     }
 
@@ -418,30 +410,6 @@ class AppState {
             DepthEstimator.clearModelCache()
         }
 
-        // Processing debounce: slider changes yield here; only the last
-        // value after 180 ms of quiet triggers reprocessing.
-        let (processingStream, processingCont) = AsyncStream<Int>.makeStream()
-        self.processingContinuation = processingCont
-        self.processingDebounceListener = Task { [weak self] in
-            for await gen in processingStream.debounce(for: .milliseconds(180)) {
-                guard let self else { break }
-                guard gen == self.processingDebounceGeneration else { continue }
-                self.triggerProcessing()
-            }
-        }
-
-        // Depth-preview throttle: during depth-threshold slider drag,
-        // limit Metal preview work to at most one pass per 16 ms frame.
-        let (depthStream, depthCont) = AsyncStream<Int>.makeStream()
-        self.depthPreviewContinuation = depthCont
-        self.depthPreviewListener = Task { [weak self] in
-            for await gen in depthStream._throttle(for: .milliseconds(16)) {
-                guard let self else { break }
-                guard gen == self.depthPreviewGeneration else { continue }
-                await self.performDepthThresholdPreview(generation: gen)
-            }
-        }
-
         loadTransformPresetStore()
         restoreInitialTransformSnapshotSelection()
     }
@@ -451,12 +419,8 @@ class AppState {
             NotificationCenter.default.removeObserver(observer)
         }
 
-        processingContinuation?.finish()
-        processingDebounceListener?.cancel()
-        depthPreviewContinuation?.finish()
-        depthPreviewListener?.cancel()
-
         loadingTask?.cancel()
+        processingDebounceTask?.cancel()
         processingTask?.cancel()
         abstractionTask?.cancel()
         depthTask?.cancel()
@@ -503,7 +467,7 @@ class AppState {
 
         // Cancel any in-flight work before starting fresh.
         loadingTask?.cancel()
-        processingDebounceGeneration += 1
+        processingDebounceTask?.cancel()
         processingTask?.cancel()
         abstractionTask?.cancel()
         depthTask?.cancel()
@@ -567,7 +531,7 @@ class AppState {
     }
 
     func triggerProcessing() {
-        processingDebounceGeneration += 1
+        processingDebounceTask?.cancel()
         processingTask?.cancel()
         processingIsIndeterminate = false
         errorMessage = nil
@@ -646,10 +610,22 @@ class AppState {
         }
     }
 
-    func scheduleProcessing() {
+    func scheduleProcessing(after delay: Duration = .milliseconds(180)) {
+        processingDebounceTask?.cancel()
         updatePreviousTransformSnapshot()
-        processingDebounceGeneration += 1
-        processingContinuation?.yield(processingDebounceGeneration)
+
+        processingDebounceTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.triggerProcessing()
+            }
+        }
     }
 
     func setMode(_ mode: RefPlaneMode) {
@@ -1595,9 +1571,6 @@ class AppState {
               let isolatedBand,
               let processedImage else {
             isolatedProcessedImage = nil
-            if depthConfig.enabled && depthMap != nil {
-                applyDepthEffects()
-            }
             return
         }
 
@@ -1606,9 +1579,6 @@ class AppState {
             pixelBands: processedPixelBands,
             selectedBand: isolatedBand
         )
-        if depthConfig.enabled && depthMap != nil {
-            applyDepthEffects()
-        }
     }
 
     // MARK: - Depth processing
@@ -1699,7 +1669,14 @@ class AppState {
             return
         }
 
-        guard let sourceImage = depthEffectSourceImage() else {
+        // Determine source: mode-processed output, or displayBaseImage in original mode
+        let source: UIImage?
+        if activeMode == .original {
+            source = displayBaseImage
+        } else {
+            source = isolatedProcessedImage ?? processedImage ?? displayBaseImage
+        }
+        guard let sourceImage = source else {
             depthProcessedImage = nil
             return
         }
@@ -1713,25 +1690,16 @@ class AppState {
         processingLabel = "Applying depth…"
         processingIsIndeterminate = true
 
-        let sourceBox = UnsafeTransferBox(value: sourceImage)
-        let depthBox = UnsafeTransferBox(value: depth)
-        let configBox = UnsafeTransferBox(value: config)
-        let operation = depthEffectOperation
-
         depthEffectTask = Task {
-            let result = await runDetachedOperation {
-                if Task.isCancelled {
-                    return UnsafeTransferBox(value: nil as UIImage?)
-                }
-                let image = operation(sourceBox.value, depthBox.value, configBox.value)
-                return UnsafeTransferBox(value: image)
-            }.value
-            guard self.depthEffectGeneration == gen else { return }
-            self.isProcessing = false
-            guard !Task.isCancelled else { return }
-            self.depthProcessedImage = result
-            self.processingIsIndeterminate = false
-            self.processingLabel = "Processing…"
+            let result = depthEffectOperation(sourceImage, depth, config)
+            await MainActor.run {
+                guard self.depthEffectGeneration == gen else { return }
+                self.isProcessing = false
+                guard !Task.isCancelled else { return }
+                self.depthProcessedImage = result
+                self.processingIsIndeterminate = false
+                self.processingLabel = "Processing…"
+            }
         }
     }
 
@@ -1742,7 +1710,6 @@ class AppState {
         contourTask?.cancel()
         depthGeneration += 1
         depthEffectGeneration += 1
-        depthPreviewGeneration += 1
         contourGeneration += 1
         depthMap = nil
         depthProcessedImage = nil
@@ -1750,7 +1717,6 @@ class AppState {
         depthSliderActive = false
         depthThresholdPreview = nil
         cachedDepthTexture = nil
-        cachedDepthPreviewSourceTexture = nil
         depthRange = 0...1
         contourSegments = []
     }
@@ -1767,52 +1733,28 @@ class AppState {
     /// Regenerate the depth-threshold preview image showing which pixels
     /// fall into the background zone. Called while the user drags a cutoff slider.
     func updateDepthThresholdPreview() {
-        guard depthMap != nil, depthEffectSourceImage() != nil else {
-            depthPreviewGeneration += 1
+        guard let depth = depthMap else {
             isEditingDepthThreshold = false
             depthThresholdPreview = nil
             cachedDepthTexture = nil
-            cachedDepthPreviewSourceTexture = nil
             return
         }
-
-        isEditingDepthThreshold = true
-        depthPreviewGeneration += 1
-        depthPreviewContinuation?.yield(depthPreviewGeneration)
-    }
-
-    /// Perform a single depth-threshold preview pass. Called by the
-    /// throttled depth-preview listener (at most once per 16 ms frame).
-    private func performDepthThresholdPreview(generation: Int) async {
-        guard let depth = depthMap, let sourceImage = depthEffectSourceImage() else { return }
-
+        // Create the Metal texture once and cache it for the drag session
+        if cachedDepthTexture == nil {
+            cachedDepthTexture = MetalContext.shared?.makeDepthTexture(from: depth)
+        }
         let bg = depthConfig.backgroundCutoff
-        let sourceBox = UnsafeTransferBox(value: sourceImage)
-        let depthBox = UnsafeTransferBox(value: depth)
-        let textureBox = UnsafeTransferBox(value: cachedDepthTexture)
-        let sourceTextureBox = UnsafeTransferBox(value: cachedDepthPreviewSourceTexture)
-
-        let previewResult = await runDetachedOperation {
-            return UnsafeTransferBox(
-                value: DepthProcessor.thresholdPreview(
-                    sourceImage: sourceBox.value,
-                    depthMap: depthBox.value,
-                    backgroundCutoff: bg,
-                    cachedDepthTexture: textureBox.value,
-                    cachedSourceTexture: sourceTextureBox.value
-                )
+        isEditingDepthThreshold = true
+        depthThresholdPreview = DepthProcessor.thresholdPreview(
+            depthMap: depth,
+            backgroundCutoff: bg,
+            cachedDepthTexture: cachedDepthTexture
+        )
+        if let coverage = backgroundCoverage(in: depth, cutoff: bg) {
+            AppState.depthLogger.debug(
+                "Depth slider preview cutoff=\(bg, format: .fixed(precision: 4)) backgroundCoveragePct=\((coverage * 100.0), format: .fixed(precision: 2))"
             )
-        }.value
-
-        if self.cachedDepthTexture == nil, let cachedTexture = previewResult.cachedDepthTexture {
-            self.cachedDepthTexture = cachedTexture
         }
-        if self.cachedDepthPreviewSourceTexture == nil,
-           let cachedSourceTexture = previewResult.cachedSourceTexture {
-            self.cachedDepthPreviewSourceTexture = cachedSourceTexture
-        }
-        guard self.depthPreviewGeneration == generation, self.isEditingDepthThreshold else { return }
-        self.depthThresholdPreview = previewResult.image
     }
 
     /// Schedule auto-dismiss of the depth threshold preview as a safety net
@@ -1830,7 +1772,6 @@ class AppState {
     /// Dismiss the depth threshold preview and apply the current depth effects.
     func dismissDepthThresholdPreview() {
         depthPreviewDismissTask?.cancel()
-        depthPreviewGeneration += 1
         depthSliderActive = false
         guard isEditingDepthThreshold else {
             return
@@ -1838,7 +1779,6 @@ class AppState {
         isEditingDepthThreshold = false
         depthThresholdPreview = nil
         cachedDepthTexture = nil
-        cachedDepthPreviewSourceTexture = nil
         applyDepthEffects()
         recomputeContours()
     }
@@ -1852,13 +1792,6 @@ class AppState {
             applyDepthEffects()
             recomputeContours()
         }
-    }
-
-    private func depthEffectSourceImage() -> UIImage? {
-        if activeMode == .original {
-            return displayBaseImage
-        }
-        return isolatedProcessedImage ?? processedImage ?? displayBaseImage
     }
 
     private func logDepthDiagnostics(event: String, depth: UIImage) {
@@ -1894,18 +1827,6 @@ class AppState {
         let clampedBackground = min(upper, max(lower, depthConfig.backgroundCutoff))
         depthConfig.foregroundCutoff = min(clampedForeground, clampedBackground)
         depthConfig.backgroundCutoff = max(clampedForeground, clampedBackground)
-    }
-
-    private func runDetachedOperation<Value>(
-        priority: TaskPriority = .userInitiated,
-        operation: @escaping @Sendable () -> UnsafeTransferBox<Value>
-    ) async -> UnsafeTransferBox<Value> {
-        let worker = Task.detached(priority: priority, operation: operation)
-        return await withTaskCancellationHandler {
-            await worker.value
-        } onCancel: {
-            worker.cancel()
-        }
     }
 
     private func backgroundCoverage(in depthImage: UIImage, cutoff: Double) -> Double? {

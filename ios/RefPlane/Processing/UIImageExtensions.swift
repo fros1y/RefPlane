@@ -10,40 +10,18 @@ extension UIImage {
     func scaledDown(toMaxDimension maxDimension: CGFloat) -> UIImage {
         let maxWH = max(size.width, size.height)
         guard maxWH > maxDimension else { return self }
-        let normalised = normalizedOrientation()
-        guard let sourceCG = normalised.cgImage else { return normalised }
-
-        let sourceWidth = sourceCG.width
-        let sourceHeight = sourceCG.height
-        let downscale = min(
-            maxDimension / max(1, CGFloat(sourceWidth)),
-            maxDimension / max(1, CGFloat(sourceHeight))
-        )
-        let destWidth = max(1, Int((CGFloat(sourceWidth) * downscale).rounded()))
-        let destHeight = max(1, Int((CGFloat(sourceHeight) * downscale).rounded()))
-
-        guard let ctx = CGContext(
-            data: nil,
-            width: destWidth,
-            height: destHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-        ) else {
-            return normalised
+        let scale = maxDimension / maxWH
+        let newSize = CGSize(width: (size.width * scale).rounded(),
+                             height: (size.height * scale).rounded())
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: newSize))
         }
-
-        ctx.interpolationQuality = .high
-        ctx.draw(sourceCG, in: CGRect(x: 0, y: 0, width: destWidth, height: destHeight))
-
-        guard let scaledCG = ctx.makeImage() else { return normalised }
-        return UIImage(cgImage: scaledCG)
     }
 
     /// Async version of scaledDown that performs rendering off the main/UI thread.
     func scaledDownAsync(toMaxDimension maxDimension: CGFloat) async -> UIImage {
-        await Task.detached(priority: .utility) {
+        await Task.detached(priority: .userInitiated) {
             self.scaledDown(toMaxDimension: maxDimension)
         }.value
     }

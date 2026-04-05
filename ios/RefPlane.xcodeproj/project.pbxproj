@@ -7,27 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BB00AA11CC22DD33EE44FF03 /* AsyncAlgorithms in Frameworks */ = {isa = PBXBuildFile; productRef = BB00AA11CC22DD33EE44FF02 /* AsyncAlgorithms */; };
-		AA00000000000001 /* AppModelsExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000011 /* AppModelsExtendedTests.swift */; };
-		AA00000000000002 /* ColorRegionsProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000012 /* ColorRegionsProcessorTests.swift */; };
-		AA00000000000003 /* ContourLineColorResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000013 /* ContourLineColorResolverTests.swift */; };
-		AA00000000000004 /* DepthProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000014 /* DepthProcessorTests.swift */; };
-		AA00000000000005 /* ImageProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000015 /* ImageProcessorTests.swift */; };
-		AA00000000000006 /* PigmentLookupTableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000016 /* PigmentLookupTableTests.swift */; };
-		AA00000000000007 /* SpectralDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000017 /* SpectralDataTests.swift */; };
-		AA00000000000008 /* UIImageExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000018 /* UIImageExtensionsTests.swift */; };
-		AA00000000000021 /* ContourGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000031 /* ContourGeneratorTests.swift */; };
-		AA00000000000022 /* SpectralDataStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000032 /* SpectralDataStoreTests.swift */; };
-		AA00000000000023 /* GrayscaleProcessorExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000033 /* GrayscaleProcessorExtendedTests.swift */; };
-		AA00000000000024 /* DepthEstimatorExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000034 /* DepthEstimatorExtendedTests.swift */; };
-		AA00000000000025 /* ValueStudyProcessorExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000035 /* ValueStudyProcessorExtendedTests.swift */; };
-		AA00000000000026 /* GridLineColorResolverExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000036 /* GridLineColorResolverExtendedTests.swift */; };
-		AA00000000000027 /* KMeansClustererExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000037 /* KMeansClustererExtendedTests.swift */; };
-		AA00000000000041 /* ColorRegionsProcessorExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000051 /* ColorRegionsProcessorExtendedTests.swift */; };
-		AA00000000000042 /* DepthProcessorExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000052 /* DepthProcessorExtendedTests.swift */; };
-		AA00000000000043 /* ImageAbstractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000053 /* ImageAbstractorTests.swift */; };
-		AA00000000000044 /* MetalContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000054 /* MetalContextTests.swift */; };
-		AA00000000000045 /* BandIsolationRendererExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000055 /* BandIsolationRendererExtendedTests.swift */; };
 		05A536F79A9974610A3BEB13 /* PaintPaletteBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3687599C8226E76F13B60871 /* PaintPaletteBuilderTests.swift */; };
 		097184F56F1D4B69A34C551B /* ValueSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */; };
 		0A11B22C33D44E55F6677001 /* ThresholdUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677002 /* ThresholdUtilities.swift */; };
@@ -156,26 +135,6 @@
 		632255DE24DC47B99F2567C2 /* RegionCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegionCleaner.swift; path = Processing/RegionCleaner.swift; sourceTree = "<group>"; };
 		6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AboutPrivacyView.swift; path = Views/AboutPrivacyView.swift; sourceTree = "<group>"; };
 		7D7329730C1F74CACF021E22 /* PigmentDecomposerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PigmentDecomposerTests.swift; path = RefPlaneTests/PigmentDecomposerTests.swift; sourceTree = "<group>"; };
-		AA00000000000011 /* AppModelsExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelsExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000012 /* ColorRegionsProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorRegionsProcessorTests.swift; sourceTree = "<group>"; };
-		AA00000000000013 /* ContourLineColorResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContourLineColorResolverTests.swift; sourceTree = "<group>"; };
-		AA00000000000014 /* DepthProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthProcessorTests.swift; sourceTree = "<group>"; };
-		AA00000000000015 /* ImageProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessorTests.swift; sourceTree = "<group>"; };
-		AA00000000000016 /* PigmentLookupTableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PigmentLookupTableTests.swift; sourceTree = "<group>"; };
-		AA00000000000017 /* SpectralDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectralDataTests.swift; sourceTree = "<group>"; };
-		AA00000000000018 /* UIImageExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIImageExtensionsTests.swift; sourceTree = "<group>"; };
-		AA00000000000031 /* ContourGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContourGeneratorTests.swift; sourceTree = "<group>"; };
-		AA00000000000032 /* SpectralDataStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectralDataStoreTests.swift; sourceTree = "<group>"; };
-		AA00000000000033 /* GrayscaleProcessorExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrayscaleProcessorExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000034 /* DepthEstimatorExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthEstimatorExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000035 /* ValueStudyProcessorExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValueStudyProcessorExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000036 /* GridLineColorResolverExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridLineColorResolverExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000037 /* KMeansClustererExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KMeansClustererExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000051 /* ColorRegionsProcessorExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorRegionsProcessorExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000052 /* DepthProcessorExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthProcessorExtendedTests.swift; sourceTree = "<group>"; };
-		AA00000000000053 /* ImageAbstractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAbstractorTests.swift; sourceTree = "<group>"; };
-		AA00000000000054 /* MetalContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalContextTests.swift; sourceTree = "<group>"; };
-		AA00000000000055 /* BandIsolationRendererExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandIsolationRendererExtendedTests.swift; sourceTree = "<group>"; };
 		84C1FAB6B96D4EB79597B3DF /* GridOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridOverlayView.swift; path = Views/GridOverlayView.swift; sourceTree = "<group>"; };
 		87AF7FD89A0E49169C002685 /* ColorSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorSettingsView.swift; path = Views/ColorSettingsView.swift; sourceTree = "<group>"; };
 		886EB1023AF84A2984073327 /* ModeBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModeBarView.swift; path = Views/ModeBarView.swift; sourceTree = "<group>"; };
@@ -229,7 +188,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB00AA11CC22DD33EE44FF03 /* AsyncAlgorithms in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,41 +212,21 @@
 		0A11B22C33D44E55F667710D /* RefPlaneTests */ = {
 			isa = PBXGroup;
 			children = (
-				AA00000000000011 /* AppModelsExtendedTests.swift */,
 				0A11B22C33D44E55F6677115 /* AppModelsTests.swift */,
 				0A11B22C33D44E55F6677108 /* AppStateTests.swift */,
-				AA00000000000055 /* BandIsolationRendererExtendedTests.swift */,
 				0A11B22C33D44E55F6677111 /* BandIsolationRendererTests.swift */,
-				AA00000000000051 /* ColorRegionsProcessorExtendedTests.swift */,
-				AA00000000000012 /* ColorRegionsProcessorTests.swift */,
-				AA00000000000031 /* ContourGeneratorTests.swift */,
-				AA00000000000013 /* ContourLineColorResolverTests.swift */,
-				AA00000000000034 /* DepthEstimatorExtendedTests.swift */,
 				0A11B22C33D44E55F6677121 /* DepthEstimatorTests.swift */,
-				AA00000000000052 /* DepthProcessorExtendedTests.swift */,
-				AA00000000000014 /* DepthProcessorTests.swift */,
 				0A11B22C33D44E55F667710A /* ExportContractTests.swift */,
-				AA00000000000033 /* GrayscaleProcessorExtendedTests.swift */,
 				0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */,
-				AA00000000000036 /* GridLineColorResolverExtendedTests.swift */,
 				0A11B22C33D44E55F6677106 /* GridLineColorResolverTests.swift */,
-				AA00000000000053 /* ImageAbstractorTests.swift */,
-				AA00000000000015 /* ImageProcessorTests.swift */,
-				AA00000000000037 /* KMeansClustererExtendedTests.swift */,
 				0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */,
-				AA00000000000054 /* MetalContextTests.swift */,
 				B1C2D3E4F5A6B7C8D9E0F105 /* KubelkaMunkMixerTests.swift */,
 				0A11B22C33D44E55F6677113 /* OklabColorSpaceTests.swift */,
 				0A11B22C33D44E55F6677104 /* PaletteSectionsTests.swift */,
-				AA00000000000016 /* PigmentLookupTableTests.swift */,
 				0A11B22C33D44E55F667710F /* PropertyTestSupport.swift */,
 				0A11B22C33D44E55F6677117 /* RegionCleanerTests.swift */,
-				AA00000000000032 /* SpectralDataStoreTests.swift */,
-				AA00000000000017 /* SpectralDataTests.swift */,
 				0A11B22C33D44E55F667710C /* TestImageFactory.swift */,
 				0A11B22C33D44E55F6677102 /* ThresholdUtilitiesTests.swift */,
-				AA00000000000018 /* UIImageExtensionsTests.swift */,
-				AA00000000000035 /* ValueStudyProcessorExtendedTests.swift */,
 				0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */,
 			);
 			path = RefPlaneTests;
@@ -425,9 +363,6 @@
 			dependencies = (
 			);
 			name = RefPlane;
-			packageProductDependencies = (
-				BB00AA11CC22DD33EE44FF02 /* AsyncAlgorithms */,
-			);
 			productName = Underpaint;
 			productReference = E636B285F8FF462997175C6A /* Underpaint.app */;
 			productType = "com.apple.product-type.application";
@@ -461,9 +396,6 @@
 			);
 			mainGroup = AE223F6F391E40DE9E02CF75;
 			productRefGroup = 8B62BEE22E8D4E52A4A9828D /* Products */;
-			packageReferences = (
-				BB00AA11CC22DD33EE44FF01 /* XCRemoteSwiftPackageReference "swift-async-algorithms" */,
-			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -520,44 +452,24 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA00000000000001 /* AppModelsExtendedTests.swift in Sources */,
 				0A11B22C33D44E55F6677114 /* AppModelsTests.swift in Sources */,
 				0A11B22C33D44E55F6677107 /* AppStateTests.swift in Sources */,
-				AA00000000000045 /* BandIsolationRendererExtendedTests.swift in Sources */,
 				0A11B22C33D44E55F6677110 /* BandIsolationRendererTests.swift in Sources */,
-				AA00000000000041 /* ColorRegionsProcessorExtendedTests.swift in Sources */,
-				AA00000000000002 /* ColorRegionsProcessorTests.swift in Sources */,
-				AA00000000000021 /* ContourGeneratorTests.swift in Sources */,
-				AA00000000000003 /* ContourLineColorResolverTests.swift in Sources */,
-				AA00000000000024 /* DepthEstimatorExtendedTests.swift in Sources */,
 				0A11B22C33D44E55F6677120 /* DepthEstimatorTests.swift in Sources */,
-				AA00000000000042 /* DepthProcessorExtendedTests.swift in Sources */,
-				AA00000000000004 /* DepthProcessorTests.swift in Sources */,
 				0A11B22C33D44E55F6677109 /* ExportContractTests.swift in Sources */,
-				AA00000000000023 /* GrayscaleProcessorExtendedTests.swift in Sources */,
 				0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */,
-				AA00000000000026 /* GridLineColorResolverExtendedTests.swift in Sources */,
 				0A11B22C33D44E55F6677105 /* GridLineColorResolverTests.swift in Sources */,
-				AA00000000000043 /* ImageAbstractorTests.swift in Sources */,
-				AA00000000000005 /* ImageProcessorTests.swift in Sources */,
-				AA00000000000027 /* KMeansClustererExtendedTests.swift in Sources */,
 				0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */,
-				AA00000000000044 /* MetalContextTests.swift in Sources */,
 				B1C2D3E4F5A6B7C8D9E0F205 /* KubelkaMunkMixerTests.swift in Sources */,
 				0A11B22C33D44E55F6677112 /* OklabColorSpaceTests.swift in Sources */,
 				0A11B22C33D44E55F6677103 /* PaletteSectionsTests.swift in Sources */,
-				05A536F79A9974610A3BEB13 /* PaintPaletteBuilderTests.swift in Sources */,
-				AA00000000000006 /* PigmentLookupTableTests.swift in Sources */,
-				39137631D8A7F48FEE0A869C /* PigmentDecomposerTests.swift in Sources */,
 				0A11B22C33D44E55F667710E /* PropertyTestSupport.swift in Sources */,
 				0A11B22C33D44E55F6677116 /* RegionCleanerTests.swift in Sources */,
-				AA00000000000022 /* SpectralDataStoreTests.swift in Sources */,
-				AA00000000000007 /* SpectralDataTests.swift in Sources */,
 				0A11B22C33D44E55F667710B /* TestImageFactory.swift in Sources */,
 				0A11B22C33D44E55F6677101 /* ThresholdUtilitiesTests.swift in Sources */,
-				AA00000000000008 /* UIImageExtensionsTests.swift in Sources */,
-				AA00000000000025 /* ValueStudyProcessorExtendedTests.swift in Sources */,
 				0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */,
+				39137631D8A7F48FEE0A869C /* PigmentDecomposerTests.swift in Sources */,
+				05A536F79A9974610A3BEB13 /* PaintPaletteBuilderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -870,25 +782,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		BB00AA11CC22DD33EE44FF01 /* XCRemoteSwiftPackageReference "swift-async-algorithms" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-async-algorithms.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		BB00AA11CC22DD33EE44FF02 /* AsyncAlgorithms */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BB00AA11CC22DD33EE44FF01 /* XCRemoteSwiftPackageReference "swift-async-algorithms" */;
-			productName = AsyncAlgorithms;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FE679CBE0A164F04966A82E9 /* Project object */;
 }
