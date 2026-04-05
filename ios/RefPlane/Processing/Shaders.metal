@@ -600,6 +600,12 @@ struct DepthEffectParams {
     uint backgroundMode; // 0=effects, 1=blur, 2=remove
 };
 
+struct DepthThresholdPreviewParams {
+    uint width;
+    uint height;
+    float backgroundCutoff;
+};
+
 /// Main depth painterly effects kernel.
 /// Applies atmospheric perspective: foreground gets boosted contrast/saturation/warmth,
 /// background gets reduced contrast/saturation with cool shift.
@@ -658,7 +664,7 @@ kernel void depth_painterly_effects(
     }
 
     // Background effects: reduce contrast, decrease chroma, cool shift
-    if (bgBlend > 0.0f) {
+    if (p.backgroundMode != 2 && bgBlend > 0.0f) {
         float strength = bgBlend * intensity;
 
         // Reduce contrast: compress L toward 0.5
@@ -804,4 +810,32 @@ kernel void depth_remove_background(
 
     float4 white = float4(1.0f, 1.0f, 1.0f, 1.0f);
     dst.write(mix(color, white, blend), gid);
+}
+
+kernel void depth_threshold_preview(
+    texture2d<float, access::sample>  src       [[texture(0)]],
+    texture2d<float, access::sample>  depthTex  [[texture(1)]],
+    texture2d<float, access::write>   dst       [[texture(2)]],
+    constant DepthThresholdPreviewParams& p      [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= p.width || gid.y >= p.height) return;
+
+    constexpr sampler s(coord::normalized, filter::linear, address::clamp_to_edge);
+
+    float2 uv = (float2(gid) + 0.5f) / float2(p.width, p.height);
+    float3 sourceColor = src.sample(s, uv).rgb;
+    float depth = depthTex.sample(s, uv).r;
+
+    float edgeWidth = 0.01f;
+    float backgroundBlend = smoothstep(
+        p.backgroundCutoff - edgeWidth,
+        p.backgroundCutoff + edgeWidth,
+        depth
+    );
+
+    float3 grayscale = float3(depth);
+    float3 color = mix(sourceColor, grayscale, backgroundBlend);
+
+    dst.write(float4(color, 1.0f), gid);
 }

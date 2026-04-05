@@ -40,6 +40,7 @@
 		39137631D8A7F48FEE0A869C /* PigmentDecomposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7329730C1F74CACF021E22 /* PigmentDecomposerTests.swift */; };
 		43761882D6BF45CE9CBE61F7 /* ActionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA8F46FC114F41C5BDDA822F /* ActionBarView.swift */; };
 		54865C4DBC864140A2C83A6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F160D00F80954B0C9211E7F6 /* Assets.xcassets */; };
+		FA33445566778899AABBCC01 /* chair-spatial.heic in Resources */ = {isa = PBXBuildFile; fileRef = FA33445566778899AABBCC02 /* chair-spatial.heic */; };
 		59B41B79D851484E8F2028BC /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523EB845BCBA42B4BBDC7E12 /* AppState.swift */; };
 		6256FE8690AA438BAFA74E15 /* ThresholdSliderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9960E48DDC404E14A65578E6 /* ThresholdSliderView.swift */; };
 		6A0D66489A3D486AA65C28D1 /* AboutPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */; };
@@ -171,6 +172,7 @@
 		FA22AA33BB44CC55DD660001 /* UnlockManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UnlockManager.swift; path = Models/UnlockManager.swift; sourceTree = "<group>"; };
 		FA22AA33BB44CC55DD660003 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaywallView.swift; path = Views/PaywallView.swift; sourceTree = "<group>"; };
 		FA22AA33BB44CC55DD660005 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Support/Products.storekit"; sourceTree = "<group>"; name = "Products.storekit"; };
+		FA33445566778899AABBCC02 /* chair-spatial.heic */ = {isa = PBXFileReference; lastKnownFileType = image.heic; path = Support/chair-spatial.heic; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -202,6 +204,7 @@
 				0A11B22C33D44E55F6677015 /* ContourLineColorResolver.swift */,
 				0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */,
 				FA22AA33BB44CC55DD660005 /* Products.storekit */,
+				FA33445566778899AABBCC02 /* chair-spatial.heic */,
 			);
 			name = Support;
 			sourceTree = "<group>";
@@ -415,6 +418,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				54865C4DBC864140A2C83A6E /* Assets.xcassets in Resources */,
+				FA33445566778899AABBCC01 /* chair-spatial.heic in Resources */,
 				B1C2D3E4F5A6B7C8D9E0F204 /* GoldenAcrylicsKS.json in Resources */,					B1C2D3E4F5A6B7C8D9E0F209 /* PigmentLookup.bin in Resources */,			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

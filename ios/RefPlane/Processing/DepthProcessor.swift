@@ -1,8 +1,15 @@
 import UIKit
+import Metal
 
 // MARK: - Depth effect application coordinator
 
 enum DepthProcessor {
+
+    struct ThresholdPreviewResult {
+        let image: UIImage?
+        let cachedDepthTexture: AnyObject?
+        let cachedSourceTexture: AnyObject?
+    }
 
     /// Apply depth-based painterly effects to the source image using the provided depth map.
     /// Uses Metal GPU path when available, falls back to simplified CPU processing.
@@ -19,18 +26,66 @@ enum DepthProcessor {
     }
 
     static func thresholdPreview(
+        sourceImage: UIImage,
         depthMap: UIImage,
         backgroundCutoff: Double,
-        cachedDepthTexture _: AnyObject? = nil
-    ) -> UIImage? {
-        guard let depthCG = depthMap.cgImage else { return nil }
+        cachedDepthTexture: AnyObject? = nil,
+        cachedSourceTexture: AnyObject? = nil
+    ) -> ThresholdPreviewResult {
+        if let ctx = MetalContext.shared {
+            let depthTexture = (cachedDepthTexture as? MTLTexture) ?? ctx.makeDepthTexture(from: depthMap)
+            let sourceTexture = (cachedSourceTexture as? MTLTexture) ?? ctx.makeColorTexture(from: sourceImage)
+            if let sourceTexture, let depthTexture {
+                return ThresholdPreviewResult(
+                    image: ctx.thresholdPreview(
+                        sourceTexture: sourceTexture,
+                        depthTexture: depthTexture,
+                        backgroundCutoff: backgroundCutoff
+                    ),
+                    cachedDepthTexture: depthTexture,
+                    cachedSourceTexture: sourceTexture
+                )
+            }
+        }
+
+        guard let sourceCG = sourceImage.cgImage, let depthCG = depthMap.cgImage else {
+            return ThresholdPreviewResult(
+                image: nil,
+                cachedDepthTexture: nil,
+                cachedSourceTexture: nil
+            )
+        }
 
         let width = depthCG.width
         let height = depthCG.height
-        guard width > 0, height > 0 else { return nil }
+        guard width > 0, height > 0 else {
+            return ThresholdPreviewResult(
+                image: nil,
+                cachedDepthTexture: nil,
+                cachedSourceTexture: nil
+            )
+        }
+
+        var sourcePixels = [UInt8](repeating: 255, count: width * height * 4)
+        guard let sourceContext = CGContext(
+            data: &sourcePixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ) else {
+            return ThresholdPreviewResult(
+                image: nil,
+                cachedDepthTexture: nil,
+                cachedSourceTexture: nil
+            )
+        }
+        sourceContext.draw(sourceCG, in: CGRect(x: 0, y: 0, width: width, height: height))
 
         var depthPixels = [UInt8](repeating: 128, count: width * height)
-        guard let context = CGContext(
+        guard let depthContext = CGContext(
             data: &depthPixels,
             width: width,
             height: height,
@@ -39,24 +94,28 @@ enum DepthProcessor {
             space: CGColorSpaceCreateDeviceGray(),
             bitmapInfo: CGImageAlphaInfo.none.rawValue
         ) else {
-            return nil
+            return ThresholdPreviewResult(
+                image: nil,
+                cachedDepthTexture: nil,
+                cachedSourceTexture: nil
+            )
         }
-        context.draw(depthCG, in: CGRect(x: 0, y: 0, width: width, height: height))
+        depthContext.draw(depthCG, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-        let threshold = UInt8(max(0, min(255, Int((backgroundCutoff * 255).rounded()))))
+        let threshold = UInt8(max(0, min(255, Int((backgroundCutoff * 255.0).rounded()))))
         var output = [UInt8](repeating: 255, count: width * height * 4)
 
-        for i in 0..<(width * height) {
-            let pixel = depthPixels[i]
-            let base = i * 4
+        for index in 0..<(width * height) {
+            let pixel = depthPixels[index]
+            let base = index * 4
             if pixel >= threshold {
-                output[base] = 233
-                output[base + 1] = 238
-                output[base + 2] = 245
-            } else {
                 output[base] = pixel
                 output[base + 1] = pixel
                 output[base + 2] = pixel
+            } else {
+                output[base] = sourcePixels[base]
+                output[base + 1] = sourcePixels[base + 1]
+                output[base + 2] = sourcePixels[base + 2]
             }
             output[base + 3] = 255
         }
@@ -75,10 +134,18 @@ enum DepthProcessor {
                 shouldInterpolate: false,
                 intent: .defaultIntent
               ) else {
-            return nil
+            return ThresholdPreviewResult(
+                image: nil,
+                cachedDepthTexture: nil,
+                cachedSourceTexture: nil
+            )
         }
 
-        return UIImage(cgImage: cgImage)
+        return ThresholdPreviewResult(
+            image: UIImage(cgImage: cgImage),
+            cachedDepthTexture: nil,
+            cachedSourceTexture: nil
+        )
     }
 
     // MARK: - CPU fallback

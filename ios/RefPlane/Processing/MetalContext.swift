@@ -18,7 +18,7 @@ final class MetalContext {
         if ctx == nil {
             print("[MetalContext] ⚠️ MetalContext init failed (library or pipeline error)")
         } else {
-            print("[MetalContext] ✅ All 15 compute pipelines compiled successfully")
+            print("[MetalContext] ✅ All 16 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -43,6 +43,7 @@ final class MetalContext {
     let depthGaussianBlurHPipeline: MTLComputePipelineState
     let depthGaussianBlurVPipeline: MTLComputePipelineState
     let depthRemoveBackgroundPipeline: MTLComputePipelineState
+    let depthThresholdPreviewPipeline: MTLComputePipelineState
 
     private init?(device: MTLDevice) {
         self.device = device
@@ -67,6 +68,7 @@ final class MetalContext {
             depthGaussianBlurHPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_h")
             depthGaussianBlurVPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_v")
             depthRemoveBackgroundPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_remove_background")
+            depthThresholdPreviewPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_threshold_preview")
         } catch {
             print("[MetalContext] Pipeline creation failed: \(error)")
             return nil
@@ -649,6 +651,78 @@ final class MetalContext {
         )
     }
 
+    func makeColorTexture(from image: UIImage) -> MTLTexture? {
+        guard let cgImage = image.cgImage else {
+            return nil
+        }
+        return makeTextureFromCGImage(cgImage)
+    }
+
+    func thresholdPreview(
+        sourceTexture: MTLTexture,
+        depthTexture: MTLTexture,
+        backgroundCutoff: Double,
+        maxDimension: Int = 1280
+    ) -> UIImage? {
+        let sourceWidth = depthTexture.width
+        let sourceHeight = depthTexture.height
+        guard sourceWidth > 0, sourceHeight > 0 else { return nil }
+
+        let largestDimension = max(sourceWidth, sourceHeight)
+        let scale = largestDimension > maxDimension
+            ? Double(maxDimension) / Double(largestDimension)
+            : 1.0
+        let previewWidth = max(1, Int((Double(sourceWidth) * scale).rounded()))
+        let previewHeight = max(1, Int((Double(sourceHeight) * scale).rounded()))
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm,
+            width: previewWidth,
+            height: previewHeight,
+            mipmapped: false
+        )
+        descriptor.usage = [.shaderWrite]
+        descriptor.storageMode = .shared
+
+        guard let previewTexture = device.makeTexture(descriptor: descriptor) else {
+            return nil
+        }
+
+        var params = DepthThresholdPreviewParamsSwift(
+            width: UInt32(previewWidth),
+            height: UInt32(previewHeight),
+            backgroundCutoff: Float(backgroundCutoff)
+        )
+        guard let paramBuffer = device.makeBuffer(
+            bytes: &params,
+            length: MemoryLayout<DepthThresholdPreviewParamsSwift>.stride,
+            options: .storageModeShared
+        ), let commandBuffer = commandQueue.makeCommandBuffer(),
+           let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            return nil
+        }
+
+        let threadsPerThreadgroup = MTLSize(width: 8, height: 8, depth: 1)
+        let threadgroups = MTLSize(
+            width: (previewWidth + 7) / 8,
+            height: (previewHeight + 7) / 8,
+            depth: 1
+        )
+
+        encoder.setComputePipelineState(depthThresholdPreviewPipeline)
+        encoder.setTexture(sourceTexture, index: 0)
+        encoder.setTexture(depthTexture, index: 1)
+        encoder.setTexture(previewTexture, index: 2)
+        encoder.setBuffer(paramBuffer, offset: 0, index: 0)
+        encoder.dispatchThreadgroups(threadgroups, threadsPerThreadgroup: threadsPerThreadgroup)
+        encoder.endEncoding()
+
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        return uiImageFromTexture(previewTexture, width: previewWidth, height: previewHeight)
+    }
+
     /// Create a single-channel (R8Unorm) texture from a grayscale CGImage,
     /// resizing if necessary to match the target dimensions.
     private func makeGrayscaleTexture(_ cgImage: CGImage, width: Int, height: Int) -> MTLTexture? {
@@ -810,6 +884,12 @@ private struct DepthEffectParamsSwift {
     var backgroundCutoff: Float
     var intensity: Float
     var backgroundMode: UInt32
+}
+
+private struct DepthThresholdPreviewParamsSwift {
+    var width: UInt32
+    var height: UInt32
+    var backgroundCutoff: Float
 }
 
 // MARK: - Errors
