@@ -304,7 +304,7 @@ struct ControlPanelView: View {
             accessibilityID: "studio.card.overlays"
         ) {
             VStack(spacing: 14) {
-                if state.depthMap != nil {
+                if state.depthMap != nil && state.depthConfig.backgroundMode != .none {
                     ContourSettingsView()
                 } else {
                     Text("Contours need Adjust Background.")
@@ -442,18 +442,6 @@ struct ControlPanelView: View {
         if state.abstractionIsEnabled {
             state.applyAbstraction()
         }
-    }
-
-    private func setUsesTonalRendering(_ newValue: Bool) {
-        state.valueConfig.grayscaleConversion = newValue ? .luminance : .none
-
-        let targetMode: RefPlaneMode
-        if newValue {
-            targetMode = usesQuantization ? .value : .tonal
-        } else {
-            targetMode = usesQuantization ? .color : .original
-        }
-        state.setMode(targetMode)
     }
 
     private func setUsesQuantization(_ newValue: Bool) {

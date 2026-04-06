@@ -9,18 +9,26 @@ struct DepthSettingsView: View {
         let step = max(0.01, span / 100.0)
 
         VStack(spacing: 14) {
-            Picker("Adjust Background", selection: Binding(
-                get: { state.depthConfig.backgroundMode },
-                set: setBackgroundMode
-            )) {
-                ForEach(BackgroundMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+            Toggle("Adjust Background", isOn: Binding(
+                get: { state.depthConfig.backgroundMode != .none },
+                set: { enabled in
+                    setBackgroundMode(enabled ? .compress : .none)
                 }
-            }
-            .pickerStyle(.menu)
-            .accessibilityIdentifier("studio.background-mode-picker")
+            ))
+            .accessibilityIdentifier("studio.background-toggle")
 
             if state.depthConfig.backgroundMode != .none {
+                Picker("Mode", selection: Binding(
+                    get: { state.depthConfig.backgroundMode },
+                    set: setBackgroundMode
+                )) {
+                    ForEach(BackgroundMode.allCases.filter { $0 != .none }) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("studio.background-mode-picker")
+
                 LabeledSlider(
                     label: "Depth Threshold",
                     value: Binding(

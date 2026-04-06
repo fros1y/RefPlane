@@ -279,7 +279,7 @@ enum AbstractionMethod: String, CaseIterable, Identifiable, Codable {
 // MARK: - Depth-based painterly effects
 
 enum BackgroundMode: String, CaseIterable, Identifiable, Codable {
-    case none = "No"
+    case none = "Off"
     case compress = "Compress"
     case blur = "Blur"
     case remove = "Remove"

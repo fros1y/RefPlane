@@ -566,7 +566,7 @@ private struct CanvasEmptyStateCard: View {
             VStack(spacing: 12) {
                 Button(action: onOpenPhoto) {
                     Label(
-                        unlockManager.isUnlocked ? "Choose Photo" : "Choose Photo",
+                        unlockManager.isUnlocked ? "Choose Photo" : "Unlock to Choose Photo",
                         systemImage: unlockManager.isUnlocked ? "photo" : "lock.fill"
                     )
                         .font(.subheadline.weight(.semibold))

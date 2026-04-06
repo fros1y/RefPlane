@@ -186,7 +186,6 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Hide studio controls")
-        .accessibilityHidden(true)
         .accessibilityIdentifier("studio.drawer-close")
     }
 
@@ -430,7 +429,7 @@ private struct StudioCanvasStage: View {
 
     private var inspectorIconName: String {
         if layout == .sidebar {
-            return isInspectorCollapsed ? "sidebar.trailing" : "sidebar.trailing"
+            return isInspectorCollapsed ? "sidebar.trailing" : "rectangle.righthalf.inset.filled"
         }
         return isInspectorCollapsed ? "slider.horizontal.3" : "rectangle.bottomthird.inset.filled"
     }
