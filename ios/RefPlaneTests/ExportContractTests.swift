@@ -24,8 +24,9 @@ func originalModeExportPrefersFullResolutionSource() {
 
 @MainActor
 @Test
-func exportedImagePreservesSourceMetadataAndWritesRefPlaneProvenance() throws {
+func exportedImagePayloadAlwaysUsesPNGAndRenderedImageDimensions() throws {
     let sourceImage = TestImageFactory.makeSolid(width: 120, height: 80, color: .blue)
+    let processedImage = TestImageFactory.makeSolid(width: 60, height: 30, color: .green)
     let sourceMetadata = SourceImageMetadata(
         properties: [
             kCGImagePropertyTIFFDictionary as String: [
@@ -35,76 +36,28 @@ func exportedImagePreservesSourceMetadataAndWritesRefPlaneProvenance() throws {
                 kCGImagePropertyPNGComment as String: "Camera metadata"
             ]
         ],
-        uniformTypeIdentifier: UTType.png.identifier
+        uniformTypeIdentifier: UTType.jpeg.identifier
     )
     let state = AppState()
 
     state.loadImage(ImportedImagePayload(image: sourceImage, metadata: sourceMetadata))
-    state.valueConfig.grayscaleConversion = .luminance
-    state.valueConfig.levels = 5
-    state.valueConfig.quantizationBias = -0.3
-    state.colorConfig.paletteSelectionEnabled = true
-    state.colorConfig.numShades = 8
     state.activeMode = .value
-    state.paletteColors = [
-        Color(red: 0.2, green: 0.3, blue: 0.4),
-        Color(red: 0.8, green: 0.7, blue: 0.2)
-    ]
-    state.pigmentRecipes = [
-        PigmentRecipe(
-            components: [
-                RecipeComponent(
-                    pigmentId: "ultramarine_blue",
-                    pigmentName: "Ultramarine Blue",
-                    concentration: 1
-                )
-            ],
-            predictedColor: OklabColor(L: 0.35, a: -0.02, b: -0.12),
-            deltaE: 0.03
-        ),
-        PigmentRecipe(
-            components: [
-                RecipeComponent(
-                    pigmentId: "cadmium_yellow_light",
-                    pigmentName: "Cadmium Yellow Light",
-                    concentration: 0.75
-                ),
-                RecipeComponent(
-                    pigmentId: "titanium_white",
-                    pigmentName: "Titanium White",
-                    concentration: 0.25
-                )
-            ],
-            predictedColor: OklabColor(L: 0.84, a: 0.0, b: 0.11),
-            deltaE: 0.04
-        )
-    ]
-    state.clippedRecipeIndices = [1]
+    state.processedImage = processedImage
 
     let exportPayload = try #require(state.exportCurrentImagePayload())
     let properties = try exportedMetadata(from: exportPayload.imageData)
     let tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any]
     let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any]
     let png = properties[kCGImagePropertyPNGDictionary as String] as? [String: Any]
+    let pixelSize = try exportedPixelSize(from: exportPayload.imageData)
 
     #expect(exportPayload.contentType == .png)
-    #expect(tiff?[kCGImagePropertyTIFFArtist as String] as? String == "Studio Source")
-
-    let provenance = try #require(
-        png?[kCGImagePropertyPNGDescription as String] as? String
-            ?? tiff?[kCGImagePropertyTIFFImageDescription as String] as? String
-            ?? exif?[kCGImagePropertyExifUserComment as String] as? String
-    )
-    #expect(provenance.contains("\"mode\":\"value\""))
-    #expect(provenance.contains("\"gitRevision\""))
-    #expect(provenance.contains("\"grayscaleConversion\":\"Luminance\""))
-    #expect(provenance.contains("\"valueLevels\":5"))
-    #expect(provenance.contains("\"paletteSelectionEnabled\":true"))
-    #expect(provenance.contains("\"generatedPalette\""))
-    #expect(provenance.contains("\"color\":\"#334C66FF\""))
-    #expect(provenance.contains("\"pigmentID\":\"cadmium_yellow_light\""))
-    #expect(provenance.contains("\"clipped\":true"))
-    #expect(provenance.contains("\"Camera metadata\""))
+    #expect(pixelSize.width == 60)
+    #expect(pixelSize.height == 30)
+    #expect(tiff == nil)
+    #expect(exif == nil)
+    #expect(png?[kCGImagePropertyPNGComment as String] as? String == nil)
+    #expect(png?[kCGImagePropertyPNGDescription as String] as? String == nil)
 }
 
 @MainActor
@@ -191,4 +144,11 @@ private func exportedMetadata(from imageData: Data) throws -> [String: Any] {
     return try #require(
         CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]
     )
+}
+
+private func exportedPixelSize(from imageData: Data) throws -> CGSize {
+    let properties = try exportedMetadata(from: imageData)
+    let width = try #require(properties[kCGImagePropertyPixelWidth as String] as? Int)
+    let height = try #require(properties[kCGImagePropertyPixelHeight as String] as? Int)
+    return CGSize(width: width, height: height)
 }

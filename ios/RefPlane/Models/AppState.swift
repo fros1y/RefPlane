@@ -264,7 +264,7 @@ class AppState {
     var processingLabel: String = "Processing…"
     var processingIsIndeterminate: Bool = false
     var compareMode: Bool = false
-    var isolatedBand: Int? = nil
+    var focusedBands: Set<Int> = []
     var errorMessage: String? = nil
     var panelCollapsed: Bool = false
     private(set) var isolatedProcessedImage: UIImage? = nil
@@ -456,6 +456,25 @@ class AppState {
         activeMode == .original ? displayBaseImage : currentDisplayImage
     }
 
+    func band(atNormalizedPoint point: CGPoint) -> Int? {
+        guard activeMode == .value || activeMode == .color,
+              let processedImage,
+              let cgImage = processedImage.cgImage,
+              !processedPixelBands.isEmpty
+        else { return nil }
+
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return nil }
+
+        let x = min(max(Int((point.x * CGFloat(width)).rounded(.down)), 0), width - 1)
+        let y = min(max(Int((point.y * CGFloat(height)).rounded(.down)), 0), height - 1)
+        let pixelIndex = y * width + x
+        guard processedPixelBands.indices.contains(pixelIndex) else { return nil }
+
+        return processedPixelBands[pixelIndex]
+    }
+
     func loadImage(_ image: UIImage) {
         loadImage(ImportedImagePayload(image: image))
     }
@@ -508,7 +527,7 @@ class AppState {
         pigmentRecipes            = nil
         selectedTubes             = []
         clippedRecipeIndices      = []
-        isolatedBand              = nil
+        focusedBands              = []
         errorMessage              = nil
         isProcessing              = true
         isSimplifying             = true
@@ -548,6 +567,7 @@ class AppState {
             processedImage = nil
             isolatedProcessedImage = nil
             processedPixelBands = []
+            focusedBands = []
             isProcessing = false
             processingProgress = 0
             if depthConfig.enabled && depthMap != nil {
@@ -558,6 +578,8 @@ class AppState {
 
         // Set processing state synchronously so the UI shows the spinner
         // on the very first SwiftUI render after the mode change.
+        focusedBands = []
+        isolatedProcessedImage = nil
         isProcessing = true
         processingProgress = 0
 
@@ -588,7 +610,6 @@ class AppState {
                     self.selectedTubes       = result.selectedTubes
                     self.clippedRecipeIndices = result.clippedRecipeIndices
                     self.processingProgress  = 1
-                    self.refreshIsolatedProcessedImage()
                     if self.depthConfig.enabled && self.depthMap != nil {
                         self.applyDepthEffects()
                     }
@@ -642,7 +663,7 @@ class AppState {
                 valueConfig.grayscaleConversion = .luminance
             }
         }
-        isolatedBand = nil
+        focusedBands = []
         processedImage = nil
         isolatedProcessedImage = nil
         processedPixelBands = []
@@ -860,7 +881,7 @@ class AppState {
             opacity: snapshot.contourOpacity
         )
 
-        isolatedBand = nil
+        focusedBands = []
         isolatedProcessedImage = nil
 
         updatePreviousTransformSnapshot()
@@ -977,7 +998,7 @@ class AppState {
             paletteSelectionEnabled: false,
             colorLimit: 24,
             enabledPigmentIDs: SpectralDataStore.essentialPigments.map(\.id).sorted(),
-            paletteSpread: 0,
+            paletteSpread: 1,
             colorQuantizationBias: 0,
             maxPigmentsPerMix: 3,
             minConcentration: 0.02,
@@ -1014,17 +1035,8 @@ class AppState {
 
     func exportCurrentImagePayload() -> ExportedImagePayload? {
         guard let image = exportCurrentImage() else { return nil }
-        let contentType = preferredExportContentType(for: image)
-
-        if let encoded = encodeExportImage(image, as: contentType) {
-            return ExportedImagePayload(imageData: encoded, contentType: contentType)
-        }
-
-        guard contentType != .png,
-              let fallbackData = encodeExportImage(image, as: .png)
-        else { return nil }
-
-        return ExportedImagePayload(imageData: fallbackData, contentType: .png)
+        guard let imageData = image.pngData() else { return nil }
+        return ExportedImagePayload(imageData: imageData, contentType: .png)
     }
 
     func currentSettingsDescription() -> String {
@@ -1093,139 +1105,11 @@ class AppState {
         return lines.joined(separator: "\n")
     }
 
-    private func preferredExportContentType(for image: UIImage) -> UTType {
-        guard let typeIdentifier = sourceImageMetadata.uniformTypeIdentifier,
-              let sourceType = UTType(typeIdentifier),
-              sourceType.conforms(to: .image),
-              Self.supportedExportTypeIdentifiers.contains(sourceType.identifier)
-        else {
-            return .png
-        }
-
-        if imageContainsAlpha(image), !Self.alphaCapableExportTypes.contains(sourceType.identifier) {
-            return .png
-        }
-
-        return sourceType
-    }
-
-    private static let supportedExportTypeIdentifiers: Set<String> = {
-        let identifiers = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
-        return Set(identifiers)
-    }()
-
-    private static let alphaCapableExportTypes: Set<String> = [
-        UTType.png.identifier,
-        UTType.heic.identifier,
-        UTType.heif.identifier,
-        UTType.tiff.identifier,
-        "public.heics"
-    ]
-
-    private func encodeExportImage(_ image: UIImage, as contentType: UTType) -> Data? {
-        let normalizedImage = normalizedImageForExport(image)
-        guard let cgImage = normalizedImage.cgImage else { return nil }
-
-        let properties = exportProperties(
-            for: normalizedImage,
-            contentType: contentType
-        )
-        let output = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(
-            output,
-            contentType.identifier as CFString,
-            1,
-            nil
-        ) else {
-            return nil
-        }
-
-        CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else { return nil }
-        return output as Data
-    }
-
-    private func normalizedImageForExport(_ image: UIImage) -> UIImage {
-        if image.imageOrientation == .up, image.cgImage != nil {
-            return image
-        }
-
-        let pixelSize = exportPixelSize(for: image)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.0
-        return UIGraphicsImageRenderer(size: pixelSize, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: pixelSize))
-        }
-    }
-
-    private func exportProperties(
-        for image: UIImage,
-        contentType: UTType
-    ) -> [String: Any] {
-        let pixelSize = exportPixelSize(for: image)
-        let pixelWidth = Int(pixelSize.width.rounded())
-        let pixelHeight = Int(pixelSize.height.rounded())
-        let provenanceJSON = makeExportProvenanceJSON()
-        let softwareDescription = makeExportSoftwareDescription()
-
-        var properties = sourceImageMetadata.properties
-        properties[kCGImagePropertyPixelWidth as String] = pixelWidth
-        properties[kCGImagePropertyPixelHeight as String] = pixelHeight
-        properties[kCGImagePropertyOrientation as String] = CGImagePropertyOrientation.up.rawValue
-
-        var tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any] ?? [:]
-        tiff[kCGImagePropertyTIFFSoftware as String] = softwareDescription
-        tiff[kCGImagePropertyTIFFImageDescription as String] = provenanceJSON
-        tiff[kCGImagePropertyTIFFOrientation as String] = CGImagePropertyOrientation.up.rawValue
-        properties[kCGImagePropertyTIFFDictionary as String] = tiff
-
-        var exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any] ?? [:]
-        exif[kCGImagePropertyExifPixelXDimension as String] = pixelWidth
-        exif[kCGImagePropertyExifPixelYDimension as String] = pixelHeight
-        exif[kCGImagePropertyExifUserComment as String] = provenanceJSON
-        properties[kCGImagePropertyExifDictionary as String] = exif
-
-        if contentType.conforms(to: .png) {
-            var png = properties[kCGImagePropertyPNGDictionary as String] as? [String: Any] ?? [:]
-            png[kCGImagePropertyPNGSoftware as String] = softwareDescription
-            png[kCGImagePropertyPNGDescription as String] = provenanceJSON
-            properties[kCGImagePropertyPNGDictionary as String] = png
-        }
-
-        if contentType != .png {
-            properties[kCGImageDestinationLossyCompressionQuality as String] = 1.0
-        }
-
-        return properties
-    }
-
     private func makeExportSoftwareDescription() -> String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         let gitRevision = makeExportGitRevision()
         return "RefPlane \(version) (\(build), git \(gitRevision))"
-    }
-
-    private func makeExportProvenanceJSON() -> String {
-        let payload = ExportProvenanceMetadata(
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0",
-            buildNumber: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1",
-            gitRevision: makeExportGitRevision(),
-            exportedAt: ISO8601DateFormatter().string(from: Date()),
-            mode: activeMode.rawValue,
-            settings: makeExportSettingsSnapshot(),
-            generatedPalette: makeGeneratedPaletteSnapshot(),
-            sourceMetadata: MetadataJSONValue(sourceImageMetadata.properties)
-        )
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(payload),
-              let json = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return json
     }
 
     private func makeExportGitRevision() -> String {
@@ -1402,26 +1286,6 @@ class AppState {
         )
     }
 
-    private func exportPixelSize(for image: UIImage) -> CGSize {
-        if let cgImage = image.cgImage {
-            return CGSize(width: cgImage.width, height: cgImage.height)
-        }
-
-        return CGSize(
-            width: image.size.width * image.scale,
-            height: image.size.height * image.scale
-        )
-    }
-
-    private func imageContainsAlpha(_ image: UIImage) -> Bool {
-        switch image.cgImage?.alphaInfo {
-        case .none?, .noneSkipFirst?, .noneSkipLast?, nil:
-            return false
-        default:
-            return true
-        }
-    }
-
     private func renderGridOnto(_ image: UIImage) -> UIImage {
         let size = image.size
         let config = gridConfig
@@ -1534,44 +1398,49 @@ class AppState {
         abstractedImage = nil
         isolatedProcessedImage = nil
         processedPixelBands = []
+        focusedBands = []
         processingLabel = "Processing…"
         processingIsIndeterminate = false
         triggerProcessing()
     }
 
-    func toggleIsolatedBand(_ band: Int) {
-        isolatedBand = isolatedBand == band ? nil : band
+    func toggleFocusedBand(_ band: Int) {
+        var updatedBands = focusedBands
+        if updatedBands.contains(band) {
+            updatedBands.remove(band)
+        } else {
+            updatedBands.insert(band)
+        }
+        focusedBands = updatedBands
         refreshIsolatedProcessedImage()
+    }
+
+    func toggleFocusedBand(atNormalizedPoint point: CGPoint) {
+        guard let band = band(atNormalizedPoint: point) else { return }
+        toggleFocusedBand(band)
+    }
+
+    func toggleIsolatedBand(_ band: Int) {
+        toggleFocusedBand(band)
     }
 
     func toggleIsolatedBand(atNormalizedPoint point: CGPoint) {
-        guard activeMode == .value || activeMode == .color,
-              let processedImage,
-              let cgImage = processedImage.cgImage,
-              !processedPixelBands.isEmpty
-        else { return }
+        toggleFocusedBand(atNormalizedPoint: point)
+    }
 
-        let width = cgImage.width
-        let height = cgImage.height
-        guard width > 0, height > 0 else { return }
-
-        let x = min(max(Int((point.x * CGFloat(width)).rounded(.down)), 0), width - 1)
-        let y = min(max(Int((point.y * CGFloat(height)).rounded(.down)), 0), height - 1)
-        let pixelIndex = y * width + x
-        guard processedPixelBands.indices.contains(pixelIndex) else { return }
-
-        toggleIsolatedBand(processedPixelBands[pixelIndex])
+    func clearFocusedBands() {
+        guard !focusedBands.isEmpty else { return }
+        focusedBands = []
+        refreshIsolatedProcessedImage()
     }
 
     func clearIsolatedBandSelection() {
-        guard isolatedBand != nil else { return }
-        isolatedBand = nil
-        refreshIsolatedProcessedImage()
+        clearFocusedBands()
     }
 
     private func refreshIsolatedProcessedImage() {
         guard activeMode == .value || activeMode == .color,
-              let isolatedBand,
+              !focusedBands.isEmpty,
               let processedImage else {
             isolatedProcessedImage = nil
             return
@@ -1580,7 +1449,7 @@ class AppState {
         isolatedProcessedImage = BandIsolationRenderer.isolate(
             image: processedImage,
             pixelBands: processedPixelBands,
-            selectedBand: isolatedBand
+            selectedBands: focusedBands
         )
     }
 
@@ -2120,17 +1989,6 @@ class AppState {
 
 }
 
-private struct ExportProvenanceMetadata: Encodable {
-    var appVersion: String
-    var buildNumber: String
-    var gitRevision: String
-    var exportedAt: String
-    var mode: String
-    var settings: ExportSettingsMetadata
-    var generatedPalette: [ExportGeneratedPaletteMetadata]
-    var sourceMetadata: MetadataJSONValue
-}
-
 private struct ExportSettingsMetadata: Encodable {
     var abstractionStrength: Double
     var abstractionMethod: String
@@ -2180,71 +2038,4 @@ private struct ExportGeneratedRecipeComponentMetadata: Encodable {
     var pigmentID: String
     var pigmentName: String
     var concentration: Float
-}
-
-private enum MetadataJSONValue: Encodable {
-    case string(String)
-    case number(Double)
-    case bool(Bool)
-    case array([MetadataJSONValue])
-    case object([String: MetadataJSONValue])
-    case null
-
-    init(_ value: Any?) {
-        guard let value else {
-            self = .null
-            return
-        }
-
-        switch value {
-        case let string as String:
-            self = .string(string)
-        case let number as NSNumber:
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
-                self = .bool(number.boolValue)
-            } else {
-                self = .number(number.doubleValue)
-            }
-        case let dictionary as [String: Any]:
-            self = .object(
-                dictionary.reduce(into: [String: MetadataJSONValue]()) { result, entry in
-                    result[entry.key] = MetadataJSONValue(entry.value)
-                }
-            )
-        case let dictionary as NSDictionary:
-            var object: [String: MetadataJSONValue] = [:]
-            for (key, value) in dictionary {
-                object[String(describing: key)] = MetadataJSONValue(value)
-            }
-            self = .object(object)
-        case let array as [Any]:
-            self = .array(array.map(MetadataJSONValue.init))
-        case let array as NSArray:
-            self = .array(array.map(MetadataJSONValue.init))
-        case let date as Date:
-            self = .string(ISO8601DateFormatter().string(from: date))
-        case let data as Data:
-            self = .string(data.base64EncodedString())
-        default:
-            self = .string(String(describing: value))
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .string(let value):
-            try container.encode(value)
-        case .number(let value):
-            try container.encode(value)
-        case .bool(let value):
-            try container.encode(value)
-        case .array(let value):
-            try container.encode(value)
-        case .object(let value):
-            try container.encode(value)
-        case .null:
-            try container.encodeNil()
-        }
-    }
 }
