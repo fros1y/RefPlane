@@ -152,7 +152,7 @@ struct ColorConfig {
         ColorConfig.loadEnabledPigmentIDs()
             ?? Set(SpectralDataStore.essentialPigments.map(\.id))
     }()
-    var paletteSpread: Double  = 0
+    var paletteSpread: Double  = 1
     var quantizationBias: Double = 0
     var maxPigmentsPerMix: Int = 3
     var minConcentration: Float = 0.02

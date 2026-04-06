@@ -12,15 +12,16 @@ struct ImageCanvasView: View {
     @State private var currentScale: CGFloat = 1.0
     @State private var currentOffset: CGSize = .zero
     @State private var isBreathing = false
+    @State private var inspectedBand: Int? = nil
 
     private var displayImage: UIImage? {
         state.currentDisplayImage
     }
 
-    private var focusedBandSummary: CanvasBandSummary? {
+    private var inspectedBandSummary: CanvasBandSummary? {
         guard (state.activeMode == .value || state.activeMode == .color),
-              let isolatedBand = state.isolatedBand,
-              let paletteIndex = state.paletteBands.firstIndex(of: isolatedBand),
+              let inspectedBand,
+              let paletteIndex = state.paletteBands.firstIndex(of: inspectedBand),
               state.paletteColors.indices.contains(paletteIndex)
         else {
             return nil
@@ -34,7 +35,7 @@ struct ImageCanvasView: View {
         })?.pigmentName ?? "Swatch"
 
         return CanvasBandSummary(
-            band: isolatedBand,
+            band: inspectedBand,
             title: title,
             color: state.paletteColors[paletteIndex],
             recipe: recipe
@@ -70,10 +71,12 @@ struct ImageCanvasView: View {
                     processingOverlay
                 }
 
-                if let focusedBandSummary {
+                if let inspectedBandSummary {
                     CanvasBandSummaryCard(
-                        summary: focusedBandSummary,
-                        onClose: clearFocusedBand
+                        summary: inspectedBandSummary,
+                        isFocused: state.focusedBands.contains(inspectedBandSummary.band),
+                        onToggleFocus: { state.toggleFocusedBand(inspectedBandSummary.band) },
+                        onClose: dismissInspectedBand
                     )
                     .padding(.horizontal, 20)
                     .padding(.top, 90)
@@ -83,6 +86,14 @@ struct ImageCanvasView: View {
             }
         }
         .environment(\.colorScheme, .dark)
+        .onChange(of: state.isProcessing) { _, isProcessing in
+            if isProcessing {
+                inspectedBand = nil
+            }
+        }
+        .onChange(of: state.activeMode) { _, _ in
+            inspectedBand = nil
+        }
     }
 
     private var shouldDimCanvas: Bool {
@@ -256,6 +267,7 @@ struct ImageCanvasView: View {
         containerSize: CGSize
     ) {
         guard state.activeMode == .value || state.activeMode == .color else {
+            inspectedBand = nil
             return
         }
 
@@ -268,7 +280,7 @@ struct ImageCanvasView: View {
         guard imageRect.width > 0, imageRect.height > 0,
               imageRect.contains(location)
         else {
-            state.clearIsolatedBandSelection()
+            inspectedBand = nil
             return
         }
 
@@ -276,7 +288,7 @@ struct ImageCanvasView: View {
             x: (location.x - imageRect.minX) / imageRect.width,
             y: (location.y - imageRect.minY) / imageRect.height
         )
-        state.toggleIsolatedBand(atNormalizedPoint: normalizedPoint)
+        inspectedBand = state.band(atNormalizedPoint: normalizedPoint)
     }
 
     private func transformedImageRect(
@@ -333,8 +345,8 @@ struct ImageCanvasView: View {
         )
     }
 
-    private func clearFocusedBand() {
-        state.clearIsolatedBandSelection()
+    private func dismissInspectedBand() {
+        inspectedBand = nil
     }
 
     private func openPhotoPicker() {
@@ -355,6 +367,8 @@ private struct CanvasBandSummary {
 
 private struct CanvasBandSummaryCard: View {
     let summary: CanvasBandSummary
+    let isFocused: Bool
+    let onToggleFocus: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -374,6 +388,32 @@ private struct CanvasBandSummaryCard: View {
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
+
+                Button(action: onToggleFocus) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isFocused ? "scope" : "circle.dashed")
+                        Text(isFocused ? "Focused" : "Focus")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isFocused ? Color.accentColor : Color.white.opacity(0.82))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        isFocused
+                            ? Color.accentColor.opacity(0.15)
+                            : Color.white.opacity(0.08),
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(
+                                isFocused ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.12),
+                                lineWidth: 1
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isFocused ? "Remove focus from swatch" : "Focus swatch")
 
                 Button(action: onClose) {
                     Image(systemName: "xmark")

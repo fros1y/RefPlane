@@ -1,15 +1,16 @@
 import UIKit
 
 enum BandIsolationRenderer {
-    /// Desaturates and darkens pixels that do not belong to the selected band,
-    /// making the selected band's regions visually "pop" against a muted background.
+    /// Desaturates and darkens pixels that do not belong to the selected bands,
+    /// making the focused regions visually pop against a muted background.
     static func isolate(
         image: UIImage,
         pixelBands: [Int],
-        selectedBand: Int,
+        selectedBands: Set<Int>,
         desaturation: Float = 0.85,
         dimming: Float = 0.45
     ) -> UIImage? {
+        guard !selectedBands.isEmpty else { return image }
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
         let totalPixels = width * height
         guard pixelBands.count == totalPixels else { return nil }
@@ -18,7 +19,7 @@ enum BandIsolationRenderer {
         let brightness = 1.0 - dimming
 
         var output = pixels
-        for index in 0..<totalPixels where pixelBands[index] != selectedBand {
+        for index in 0..<totalPixels where !selectedBands.contains(pixelBands[index]) {
             let base = index * 4
             let r = Float(output[base])
             let g = Float(output[base + 1])
@@ -30,5 +31,21 @@ enum BandIsolationRenderer {
         }
 
         return UIImage.fromPixelData(output, width: width, height: height)
+    }
+
+    static func isolate(
+        image: UIImage,
+        pixelBands: [Int],
+        selectedBand: Int,
+        desaturation: Float = 0.85,
+        dimming: Float = 0.45
+    ) -> UIImage? {
+        isolate(
+            image: image,
+            pixelBands: pixelBands,
+            selectedBands: Set([selectedBand]),
+            desaturation: desaturation,
+            dimming: dimming
+        )
     }
 }

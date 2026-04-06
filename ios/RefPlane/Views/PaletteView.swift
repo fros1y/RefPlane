@@ -24,8 +24,8 @@ struct PaletteView: View {
                         section: section,
                         colors: colors(for: section),
                         recipes: recipes(for: section),
-                        isIsolated: state.isolatedBand == section.band,
-                        onToggleIsolation: { state.toggleIsolatedBand(section.band) }
+                        isFocused: state.focusedBands.contains(section.band),
+                        onToggleFocus: { state.toggleFocusedBand(section.band) }
                     )
                 }
             }
@@ -77,11 +77,11 @@ private struct PaletteMixCard: View {
     let section: PaletteBandSection
     let colors: [Color]
     let recipes: [PigmentRecipe]
-    let isIsolated: Bool
-    let onToggleIsolation: () -> Void
+    let isFocused: Bool
+    let onToggleFocus: () -> Void
 
     var body: some View {
-        Button(action: onToggleIsolation) {
+        Button(action: onToggleFocus) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Text(title)
@@ -102,8 +102,8 @@ private struct PaletteMixCard: View {
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                                         .stroke(
-                                            isIsolated ? Color.accentColor : Color(.separator),
-                                            lineWidth: isIsolated ? 2 : 1
+                                            isFocused ? Color.accentColor : Color(.separator),
+                                            lineWidth: isFocused ? 2 : 1
                                         )
                                 }
                         }
@@ -123,7 +123,7 @@ private struct PaletteMixCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .background(
-                isIsolated
+                isFocused
                     ? Color.accentColor.opacity(0.08)
                     : Color.primary.opacity(0.04),
                 in: RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -131,29 +131,29 @@ private struct PaletteMixCard: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(
-                        isIsolated ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08),
+                        isFocused ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08),
                         lineWidth: 1
                     )
             }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
-        .accessibilityValue(isIsolated ? "Isolated on canvas" : "Showing all mixes")
-        .accessibilityHint(isIsolated ? "Double tap to show all mixes" : "Double tap to focus this mix")
+        .accessibilityValue(isFocused ? "Focused on canvas" : "Showing all mixes")
+        .accessibilityHint(isFocused ? "Double tap to remove focus from this mix" : "Double tap to focus this mix")
         .accessibilityIdentifier("mix-card.\(bandID)")
     }
 
     private var focusPill: some View {
         HStack(spacing: 6) {
-            Image(systemName: isIsolated ? "scope" : "circle.dashed")
-            Text(isIsolated ? "Focused" : "Focus")
+            Image(systemName: isFocused ? "scope" : "circle.dashed")
+            Text(isFocused ? "Focused" : "Focus")
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(isIsolated ? Color.accentColor : Color.primary.opacity(0.7))
+        .foregroundStyle(isFocused ? Color.accentColor : Color.primary.opacity(0.7))
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(
-            isIsolated
+            isFocused
                 ? Color.accentColor.opacity(0.12)
                 : Color.primary.opacity(0.05),
             in: Capsule()
@@ -161,7 +161,7 @@ private struct PaletteMixCard: View {
         .overlay {
             Capsule()
                 .strokeBorder(
-                    isIsolated
+                    isFocused
                         ? Color.accentColor.opacity(0.35)
                         : Color.primary.opacity(0.08),
                     lineWidth: 1
@@ -229,7 +229,7 @@ private struct PalettePreviewHarness: View {
                 deltaE: 0.5
             ),
         ]
-        previewState.isolatedBand = 0
+        previewState.focusedBands = [0]
         _state = State(initialValue: previewState)
     }
 

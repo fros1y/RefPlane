@@ -86,3 +86,34 @@ func bandIsolationPreservesAllPixelsWhenAllSelected() {
     #expect(pixels?[5] == 100)
     #expect(pixels?[6] == 50)
 }
+
+@Test
+func bandIsolationPreservesMultipleSelectedBands() {
+    let source = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+        ],
+        width: 3,
+        height: 1
+    )
+
+    let isolated = BandIsolationRenderer.isolate(
+        image: source,
+        pixelBands: [0, 1, 2],
+        selectedBands: Set([0, 2])
+    )
+
+    let pixels = isolated?.toPixelData()?.data
+    #expect(pixels != nil)
+    #expect(pixels?[0] == 255)
+    #expect(pixels?[1] == 0)
+    #expect(pixels?[2] == 0)
+    #expect((pixels?[4] ?? 255) < 120)
+    #expect((pixels?[5] ?? 255) < 120)
+    #expect((pixels?[6] ?? 255) < 120)
+    #expect(pixels?[8] == 0)
+    #expect(pixels?[9] == 0)
+    #expect(pixels?[10] == 255)
+}

@@ -53,6 +53,7 @@ func selectingDefaultPresetRestoresDefaultTransformationValues() {
     state.gridConfig.enabled = true
     state.gridConfig.divisions = 9
     state.valueConfig.levels = 5
+    state.colorConfig.paletteSpread = 0
     state.depthConfig.enabled = true
 
     state.selectTransformPreset(.appDefault)
@@ -61,6 +62,7 @@ func selectingDefaultPresetRestoresDefaultTransformationValues() {
     #expect(state.gridConfig.enabled == false)
     #expect(state.gridConfig.divisions == 4)
     #expect(state.valueConfig.levels == 3)
+    #expect(state.colorConfig.paletteSpread == 1)
     #expect(state.depthConfig.enabled == false)
 }
 
@@ -97,7 +99,7 @@ func resetAbstractionCancelsInflightAbstractionTask() async throws {
 
 @MainActor
 @Test
-func selectingIsolatedBandChangesDisplayedImage() async throws {
+func selectingFocusedBandChangesDisplayedImage() async throws {
     let processedImage = TestImageFactory.makeSplitColors(
         pixels: [
             (255, 0, 0),
@@ -126,7 +128,7 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
     state.triggerProcessing()
     for _ in 0..<50 where state.isProcessing { await Task.yield() }
 
-    state.toggleIsolatedBand(1)
+    state.toggleFocusedBand(1)
 
     let pixels = state.currentDisplayImage?.toPixelData()?.data
     #expect(pixels != nil)
@@ -138,6 +140,109 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
     #expect(pixels?[4] == 0)
     #expect(pixels?[5] == 0)
     #expect(pixels?[6] == 255)
+}
+
+@MainActor
+@Test
+func selectingMultipleFocusedBandsSubduesOnlyUnfocusedPixels() async throws {
+    let processedImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+        ],
+        width: 3,
+        height: 1
+    )
+
+    let state = AppState(
+        processOperation: { _, _, _, _, _ in
+            ProcessingResult(
+                image: processedImage,
+                palette: [],
+                paletteBands: [0, 1, 2],
+                pixelBands: [0, 1, 2],
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
+            )
+        }
+    )
+
+    state.sourceImage = processedImage
+    state.activeMode = .color
+    state.triggerProcessing()
+    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+
+    state.toggleFocusedBand(0)
+    state.toggleFocusedBand(2)
+
+    #expect(state.focusedBands == Set([0, 2]))
+
+    let pixels = state.currentDisplayImage?.toPixelData()?.data
+    #expect(pixels != nil)
+    #expect(pixels?[0] == 255)
+    #expect(pixels?[1] == 0)
+    #expect(pixels?[2] == 0)
+    #expect((pixels?[4] ?? 255) < 120)
+    #expect((pixels?[5] ?? 255) < 120)
+    #expect((pixels?[6] ?? 255) < 120)
+    #expect(pixels?[8] == 0)
+    #expect(pixels?[9] == 0)
+    #expect(pixels?[10] == 255)
+}
+
+@MainActor
+@Test
+func processingResultsClearFocusedBands() async throws {
+    let firstImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 0, 255),
+        ],
+        width: 2,
+        height: 1
+    )
+    let secondImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (0, 255, 0),
+            (255, 255, 255),
+        ],
+        width: 2,
+        height: 1
+    )
+
+    let state = AppState(
+        processOperation: { image, _, _, _, _ in
+            ProcessingResult(
+                image: image,
+                palette: [],
+                paletteBands: [0, 1],
+                pixelBands: [0, 1],
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
+            )
+        }
+    )
+
+    state.sourceImage = firstImage
+    state.activeMode = .color
+    state.triggerProcessing()
+    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+
+    state.toggleFocusedBand(1)
+    #expect(state.focusedBands == Set([1]))
+
+    state.sourceImage = secondImage
+    state.triggerProcessing()
+    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+
+    #expect(state.focusedBands.isEmpty)
+    let pixels = state.currentDisplayImage?.toPixelData()?.data
+    #expect(pixels?[0] == 0)
+    #expect(pixels?[1] == 255)
+    #expect(pixels?[2] == 0)
 }
 
 // MARK: - Additional AppState coverage
@@ -154,7 +259,7 @@ func setModeClearsProcessedState() {
     state.processedImage = img
     state.paletteColors = [.red]
     state.paletteBands = [0]
-    state.isolatedBand = 0
+    state.focusedBands = [0]
     state.activeMode = .value
 
     state.setMode(.tonal)
@@ -163,7 +268,7 @@ func setModeClearsProcessedState() {
     #expect(state.processedImage == nil)
     #expect(state.paletteColors.isEmpty)
     #expect(state.paletteBands.isEmpty)
-    #expect(state.isolatedBand == nil)
+    #expect(state.focusedBands.isEmpty)
 }
 
 @MainActor
@@ -257,7 +362,7 @@ func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
 
     #expect(state.compareAfterImage === state.currentDisplayImage)
 
-    state.toggleIsolatedBand(1)
+    state.toggleFocusedBand(1)
 
     #expect(state.compareAfterImage === state.currentDisplayImage)
 }
