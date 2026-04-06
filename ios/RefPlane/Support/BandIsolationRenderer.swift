@@ -3,6 +3,29 @@ import UIKit
 enum BandIsolationRenderer {
     /// Desaturates and darkens pixels that do not belong to the selected bands,
     /// making the focused regions visually pop against a muted background.
+    static func isolateAsync(
+        image: UIImage,
+        pixelBands: [Int],
+        selectedBands: Set<Int>,
+        desaturation: Float = 0.85,
+        dimming: Float = 0.45
+    ) async -> UIImage? {
+        guard !selectedBands.isEmpty else { return image }
+
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = isolate(
+                    image: image,
+                    pixelBands: pixelBands,
+                    selectedBands: selectedBands,
+                    desaturation: desaturation,
+                    dimming: dimming
+                )
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     static func isolate(
         image: UIImage,
         pixelBands: [Int],
@@ -14,6 +37,16 @@ enum BandIsolationRenderer {
         guard let (pixels, width, height) = image.toPixelData() else { return nil }
         let totalPixels = width * height
         guard pixelBands.count == totalPixels else { return nil }
+
+        if let metalPixels = MetalContext.shared?.isolateBands(
+            pixels: pixels,
+            pixelBands: pixelBands,
+            selectedBands: selectedBands,
+            desaturation: desaturation,
+            dimming: dimming
+        ) {
+            return UIImage.fromPixelData(metalPixels, width: width, height: height)
+        }
 
         let keepColor = 1.0 - desaturation
         let brightness = 1.0 - dimming

@@ -96,6 +96,12 @@ func isolateWithCustomDesaturationAndDimming() {
         dimming: 0.0
     )
     #expect(result != nil)
+
+    if let (pixels, _, _) = result?.toPixelData() {
+        #expect(pixels[0] == 150)
+        #expect(pixels[1] == 150)
+        #expect(pixels[2] == 150)
+    }
 }
 
 @Test
@@ -110,4 +116,35 @@ func isolateWithMixedBands() {
         selectedBand: 0
     )
     #expect(result != nil)
+}
+
+@Test
+func isolateAsyncMatchesSynchronousOutput() async {
+    let image = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+        ],
+        width: 4,
+        height: 1
+    )
+    let bands = [0, 1, 2, 1]
+
+    let syncResult = BandIsolationRenderer.isolate(
+        image: image,
+        pixelBands: bands,
+        selectedBands: [1]
+    )
+    let asyncResult = await BandIsolationRenderer.isolateAsync(
+        image: image,
+        pixelBands: bands,
+        selectedBands: [1]
+    )
+
+    let syncPixels = syncResult?.toPixelData()?.data
+    let asyncPixels = asyncResult?.toPixelData()?.data
+
+    #expect(syncPixels == asyncPixels)
 }

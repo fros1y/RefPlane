@@ -390,27 +390,7 @@ private struct CanvasBandSummaryCard: View {
                 Spacer(minLength: 8)
 
                 Button(action: onToggleFocus) {
-                    HStack(spacing: 6) {
-                        Image(systemName: isFocused ? "scope" : "circle.dashed")
-                        Text(isFocused ? "Focused" : "Focus")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isFocused ? Color.accentColor : Color.white.opacity(0.82))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(
-                        isFocused
-                            ? Color.accentColor.opacity(0.15)
-                            : Color.white.opacity(0.08),
-                        in: Capsule()
-                    )
-                    .overlay {
-                        Capsule()
-                            .strokeBorder(
-                                isFocused ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.12),
-                                lineWidth: 1
-                            )
-                    }
+                    FocusPill(isFocused: isFocused)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isFocused ? "Remove focus from swatch" : "Focus swatch")

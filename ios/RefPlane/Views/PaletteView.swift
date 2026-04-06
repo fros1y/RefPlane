@@ -90,7 +90,7 @@ private struct PaletteMixCard: View {
 
                     Spacer(minLength: 8)
 
-                    focusPill
+                    FocusPill(isFocused: isFocused)
                 }
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -143,10 +143,27 @@ private struct PaletteMixCard: View {
         .accessibilityIdentifier("mix-card.\(bandID)")
     }
 
-    private var focusPill: some View {
+    private var title: String {
+        guard let firstRecipe = recipes.first,
+              let dominantPigment = firstRecipe.components.max(by: {
+                  $0.concentration < $1.concentration
+              })
+        else {
+            return "Swatch"
+        }
+
+        return dominantPigment.pigmentName
+    }
+}
+
+struct FocusPill: View {
+    let isFocused: Bool
+
+    var body: some View {
         HStack(spacing: 6) {
             Image(systemName: isFocused ? "scope" : "circle.dashed")
             Text(isFocused ? "Focused" : "Focus")
+                .lineLimit(1)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(isFocused ? Color.accentColor : Color.primary.opacity(0.7))
@@ -167,18 +184,7 @@ private struct PaletteMixCard: View {
                     lineWidth: 1
                 )
         }
-    }
-
-    private var title: String {
-        guard let firstRecipe = recipes.first,
-              let dominantPigment = firstRecipe.components.max(by: {
-                  $0.concentration < $1.concentration
-              })
-        else {
-            return "Swatch"
-        }
-
-        return dominantPigment.pigmentName
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 

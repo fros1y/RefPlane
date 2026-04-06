@@ -258,6 +258,47 @@ struct KMeansAssignParams {
     float lWeight;
 };
 
+struct BandIsolationParams {
+    uint pixelCount;
+    uint selectedBandCount;
+    float desaturation;
+    float dimming;
+};
+
+/// Dim and desaturate pixels whose band is not currently selected.
+kernel void band_isolation(
+    device const uint*             src           [[buffer(0)]],
+    device const int*              pixelBands    [[buffer(1)]],
+    device const int*              selectedBands [[buffer(2)]],
+    device uint*                   dst           [[buffer(3)]],
+    constant BandIsolationParams&  p             [[buffer(4)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= p.pixelCount) return;
+
+    int pixelBand = pixelBands[gid];
+    bool isSelected = false;
+    for (uint index = 0u; index < p.selectedBandCount; index++) {
+        if (selectedBands[index] == pixelBand) {
+            isSelected = true;
+            break;
+        }
+    }
+
+    uint pixel = src[gid];
+    if (isSelected) {
+        dst[gid] = pixel;
+        return;
+    }
+
+    float4 rgba = unpack_rgba(pixel);
+    float keepColor = 1.0f - p.desaturation;
+    float brightness = 1.0f - p.dimming;
+    float luma = dot(rgba.xyz, float3(0.299f, 0.587f, 0.114f));
+    float3 adjusted = (luma * p.desaturation + rgba.xyz * keepColor) * brightness;
+    dst[gid] = pack_rgba(float4(adjusted, rgba.w));
+}
+
 /// For each pixel, find the nearest centroid (in Oklab, with L de-weighted).
 kernel void kmeans_assign(
     device const float*         pixels      [[buffer(0)]],  // interleaved L,a,b

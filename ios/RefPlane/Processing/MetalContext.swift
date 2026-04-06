@@ -21,7 +21,7 @@ final class MetalContext {
         if ctx == nil {
             logger.error("MetalContext initialization failed")
         } else {
-            logger.info("All 14 compute pipelines compiled successfully")
+            logger.info("All 15 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -34,6 +34,7 @@ final class MetalContext {
     let grayscalePipeline: MTLComputePipelineState
     let rgbToOklabPipeline: MTLComputePipelineState
     let bandAssignPipeline: MTLComputePipelineState
+    let bandIsolationPipeline: MTLComputePipelineState
     let colorBuildLabelsPipeline: MTLComputePipelineState
     let colorHistogramPipeline: MTLComputePipelineState
     let kmeansAssignPipeline: MTLComputePipelineState
@@ -57,6 +58,7 @@ final class MetalContext {
             grayscalePipeline              = try Self.makePipeline(device: device, library: lib, name: "grayscale")
             rgbToOklabPipeline             = try Self.makePipeline(device: device, library: lib, name: "rgb_to_oklab")
             bandAssignPipeline             = try Self.makePipeline(device: device, library: lib, name: "band_assign")
+            bandIsolationPipeline          = try Self.makePipeline(device: device, library: lib, name: "band_isolation")
             colorBuildLabelsPipeline       = try Self.makePipeline(device: device, library: lib, name: "color_build_labels")
             colorHistogramPipeline         = try Self.makePipeline(device: device, library: lib, name: "color_histogram")
             kmeansAssignPipeline           = try Self.makePipeline(device: device, library: lib, name: "kmeans_assign")
@@ -206,6 +208,60 @@ final class MetalContext {
 
         let ptr = bandBuf.contents().bindMemory(to: Int32.self, capacity: count)
         return Array(UnsafeBufferPointer(start: ptr, count: count))
+    }
+
+    /// Apply focus isolation by dimming and desaturating all non-selected bands.
+    func isolateBands(
+        pixels: [UInt8],
+        pixelBands: [Int],
+        selectedBands: Set<Int>,
+        desaturation: Float,
+        dimming: Float
+    ) -> [UInt8]? {
+        let count = pixelBands.count
+        guard count > 0,
+              pixels.count == count * 4,
+              !selectedBands.isEmpty else {
+            return nil
+        }
+
+        let pixelBands32 = pixelBands.map { Int32(clamping: $0) }
+        let selectedBands32 = selectedBands.sorted().map { Int32(clamping: $0) }
+
+        guard let srcBuffer = makePixelBuffer(pixels),
+              let pixelBandBuffer = makeBuffer(pixelBands32),
+              let selectedBandBuffer = makeBuffer(selectedBands32),
+              let dstBuffer = makeBuffer(length: count * 4) else {
+            return nil
+        }
+
+        var params = BandIsolationParamsSwift(
+            pixelCount: UInt32(count),
+            selectedBandCount: UInt32(selectedBands32.count),
+            desaturation: desaturation,
+            dimming: dimming
+        )
+        guard let paramBuffer = device.makeBuffer(
+            bytes: &params,
+            length: MemoryLayout<BandIsolationParamsSwift>.stride,
+            options: .storageModeShared
+        ) else {
+            return nil
+        }
+
+        dispatch(
+            pipeline: bandIsolationPipeline,
+            buffers: [
+                (srcBuffer, 0),
+                (pixelBandBuffer, 1),
+                (selectedBandBuffer, 2),
+                (dstBuffer, 3),
+                (paramBuffer, 4),
+            ],
+            gridSize: count
+        )
+
+        return readPixels(from: dstBuffer, count: count)
     }
 
     /// K-Means assignment step on GPU. Accepts pre-uploaded pixel lab MTLBuffer.
@@ -742,6 +798,13 @@ private struct BandAssignParamsSwift {
     var pixelCount: UInt32
     var thresholdCount: UInt32
     var totalBands: UInt32
+}
+
+private struct BandIsolationParamsSwift {
+    var pixelCount: UInt32
+    var selectedBandCount: UInt32
+    var desaturation: Float
+    var dimming: Float
 }
 
 private struct ColorLabelParamsSwift {

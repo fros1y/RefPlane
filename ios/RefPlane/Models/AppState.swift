@@ -336,6 +336,8 @@ class AppState {
     @ObservationIgnored private let abstractionOperation: AbstractionOperation
     @ObservationIgnored private var abstractionTask: Task<Void, Never>? = nil
     @ObservationIgnored private var abstractionGeneration: Int = 0
+    @ObservationIgnored private var focusIsolationTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var focusIsolationGeneration: Int = 0
 
     @ObservationIgnored private var loadingTask: Task<Void, Never>? = nil
     @ObservationIgnored private(set) var sourceImageMetadata: SourceImageMetadata = .empty
@@ -565,9 +567,8 @@ class AppState {
         }
         guard activeMode != .original else {
             processedImage = nil
-            isolatedProcessedImage = nil
             processedPixelBands = []
-            focusedBands = []
+            invalidateFocusIsolation(clearSelection: true)
             isProcessing = false
             processingProgress = 0
             if depthConfig.enabled && depthMap != nil {
@@ -578,8 +579,7 @@ class AppState {
 
         // Set processing state synchronously so the UI shows the spinner
         // on the very first SwiftUI render after the mode change.
-        focusedBands = []
-        isolatedProcessedImage = nil
+    invalidateFocusIsolation(clearSelection: true)
         isProcessing = true
         processingProgress = 0
 
@@ -663,9 +663,8 @@ class AppState {
                 valueConfig.grayscaleConversion = .luminance
             }
         }
-        focusedBands = []
         processedImage = nil
-        isolatedProcessedImage = nil
+        invalidateFocusIsolation(clearSelection: true)
         processedPixelBands = []
         paletteColors = []
         paletteBands = []
@@ -881,8 +880,7 @@ class AppState {
             opacity: snapshot.contourOpacity
         )
 
-        focusedBands = []
-        isolatedProcessedImage = nil
+        invalidateFocusIsolation(clearSelection: true)
 
         updatePreviousTransformSnapshot()
 
@@ -1396,9 +1394,8 @@ class AppState {
         abstractionGeneration += 1
         isSimplifying = false
         abstractedImage = nil
-        isolatedProcessedImage = nil
         processedPixelBands = []
-        focusedBands = []
+        invalidateFocusIsolation(clearSelection: true)
         processingLabel = "Processing…"
         processingIsIndeterminate = false
         triggerProcessing()
@@ -1439,18 +1436,42 @@ class AppState {
     }
 
     private func refreshIsolatedProcessedImage() {
+        invalidateFocusIsolation(clearSelection: false)
+
         guard activeMode == .value || activeMode == .color,
               !focusedBands.isEmpty,
               let processedImage else {
-            isolatedProcessedImage = nil
             return
         }
 
-        isolatedProcessedImage = BandIsolationRenderer.isolate(
-            image: processedImage,
-            pixelBands: processedPixelBands,
-            selectedBands: focusedBands
-        )
+        let generation = focusIsolationGeneration
+        let pixelBands = processedPixelBands
+        let selectedBands = focusedBands
+
+        focusIsolationTask = Task { [weak self] in
+            let isolated = await BandIsolationRenderer.isolateAsync(
+                image: processedImage,
+                pixelBands: pixelBands,
+                selectedBands: selectedBands
+            )
+            guard !Task.isCancelled,
+                  let self,
+                  self.focusIsolationGeneration == generation else {
+                return
+            }
+
+            self.isolatedProcessedImage = isolated
+        }
+    }
+
+    private func invalidateFocusIsolation(clearSelection: Bool) {
+        focusIsolationTask?.cancel()
+        focusIsolationTask = nil
+        focusIsolationGeneration += 1
+        isolatedProcessedImage = nil
+        if clearSelection {
+            focusedBands = []
+        }
     }
 
     // MARK: - Depth processing
