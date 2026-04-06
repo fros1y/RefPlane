@@ -1,6 +1,7 @@
 import UIKit
 import CoreML
 import CoreImage
+import os
 
 // MARK: - Abstraction errors
 
@@ -48,6 +49,8 @@ private actor AbstractionModelStore {
 
 enum ImageAbstractor {
 
+    private static let logger = AppInstrumentation.logger(category: "Processing.ImageAbstractor")
+
     private static let modelInputSize = 256
     private static let modelOutputSize = 1024  // 4× input
     private static let upscaleFactor = 4
@@ -83,7 +86,7 @@ enum ImageAbstractor {
         for name in candidates {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc"),
                let model = try? MLModel(contentsOf: url, configuration: config) {
-                print("[ImageAbstractor] Loaded compiled model: \(name).mlmodelc")
+                logger.info("Loaded compiled model \(name, privacy: .public).mlmodelc")
                 await modelStore.insert(model, for: method)
                 return model
             }
@@ -91,7 +94,7 @@ enum ImageAbstractor {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlpackage") {
                 if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    print("[ImageAbstractor] Compiled and loaded: \(name).mlpackage")
+                    logger.info("Compiled and loaded model package \(name, privacy: .public).mlpackage")
                     await modelStore.insert(model, for: method)
                     return model
                 }
@@ -100,14 +103,14 @@ enum ImageAbstractor {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodel") {
                 if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    print("[ImageAbstractor] Compiled and loaded: \(name).mlmodel")
+                    logger.info("Compiled and loaded model \(name, privacy: .public).mlmodel")
                     await modelStore.insert(model, for: method)
                     return model
                 }
             }
         }
 
-        print("[ImageAbstractor] No model found for \(method.label)")
+        logger.error("No model found for abstraction method \(method.label, privacy: .public)")
         throw AbstractionError.modelUnavailable(method)
     }
 
@@ -205,7 +208,9 @@ enum ImageAbstractor {
         let outH = alignedCoreH * scale
         let paddedTileSize = tileSize + tilePad * 2
 
-        print("[ImageAbstractor] Tiling \(alignedCoreW)×\(alignedCoreH) (aligned from \(srcW)×\(srcH)) → \(tilesX)×\(tilesY) tiles, tilePad=\(tilePad)")
+        logger.debug(
+            "Tiling \(alignedCoreW, privacy: .public)x\(alignedCoreH, privacy: .public) aligned from \(srcW, privacy: .public)x\(srcH, privacy: .public) into \(tilesX, privacy: .public)x\(tilesY, privacy: .public) tiles; tilePad=\(tilePad, privacy: .public)"
+        )
 
         // Allocate output pixel buffer (RGBA)
         var outputPixels = [UInt8](repeating: 0, count: outW * outH * 4)

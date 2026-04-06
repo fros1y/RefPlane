@@ -1,10 +1,14 @@
 import UIKit
 import SwiftUI
 import Dispatch
+import os
 
 // MARK: - Color study pipeline
 
 enum ColorRegionsProcessor {
+
+    private static let logger = AppInstrumentation.logger(category: "Processing.ColorStudy")
+    private static let signpostLog = AppInstrumentation.signpostLog(category: "Processing.ColorStudy")
 
     private static let histogramLBins = 12
     private static let histogramABins = 24
@@ -37,35 +41,42 @@ enum ColorRegionsProcessor {
     }
 
     static func process(image: UIImage, config: ColorConfig, minRegionSize: MinRegionSize = .off, overclusterK: Int? = nil) -> Result? {
-        let t0 = CFAbsoluteTimeGetCurrent()
-        guard let (pixels, width, height) = image.toPixelData() else { return nil }
+        AppInstrumentation.measure("ProcessColorStudy", log: signpostLog) {
+            guard let (pixels, width, height) = image.toPixelData() else { return nil }
+            let gpu = MetalContext.shared
 
-        if let gpu = MetalContext.shared,
-           let result = processGPU(
-               gpu: gpu,
-               pixels: pixels,
-               width: width,
-               height: height,
-               config: config,
-               minRegionSize: minRegionSize,
-               overclusterK: overclusterK
-           ) {
-            let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-            print("[ColorStudy] GPU path in \(String(format: "%.1f", totalMs)) ms")
-            return result
+            if let gpu,
+               let result = AppInstrumentation.measure("RunGPUPath", log: signpostLog, {
+                   processGPU(
+                       gpu: gpu,
+                       pixels: pixels,
+                       width: width,
+                       height: height,
+                       config: config,
+                       minRegionSize: minRegionSize,
+                       overclusterK: overclusterK
+                   )
+               }) {
+                return result
+            }
+
+            if gpu != nil {
+                logger.notice("Falling back to CPU color-study processing after GPU pipeline failure")
+            } else {
+                logger.notice("Falling back to CPU color-study processing; Metal is unavailable")
+            }
+
+            return AppInstrumentation.measure("RunCPUPath", log: signpostLog) {
+                processCPU(
+                    pixels: pixels,
+                    width: width,
+                    height: height,
+                    config: config,
+                    minRegionSize: minRegionSize,
+                    overclusterK: overclusterK
+                )
+            }
         }
-
-        let result = processCPU(
-            pixels: pixels,
-            width: width,
-            height: height,
-            config: config,
-            minRegionSize: minRegionSize,
-            overclusterK: overclusterK
-        )
-        let totalMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-        print("[ColorStudy] CPU path in \(String(format: "%.1f", totalMs)) ms")
-        return result
     }
 
     // MARK: - GPU path
@@ -85,49 +96,68 @@ enum ColorRegionsProcessor {
             for: config.quantizationBias
         )
 
-        var stepStart = CFAbsoluteTimeGetCurrent()
-        guard let (displayLabArray, srcBuffer, displayLabBuffer) = gpu.rgbToOklab(
-            pixels: pixels,
-            width: width,
-            height: height
-        ) else {
-            return nil
-        }
-        let distanceLabArray = applyingLuminanceBias(
-            to: displayLabArray,
-            exponent: luminanceExponent
-        )
-        guard let distanceLabBuffer = luminanceExponent == 1
-            ? displayLabBuffer
-            : gpu.device.makeBuffer(
-                bytes: distanceLabArray,
-                length: distanceLabArray.count * MemoryLayout<Float>.stride,
-                options: .storageModeShared
-            ) else {
-            return nil
-        }
-        print("[ColorStudy][GPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        var displayLabArray = [Float]()
+        var distanceLabArray = [Float]()
+        var srcBuffer: MTLBuffer?
+        var distanceLabBuffer: MTLBuffer?
 
-        stepStart = CFAbsoluteTimeGetCurrent()
+        let rgbToOklabSucceeded = AppInstrumentation.measure("ConvertToOklab", log: signpostLog) { () -> Bool in
+            guard let (generatedDisplayLabArray, generatedSrcBuffer, displayLabBuffer) = gpu.rgbToOklab(
+                pixels: pixels,
+                width: width,
+                height: height
+            ) else {
+                return false
+            }
+
+            let generatedDistanceLabArray = applyingLuminanceBias(
+                to: generatedDisplayLabArray,
+                exponent: luminanceExponent
+            )
+            guard let generatedDistanceLabBuffer = luminanceExponent == 1
+                ? displayLabBuffer
+                : gpu.device.makeBuffer(
+                    bytes: generatedDistanceLabArray,
+                    length: generatedDistanceLabArray.count * MemoryLayout<Float>.stride,
+                    options: .storageModeShared
+                ) else {
+                    return false
+                }
+
+            displayLabArray = generatedDisplayLabArray
+            distanceLabArray = generatedDistanceLabArray
+            srcBuffer = generatedSrcBuffer
+            distanceLabBuffer = generatedDistanceLabBuffer
+            return true
+        }
+        guard rgbToOklabSucceeded,
+              let srcBuffer,
+              let distanceLabBuffer else {
+            return nil
+        }
+
         let centroids: [OklabColor]
-        if let gpuCentroids = selectFamilyCentroids(
-            gpu: gpu,
-            labBuffer: distanceLabBuffer,
-            count: total,
-            k: numShades,
-            lWeight: 0.3,
-            spreadBias: Float(config.paletteSpread)
-        ) {
-            centroids = gpuCentroids
-            print("[ColorStudy][GPU] choose_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
-        } else {
-            centroids = selectFamilyCentroids(
-                labArray: distanceLabArray,
+        if let gpuCentroids = AppInstrumentation.measure("SelectCentroidsGPU", log: signpostLog, {
+            selectFamilyCentroids(
+                gpu: gpu,
+                labBuffer: distanceLabBuffer,
+                count: total,
                 k: numShades,
                 lWeight: 0.3,
                 spreadBias: Float(config.paletteSpread)
             )
-            print("[ColorStudy][CPU] choose_shades_fallback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        }) {
+            centroids = gpuCentroids
+        } else {
+            logger.notice("Falling back to CPU shade selection after GPU centroid selection failure")
+            centroids = AppInstrumentation.measure("SelectCentroidsCPUFallback", log: signpostLog) {
+                selectFamilyCentroids(
+                    labArray: distanceLabArray,
+                    k: numShades,
+                    lWeight: 0.3,
+                    spreadBias: Float(config.paletteSpread)
+                )
+            }
         }
 
         return processGPUWithCentroids(
@@ -157,41 +187,41 @@ enum ColorRegionsProcessor {
         let total = width * height
         guard !centroids.isEmpty else { return nil }
 
-        var stepStart = CFAbsoluteTimeGetCurrent()
         let flatCentroids = centroids.flatMap { [$0.L, $0.a, $0.b] }
-        guard let assignments = gpu.kmeansAssign(
-            pixelLabBuffer: distanceLabBuffer,
-            count: total,
-            centroidLab: flatCentroids,
-            k: centroids.count,
-            lWeight: 0.3
-        ) else {
+        guard let assignments = AppInstrumentation.measure("AssignPixelsToCentroids", log: signpostLog, {
+            gpu.kmeansAssign(
+                pixelLabBuffer: distanceLabBuffer,
+                count: total,
+                centroidLab: flatCentroids,
+                k: centroids.count,
+                lWeight: 0.3
+            )
+        }) else {
             return nil
         }
-        print("[ColorStudy][GPU] assign_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         var globalLabels = assignments.map { Int32($0) }
 
         if let factor = minRegionFactor {
-            stepStart = CFAbsoluteTimeGetCurrent()
-            RegionCleaner.clean(
-                labels: &globalLabels,
-                width: width,
-                height: height,
-                minFactor: factor,
-                labelCapacity: numShades
-            )
-            print("[ColorStudy][CPU] region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+            AppInstrumentation.measure("CleanupRegions", log: signpostLog) {
+                RegionCleaner.clean(
+                    labels: &globalLabels,
+                    width: width,
+                    height: height,
+                    minFactor: factor,
+                    labelCapacity: numShades
+                )
+            }
         }
 
-        stepStart = CFAbsoluteTimeGetCurrent()
-        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(
-            pixelLab: displayLabArray,
-            labels: globalLabels,
-            k: numShades
-        )
+        let (quantizedCentroids, clusterPixelCounts) = AppInstrumentation.measure("ComputeQuantizedCentroids", log: signpostLog) {
+            computeCentroidsAndCounts(
+                pixelLab: displayLabArray,
+                labels: globalLabels,
+                k: numShades
+            )
+        }
         let clusterSalience = computeSalience(centroids: quantizedCentroids, counts: clusterPixelCounts)
-        print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         let palette: [Color] = quantizedCentroids.map { c in
             let (r, g, b) = oklabToRGB(c)
@@ -199,17 +229,26 @@ enum ColorRegionsProcessor {
         }
 
         let flatQuantizedCentroids = quantizedCentroids.flatMap { [$0.L, $0.a, $0.b] }
-        stepStart = CFAbsoluteTimeGetCurrent()
-        guard let outputPixels = gpu.remapByLabel(
-            srcBuffer: srcBuffer,
-            labels: globalLabels,
-            centroids: flatQuantizedCentroids,
-            count: total
-        ),
-        let image = UIImage.fromPixelData(outputPixels, width: width, height: height) else {
+        var image: UIImage?
+        let remapSucceeded = AppInstrumentation.measure("RenderImageByLabel", log: signpostLog) { () -> Bool in
+            guard let outputPixels = gpu.remapByLabel(
+                srcBuffer: srcBuffer,
+                labels: globalLabels,
+                centroids: flatQuantizedCentroids,
+                count: total
+            ) else {
+                return false
+            }
+            guard let generatedImage = UIImage.fromPixelData(outputPixels, width: width, height: height) else {
+                return false
+            }
+            image = generatedImage
+            return true
+        }
+        guard remapSucceeded,
+              let image else {
             return nil
         }
-        print("[ColorStudy][GPU] remap_by_label: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         return Result(
             image: image,
@@ -240,76 +279,78 @@ enum ColorRegionsProcessor {
             for: config.quantizationBias
         )
 
-        var stepStart = CFAbsoluteTimeGetCurrent()
-        var displayPoints = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
-        var displayLabArray = [Float](repeating: 0, count: total * 3)
-        for i in 0..<total {
-            let base = i * 4
-            let ok = rgbToOklab(r: pixels[base], g: pixels[base + 1], b: pixels[base + 2])
-            displayPoints[i] = ok
-            displayLabArray[i * 3] = ok.L
-            displayLabArray[i * 3 + 1] = ok.a
-            displayLabArray[i * 3 + 2] = ok.b
+        let (displayLabArray, distancePoints) = AppInstrumentation.measure("ConvertToOklab", log: signpostLog) {
+            var displayPoints = [OklabColor](repeating: OklabColor(L: 0, a: 0, b: 0), count: total)
+            var displayLabArray = [Float](repeating: 0, count: total * 3)
+            for i in 0..<total {
+                let base = i * 4
+                let ok = rgbToOklab(r: pixels[base], g: pixels[base + 1], b: pixels[base + 2])
+                displayPoints[i] = ok
+                displayLabArray[i * 3] = ok.L
+                displayLabArray[i * 3 + 1] = ok.a
+                displayLabArray[i * 3 + 2] = ok.b
+            }
+            let distancePoints = applyingLuminanceBias(
+                to: displayPoints,
+                exponent: luminanceExponent
+            )
+            return (displayLabArray, distancePoints)
         }
-        let distancePoints = applyingLuminanceBias(
-            to: displayPoints,
-            exponent: luminanceExponent
-        )
-        print("[ColorStudy][CPU] rgb_to_oklab: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        stepStart = CFAbsoluteTimeGetCurrent()
-        let centroids = selectFamilyCentroids(
-            points: distancePoints,
-            k: numShades,
-            lWeight: 0.3,
-            spreadBias: Float(config.paletteSpread)
-        )
-        print("[ColorStudy][CPU] choose_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        let centroids = AppInstrumentation.measure("SelectCentroidsCPU", log: signpostLog) {
+            selectFamilyCentroids(
+                points: distancePoints,
+                k: numShades,
+                lWeight: 0.3,
+                spreadBias: Float(config.paletteSpread)
+            )
+        }
         guard !centroids.isEmpty else { return nil }
 
-        stepStart = CFAbsoluteTimeGetCurrent()
-        let assignments = assignFamiliesCPU(
-            points: distancePoints,
-            centroids: centroids,
-            lWeight: 0.3
-        )
-        print("[ColorStudy][CPU] assign_shades: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        let assignments = AppInstrumentation.measure("AssignPixelsToCentroids", log: signpostLog) {
+            assignFamiliesCPU(
+                points: distancePoints,
+                centroids: centroids,
+                lWeight: 0.3
+            )
+        }
 
         var globalLabels = assignments.map { Int32($0) }
 
         if let factor = minRegionSize.factor {
-            stepStart = CFAbsoluteTimeGetCurrent()
-            RegionCleaner.clean(
-                labels: &globalLabels,
-                width: width,
-                height: height,
-                minFactor: factor,
-                labelCapacity: numShades
+            AppInstrumentation.measure("CleanupRegions", log: signpostLog) {
+                RegionCleaner.clean(
+                    labels: &globalLabels,
+                    width: width,
+                    height: height,
+                    minFactor: factor,
+                    labelCapacity: numShades
+                )
+            }
+        }
+
+        let (quantizedCentroids, clusterPixelCounts) = AppInstrumentation.measure("ComputeQuantizedCentroids", log: signpostLog) {
+            computeCentroidsAndCounts(
+                pixelLab: displayLabArray,
+                labels: globalLabels,
+                k: numShades
             )
-            print("[ColorStudy][CPU] region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
         }
-
-        stepStart = CFAbsoluteTimeGetCurrent()
-        let (quantizedCentroids, clusterPixelCounts) = computeCentroidsAndCounts(
-            pixelLab: displayLabArray,
-            labels: globalLabels,
-            k: numShades
-        )
         let clusterSalience = computeSalience(centroids: quantizedCentroids, counts: clusterPixelCounts)
-        print("[ColorStudy][CPU] compute_centroids: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        stepStart = CFAbsoluteTimeGetCurrent()
-        var out = [UInt8](repeating: 255, count: total * 4)
-        for i in 0..<total {
-            let label = min(max(Int(globalLabels[i]), 0), numShades - 1)
-            let (r, g, b) = oklabToRGB(quantizedCentroids[label])
-            let base = i * 4
-            out[base]     = r
-            out[base + 1] = g
-            out[base + 2] = b
-            out[base + 3] = pixels[base + 3]
+        let out = AppInstrumentation.measure("RenderImageByPixel", log: signpostLog) {
+            var out = [UInt8](repeating: 255, count: total * 4)
+            for i in 0..<total {
+                let label = min(max(Int(globalLabels[i]), 0), numShades - 1)
+                let (r, g, b) = oklabToRGB(quantizedCentroids[label])
+                let base = i * 4
+                out[base] = r
+                out[base + 1] = g
+                out[base + 2] = b
+                out[base + 3] = pixels[base + 3]
+            }
+            return out
         }
-        print("[ColorStudy][CPU] remap_pixels: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         guard let image = UIImage.fromPixelData(out, width: width, height: height) else {
             return nil

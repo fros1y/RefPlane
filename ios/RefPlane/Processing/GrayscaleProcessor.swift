@@ -1,9 +1,13 @@
 import UIKit
 import Accelerate
+import os
 
 // MARK: - Grayscale conversion
 
 enum GrayscaleProcessor {
+
+    private static let logger = AppInstrumentation.logger(category: "Processing.Grayscale")
+    private static let signpostLog = AppInstrumentation.signpostLog(category: "Processing.Grayscale")
 
     // Precomputed sRGB linearization LUT: byte value → linear float
     private static let srgbToLinear: [Float] = (0..<256).map {
@@ -23,37 +27,45 @@ enum GrayscaleProcessor {
         image: UIImage,
         conversion: GrayscaleConversion = .luminance
     ) -> UIImage? {
-        guard conversion != .none else {
-            return image
+        AppInstrumentation.measure("ProcessGrayscale", log: signpostLog) {
+            guard conversion != .none else {
+                return image
+            }
+
+            guard let (pixels, width, height) = AppInstrumentation.measure("DecodePixels", log: signpostLog, {
+                image.toPixelData()
+            }) else {
+                return nil
+            }
+
+            if conversion.usesGPUShortcut,
+               let gpu = MetalContext.shared {
+                return AppInstrumentation.measure("RunGPUKernel", log: signpostLog) {
+                    guard let out = gpu.processGrayscale(pixels: pixels, width: width, height: height) else {
+                        return nil
+                    }
+                    return AppInstrumentation.measure("EncodeImage", log: signpostLog) {
+                        UIImage.fromPixelData(out, width: width, height: height)
+                    }
+                }
+            }
+
+            if conversion.usesGPUShortcut {
+                let metalAvailable = MetalContext.shared != nil
+                logger.notice(
+                    "Falling back to CPU grayscale processing; metalAvailable=\(metalAvailable, privacy: .public)"
+                )
+            }
+
+            return AppInstrumentation.measure("RunCPUConversion", log: signpostLog) {
+                processCPU(
+                    pixels: pixels,
+                    width: width,
+                    height: height,
+                    conversion: conversion
+                )
+            }
         }
-
-        let t0 = CFAbsoluteTimeGetCurrent()
-        guard let (pixels, width, height) = image.toPixelData() else { return nil }
-        let total = width * height
-        let t1 = CFAbsoluteTimeGetCurrent()
-        print("[Grayscale] toPixelData: \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
-
-        if conversion.usesGPUShortcut,
-           let gpu = MetalContext.shared,
-           let out = gpu.processGrayscale(pixels: pixels, width: width, height: height) {
-            let t2 = CFAbsoluteTimeGetCurrent()
-            print("[Grayscale] ✅ GPU path — \(total) px in \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
-            let img = UIImage.fromPixelData(out, width: width, height: height)
-            let t3 = CFAbsoluteTimeGetCurrent()
-            print("[Grayscale] fromPixelData: \(String(format: "%.1f", (t3 - t2) * 1000)) ms")
-            return img
-        }
-
-        print("[Grayscale] ⚠️ CPU fallback (MetalContext.shared = \(MetalContext.shared == nil ? "nil" : "non-nil"))")
-        let result = processCPU(
-            pixels: pixels,
-            width: width,
-            height: height,
-            conversion: conversion
-        )
-        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-        print("[Grayscale] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
-        return result
     }
 
     static func grayscaleByte(r: Float, g: Float, b: Float, conversion: GrayscaleConversion) -> UInt8 {
@@ -123,7 +135,7 @@ enum GrayscaleProcessor {
 
         let ok: Bool = pixels.withUnsafeBufferPointer { srcPtr in
             grayPixels.withUnsafeMutableBufferPointer { grayPtr in
-                var src = vImage_Buffer(
+                let src = vImage_Buffer(
                     data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
                     height: vImagePixelCount(height),
                     width: vImagePixelCount(width),

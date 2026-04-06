@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct PaintPaletteResult {
     let selectedTubes: [PigmentData]
@@ -9,6 +10,8 @@ struct PaintPaletteResult {
 }
 
 enum PaintPaletteBuilder {
+
+    private static let signpostLog = AppInstrumentation.signpostLog(category: "Processing.PaintPalette")
     
     enum BuilderError: Error {
         case missingData
@@ -26,240 +29,217 @@ enum PaintPaletteBuilder {
         pigments: [PigmentData],
         onProgress: ((Double) -> Void)? = nil
     ) throws -> PaintPaletteResult {
-        
-        guard !colorRegions.quantizedCentroids.isEmpty else {
-            throw BuilderError.missingData
-        }
-        
-        // Grab the shared precomputed table once (nil → falls back to runtime build).
-        let lookupTable = SpectralDataStore.sharedLookupTable
-        let assignmentLWeight = centroidAssignmentLWeight(
-            for: colorRegions.quantizedCentroids
-        )
-
-        let t0 = CFAbsoluteTimeGetCurrent()
-
-        // Stage 2 - Preliminary Decomposition
-        _ = PigmentDecomposer.decompose(
-            targetColors: colorRegions.quantizedCentroids,
-            pigments: pigments,
-            database: database,
-            maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration,
-            concurrent: false,
-            lookupTable: lookupTable
-        )
-        
-        let t1 = CFAbsoluteTimeGetCurrent()
-        print("[PaintPaletteBuilder] Stage 2 (Prelim Decomp) took \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
-        onProgress?(0.35)
-        
-        // Stage 3 - skipped: user-selected pigments are used directly as selectedTubes.
-        let selectedTubes = pigments
-        
-        let t2 = CFAbsoluteTimeGetCurrent()
-        print("[PaintPaletteBuilder] Stage 3 (Tube Selection) skipped – using \(selectedTubes.count) user-selected tubes")
-        onProgress?(0.50)
-        
-        // Stage 4A - Constrained Decomposition
-        let constrainedRecipes = PigmentDecomposer.decompose(
-            targetColors: colorRegions.quantizedCentroids,
-            pigments: selectedTubes,
-            database: database,
-            maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration,
-            concurrent: false,
-            lookupTable: lookupTable
-        )
-
-        guard !constrainedRecipes.isEmpty else {
-            throw BuilderError.missingData
-        }
-
-        let t3 = CFAbsoluteTimeGetCurrent()
-        print("[PaintPaletteBuilder] Stage 4A (Constrained Decomp) took \(String(format: "%.1f", (t3 - t2) * 1000)) ms")
-        onProgress?(0.60)
-
-        // Stage 4B - Snap/Reassign Loop
-        let (workingRecipes, snappedCentroidToRecipe, snappedCounts) = snapAndReassign(
-            recipes: constrainedRecipes,
-            colorRegions: colorRegions,
-            selectedTubes: selectedTubes,
-            database: database,
-            maxPigments: config.maxPigmentsPerMix,
-            minConcentration: config.minConcentration,
-            assignmentLWeight: assignmentLWeight,
-            lookupTable: lookupTable
-        )
-
-        let t3b = CFAbsoluteTimeGetCurrent()
-        print("[PaintPaletteBuilder] Stage 4B (Snap/Reassign) took \(String(format: "%.1f", (t3b - t3) * 1000)) ms")
-        onProgress?(0.75)
-
-        // Stage 5 - Merge, Prune, and Finalize
-        // All intermediate work operates on centroid-level labels (size K ≈ 50).
-        // A single O(pixels) projection is deferred to the very end.
-
-        let (mergedRecipes, mergeMap) = PigmentDecomposer.mergeRecipes(
-            recipes: workingRecipes,
-            pixelCounts: snappedCounts
-        )
-
-        let mergeMapI32 = mergeMap.map { Int32($0) }
-        var qCentroidLabels = snappedCentroidToRecipe.map { mergeMapI32[Int($0)] }
-        var finalRecipes = mergedRecipes
-
-        // O(K) counts via quantized centroids.
-        var finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
-            quantizedCentroids: colorRegions.quantizedCentroids,
-            quantizedPixelCounts: colorRegions.clusterPixelCounts,
-            centroidToRecipe: qCentroidLabels,
-            recipeCount: finalRecipes.count
-        ).counts
-        var finalImportances = recipeImportances(
-            quantizedPixelCounts: colorRegions.clusterPixelCounts,
-            quantizedSalience: colorRegions.clusterSalience,
-            centroidToRecipe: qCentroidLabels,
-            recipeCount: finalRecipes.count
-        )
-
-        // Stage 5A - Adaptive shade count
-        let anchors5A = makePruningAnchors(
-            recipes: finalRecipes,
-            counts: finalCounts,
-            importances: finalImportances,
-            maxAnchors: max(2, config.numShades)
-        )
-
-        finalRecipes = adaptivePrune(
-            recipes: finalRecipes,
-            counts: finalCounts,
-            importances: finalImportances,
-            labels: &qCentroidLabels,
-            anchors: anchors5A,
-            minShades: config.numShades
-        )
-
-        // Recompute counts after prune (O(K)).
-        finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
-            quantizedCentroids: colorRegions.quantizedCentroids,
-            quantizedPixelCounts: colorRegions.clusterPixelCounts,
-            centroidToRecipe: qCentroidLabels,
-            recipeCount: finalRecipes.count
-        ).counts
-        finalImportances = recipeImportances(
-            quantizedPixelCounts: colorRegions.clusterPixelCounts,
-            quantizedSalience: colorRegions.clusterSalience,
-            centroidToRecipe: qCentroidLabels,
-            recipeCount: finalRecipes.count
-        )
-
-        // Prune down to numShades.
-        if finalRecipes.count > config.numShades && config.numShades > 1 {
-            finalRecipes = pruneToMaxShades(
-                recipes: finalRecipes,
-                counts: finalCounts,
-                importances: finalImportances,
-                labels: &qCentroidLabels,
-                maxShades: config.numShades
-            )
-            // Recompute counts after prune.
-            finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
-                quantizedCentroids: colorRegions.quantizedCentroids,
-                quantizedPixelCounts: colorRegions.clusterPixelCounts,
-                centroidToRecipe: qCentroidLabels,
-                recipeCount: finalRecipes.count
-            ).counts
-            finalImportances = recipeImportances(
-                quantizedPixelCounts: colorRegions.clusterPixelCounts,
-                quantizedSalience: colorRegions.clusterSalience,
-                centroidToRecipe: qCentroidLabels,
-                recipeCount: finalRecipes.count
-            )
-        }
-
-        // Compact: remove recipes with no pixels. O(K).
-        let validIndices = (0..<finalRecipes.count).filter { finalCounts[$0] > 0 }
-        let prunedRecipes = validIndices.map { finalRecipes[$0] }
-        var newIndexMap = [Int32](repeating: 0, count: finalRecipes.count)
-        for (newIdx, oldIdx) in validIndices.enumerated() {
-            newIndexMap[oldIdx] = Int32(newIdx)
-        }
-        qCentroidLabels = qCentroidLabels.map { newIndexMap[Int($0)] }
-
-        finalCounts = [Int](repeating: 0, count: prunedRecipes.count)
-        for qi in 0..<qCentroidLabels.count {
-            let ri = Int(qCentroidLabels[qi])
-            if ri >= 0, ri < finalCounts.count { finalCounts[ri] += colorRegions.clusterPixelCounts[qi] }
-        }
-
-        // Stage 5B - Final Constrained Refit (O(K) centroid computation, no full pixel scan).
-        let (refitCentroids, refitCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
-            quantizedCentroids: colorRegions.quantizedCentroids,
-            quantizedPixelCounts: colorRegions.clusterPixelCounts,
-            centroidToRecipe: qCentroidLabels,
-            recipeCount: prunedRecipes.count
-        )
-
-        var refitRecipes = prunedRecipes
-        for i in 0..<refitCentroids.count where refitCounts[i] > 0 {
-            let reDecomposed = PigmentDecomposer.decompose(
-                targetColors: [refitCentroids[i]],
-                pigments: selectedTubes,
-                database: database,
-                maxPigments: config.maxPigmentsPerMix,
-                minConcentration: config.minConcentration,
-                concurrent: false,
-                lookupTable: lookupTable
-            )
-            if let recipe = reDecomposed.first {
-                refitRecipes[i] = recipe
+        try AppInstrumentation.measure("BuildPaintPalette", log: signpostLog) {
+            guard !colorRegions.quantizedCentroids.isEmpty else {
+                throw BuilderError.missingData
             }
-        }
 
-        // Final pixel assignment: O(K × r) centroid assign + single O(pixels) projection.
-        var finalQToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
-            quantizedCentroids: colorRegions.quantizedCentroids,
-            recipeCentroids: refitRecipes.map { $0.predictedColor },
-            lWeight: assignmentLWeight
-        )
+            let lookupTable = SpectralDataStore.sharedLookupTable
+            let assignmentLWeight = centroidAssignmentLWeight(
+                for: colorRegions.quantizedCentroids
+            )
 
-        // Stage 5C - Dedup: merge recipes with identical quantized signatures.
-        (refitRecipes, finalQToRecipe) = deduplicateRecipes(
-            recipes: refitRecipes,
-            centroidToRecipe: finalQToRecipe
-        )
-
-        let finalPixelLabels = ColorRegionsProcessor.projectQuantizedLabels(
-            pixelQuantizedLabels: colorRegions.pixelLabels,
-            centroidToRecipe: finalQToRecipe
-        )
-
-        finalCounts = [Int](repeating: 0, count: refitRecipes.count)
-        for qi in 0..<finalQToRecipe.count {
-            let ri = Int(finalQToRecipe[qi])
-            if ri >= 0, ri < finalCounts.count { finalCounts[ri] += colorRegions.clusterPixelCounts[qi] }
-        }
-
-        var clippedIndices = [Int]()
-        for (i, recipe) in refitRecipes.enumerated() {
-            if recipe.deltaE > 0.05 {
-                clippedIndices.append(i)
+            _ = AppInstrumentation.measure("PreliminaryDecomposition", log: signpostLog) {
+                PigmentDecomposer.decompose(
+                    targetColors: colorRegions.quantizedCentroids,
+                    pigments: pigments,
+                    database: database,
+                    maxPigments: config.maxPigmentsPerMix,
+                    minConcentration: config.minConcentration,
+                    concurrent: false,
+                    lookupTable: lookupTable
+                )
             }
+            onProgress?(0.35)
+
+            let selectedTubes = AppInstrumentation.measure("SelectUserTubes", log: signpostLog) {
+                pigments
+            }
+            onProgress?(0.50)
+
+            let constrainedRecipes = AppInstrumentation.measure("ConstrainedDecomposition", log: signpostLog) {
+                PigmentDecomposer.decompose(
+                    targetColors: colorRegions.quantizedCentroids,
+                    pigments: selectedTubes,
+                    database: database,
+                    maxPigments: config.maxPigmentsPerMix,
+                    minConcentration: config.minConcentration,
+                    concurrent: false,
+                    lookupTable: lookupTable
+                )
+            }
+
+            guard !constrainedRecipes.isEmpty else {
+                throw BuilderError.missingData
+            }
+            onProgress?(0.60)
+
+            let (workingRecipes, snappedCentroidToRecipe, snappedCounts) = AppInstrumentation.measure("SnapAndReassign", log: signpostLog) {
+                snapAndReassign(
+                    recipes: constrainedRecipes,
+                    colorRegions: colorRegions,
+                    selectedTubes: selectedTubes,
+                    database: database,
+                    maxPigments: config.maxPigmentsPerMix,
+                    minConcentration: config.minConcentration,
+                    assignmentLWeight: assignmentLWeight,
+                    lookupTable: lookupTable
+                )
+            }
+            onProgress?(0.75)
+
+            let (refitRecipes, finalPixelLabels, finalCounts, clippedIndices) = AppInstrumentation.measure("MergePruneRefit", log: signpostLog) {
+                let (mergedRecipes, mergeMap) = PigmentDecomposer.mergeRecipes(
+                    recipes: workingRecipes,
+                    pixelCounts: snappedCounts
+                )
+
+                let mergeMapI32 = mergeMap.map { Int32($0) }
+                var qCentroidLabels = snappedCentroidToRecipe.map { mergeMapI32[Int($0)] }
+                var finalRecipes = mergedRecipes
+
+                var finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+                    quantizedCentroids: colorRegions.quantizedCentroids,
+                    quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                    centroidToRecipe: qCentroidLabels,
+                    recipeCount: finalRecipes.count
+                ).counts
+                var finalImportances = recipeImportances(
+                    quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                    quantizedSalience: colorRegions.clusterSalience,
+                    centroidToRecipe: qCentroidLabels,
+                    recipeCount: finalRecipes.count
+                )
+
+                let anchors5A = makePruningAnchors(
+                    recipes: finalRecipes,
+                    counts: finalCounts,
+                    importances: finalImportances,
+                    maxAnchors: max(2, config.numShades)
+                )
+
+                finalRecipes = adaptivePrune(
+                    recipes: finalRecipes,
+                    counts: finalCounts,
+                    importances: finalImportances,
+                    labels: &qCentroidLabels,
+                    anchors: anchors5A,
+                    minShades: config.numShades
+                )
+
+                finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+                    quantizedCentroids: colorRegions.quantizedCentroids,
+                    quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                    centroidToRecipe: qCentroidLabels,
+                    recipeCount: finalRecipes.count
+                ).counts
+                finalImportances = recipeImportances(
+                    quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                    quantizedSalience: colorRegions.clusterSalience,
+                    centroidToRecipe: qCentroidLabels,
+                    recipeCount: finalRecipes.count
+                )
+
+                if finalRecipes.count > config.numShades && config.numShades > 1 {
+                    finalRecipes = pruneToMaxShades(
+                        recipes: finalRecipes,
+                        counts: finalCounts,
+                        importances: finalImportances,
+                        labels: &qCentroidLabels,
+                        maxShades: config.numShades
+                    )
+                    finalCounts = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+                        quantizedCentroids: colorRegions.quantizedCentroids,
+                        quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                        centroidToRecipe: qCentroidLabels,
+                        recipeCount: finalRecipes.count
+                    ).counts
+                    finalImportances = recipeImportances(
+                        quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                        quantizedSalience: colorRegions.clusterSalience,
+                        centroidToRecipe: qCentroidLabels,
+                        recipeCount: finalRecipes.count
+                    )
+                }
+
+                let validIndices = (0..<finalRecipes.count).filter { finalCounts[$0] > 0 }
+                let prunedRecipes = validIndices.map { finalRecipes[$0] }
+                var newIndexMap = [Int32](repeating: 0, count: finalRecipes.count)
+                for (newIdx, oldIdx) in validIndices.enumerated() {
+                    newIndexMap[oldIdx] = Int32(newIdx)
+                }
+                qCentroidLabels = qCentroidLabels.map { newIndexMap[Int($0)] }
+
+                finalCounts = [Int](repeating: 0, count: prunedRecipes.count)
+                for qi in 0..<qCentroidLabels.count {
+                    let ri = Int(qCentroidLabels[qi])
+                    if ri >= 0, ri < finalCounts.count { finalCounts[ri] += colorRegions.clusterPixelCounts[qi] }
+                }
+
+                let (refitCentroids, refitCounts) = ColorRegionsProcessor.computeCentroidsAndCountsQuantized(
+                    quantizedCentroids: colorRegions.quantizedCentroids,
+                    quantizedPixelCounts: colorRegions.clusterPixelCounts,
+                    centroidToRecipe: qCentroidLabels,
+                    recipeCount: prunedRecipes.count
+                )
+
+                var refitRecipes = prunedRecipes
+                for i in 0..<refitCentroids.count where refitCounts[i] > 0 {
+                    let reDecomposed = PigmentDecomposer.decompose(
+                        targetColors: [refitCentroids[i]],
+                        pigments: selectedTubes,
+                        database: database,
+                        maxPigments: config.maxPigmentsPerMix,
+                        minConcentration: config.minConcentration,
+                        concurrent: false,
+                        lookupTable: lookupTable
+                    )
+                    if let recipe = reDecomposed.first {
+                        refitRecipes[i] = recipe
+                    }
+                }
+
+                var finalQToRecipe = ColorRegionsProcessor.assignQuantizedToRecipes(
+                    quantizedCentroids: colorRegions.quantizedCentroids,
+                    recipeCentroids: refitRecipes.map { $0.predictedColor },
+                    lWeight: assignmentLWeight
+                )
+
+                (refitRecipes, finalQToRecipe) = deduplicateRecipes(
+                    recipes: refitRecipes,
+                    centroidToRecipe: finalQToRecipe
+                )
+
+                let finalPixelLabels = ColorRegionsProcessor.projectQuantizedLabels(
+                    pixelQuantizedLabels: colorRegions.pixelLabels,
+                    centroidToRecipe: finalQToRecipe
+                )
+
+                finalCounts = [Int](repeating: 0, count: refitRecipes.count)
+                for qi in 0..<finalQToRecipe.count {
+                    let ri = Int(finalQToRecipe[qi])
+                    if ri >= 0, ri < finalCounts.count { finalCounts[ri] += colorRegions.clusterPixelCounts[qi] }
+                }
+
+                var clippedIndices = [Int]()
+                for (i, recipe) in refitRecipes.enumerated() {
+                    if recipe.deltaE > 0.05 {
+                        clippedIndices.append(i)
+                    }
+                }
+
+                return (refitRecipes, finalPixelLabels, finalCounts, clippedIndices)
+            }
+            onProgress?(0.95)
+
+            return PaintPaletteResult(
+                selectedTubes: selectedTubes,
+                recipes: refitRecipes,
+                pixelLabels: finalPixelLabels,
+                clusterPixelCounts: finalCounts,
+                clippedRecipeIndices: clippedIndices
+            )
         }
-
-        let t4 = CFAbsoluteTimeGetCurrent()
-        print("[PaintPaletteBuilder] Stage 5 (Merge, Prune & Refit) took \(String(format: "%.1f", (t4 - t3b) * 1000)) ms")
-        print("[PaintPaletteBuilder] Total execution took \(String(format: "%.1f", (t4 - t0) * 1000)) ms")
-        onProgress?(0.95)
-
-        return PaintPaletteResult(
-            selectedTubes: selectedTubes,
-            recipes: refitRecipes,
-            pixelLabels: finalPixelLabels,
-            clusterPixelCounts: finalCounts,
-            clippedRecipeIndices: clippedIndices
-        )
     }
     
     private static func snapAndReassign(

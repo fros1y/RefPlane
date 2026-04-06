@@ -1,5 +1,6 @@
 import Metal
 import UIKit
+import os
 
 // MARK: - GPU compute context for image processing
 
@@ -8,17 +9,19 @@ import UIKit
 /// CPU processing when Metal is unavailable.
 final class MetalContext {
 
+    private static let logger = AppInstrumentation.logger(category: "Processing.MetalContext")
+
     static let shared: MetalContext? = {
         guard let device = MTLCreateSystemDefaultDevice() else {
-            print("[MetalContext] ⚠️ MTLCreateSystemDefaultDevice() returned nil — no GPU available")
+            logger.notice("MTLCreateSystemDefaultDevice returned nil; Metal is unavailable")
             return nil
         }
-        print("[MetalContext] ✅ Metal device: \(device.name)")
+        logger.info("Using Metal device \(device.name, privacy: .public)")
         let ctx = MetalContext(device: device)
         if ctx == nil {
-            print("[MetalContext] ⚠️ MetalContext init failed (library or pipeline error)")
+            logger.error("MetalContext initialization failed")
         } else {
-            print("[MetalContext] ✅ All 14 compute pipelines compiled successfully")
+            logger.info("All 14 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -66,7 +69,7 @@ final class MetalContext {
             depthRemoveBackgroundPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_remove_background")
             depthThresholdPreviewPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_threshold_preview")
         } catch {
-            print("[MetalContext] Pipeline creation failed: \(error)")
+            Self.logger.error("Pipeline creation failed: \(String(describing: error), privacy: .public)")
             return nil
         }
     }

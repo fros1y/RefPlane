@@ -1,8 +1,11 @@
 import Foundation
+import os
 
 // MARK: - Spectral database loader with caching
 
 enum SpectralDataStore {
+
+    private static let logger = AppInstrumentation.logger(category: "Processing.SpectralDataStore")
 
     /// Lazily loaded and cached spectral database.
     static let shared: SpectralDatabase = {
@@ -43,15 +46,17 @@ enum SpectralDataStore {
     /// Returns nil if the binary asset is absent (falls back to runtime computation).
     static let sharedLookupTable: PigmentLookupTable? = {
         guard let url = Bundle.main.url(forResource: "PigmentLookup", withExtension: "bin") else {
-            print("[SpectralDataStore] PigmentLookup.bin not found – falling back to runtime table build")
+            logger.notice("PigmentLookup.bin not found; falling back to runtime table build")
             return nil
         }
         do {
             let table = try PigmentLookupTable(url: url)
-            print("[SpectralDataStore] Loaded PigmentLookup.bin: \(table.pairCount) pairs, \(table.tripletCount) triplets")
+            logger.info(
+                "Loaded PigmentLookup.bin with \(table.pairCount, privacy: .public) pairs and \(table.tripletCount, privacy: .public) triplets"
+            )
             return table
         } catch {
-            print("[SpectralDataStore] Failed to load PigmentLookup.bin: \(error)")
+            logger.error("Failed to load PigmentLookup.bin: \(String(describing: error), privacy: .public)")
             return nil
         }
     }()

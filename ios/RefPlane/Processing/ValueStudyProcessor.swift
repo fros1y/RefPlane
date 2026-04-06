@@ -1,8 +1,12 @@
 import UIKit
+import os
 
 // MARK: - Value Study: grayscale → quantize into bands → optional cleanup
 
 enum ValueStudyProcessor {
+
+    private static let logger = AppInstrumentation.logger(category: "Processing.ValueStudy")
+    private static let signpostLog = AppInstrumentation.signpostLog(category: "Processing.ValueStudy")
 
     struct Result {
         let image: UIImage
@@ -12,32 +16,49 @@ enum ValueStudyProcessor {
     }
 
     static func process(image: UIImage, config: ValueConfig, minRegionSize: MinRegionSize = .off) -> Result? {
-        let t0 = CFAbsoluteTimeGetCurrent()
-        guard let (pixels, width, height) = image.toPixelData() else { return nil }
-        let levels = max(2, min(8, config.levels))
-        let thresholds = config.thresholds  // values in 0-1, sorted ascending
-        let conversion = config.grayscaleConversion == .none
-            ? GrayscaleConversion.luminance
-            : config.grayscaleConversion
-        let total = width * height
-        let t1 = CFAbsoluteTimeGetCurrent()
-        print("[ValueStudy] toPixelData: \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
+        AppInstrumentation.measure("ProcessValueStudy", log: signpostLog) {
+            guard let (pixels, width, height) = AppInstrumentation.measure("DecodePixels", log: signpostLog, {
+                image.toPixelData()
+            }) else {
+                return nil
+            }
 
-        if conversion.usesGPUShortcut, let gpu = MetalContext.shared {
-            let result = processGPU(gpu: gpu, pixels: pixels, width: width, height: height,
-                              levels: levels, thresholds: thresholds, minRegionSize: minRegionSize)
-            let t2 = CFAbsoluteTimeGetCurrent()
-            print("[ValueStudy] ✅ GPU path — \(total) px, \(levels) levels in \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
-            return result
+            let levels = max(2, min(8, config.levels))
+            let thresholds = config.thresholds
+            let conversion = config.grayscaleConversion == .none
+                ? GrayscaleConversion.luminance
+                : config.grayscaleConversion
+
+            if conversion.usesGPUShortcut, let gpu = MetalContext.shared {
+                return AppInstrumentation.measure("RunGPUPipeline", log: signpostLog) {
+                    processGPU(
+                        gpu: gpu,
+                        pixels: pixels,
+                        width: width,
+                        height: height,
+                        levels: levels,
+                        thresholds: thresholds,
+                        minRegionSize: minRegionSize
+                    )
+                }
+            }
+
+            if conversion.usesGPUShortcut {
+                logger.notice("Falling back to CPU value-study processing; Metal is unavailable")
+            }
+
+            return AppInstrumentation.measure("RunCPUPipeline", log: signpostLog) {
+                processCPU(
+                    pixels: pixels,
+                    width: width,
+                    height: height,
+                    levels: levels,
+                    thresholds: thresholds,
+                    minRegionSize: minRegionSize,
+                    conversion: conversion
+                )
+            }
         }
-
-        print("[ValueStudy] ⚠️ CPU fallback (MetalContext.shared = nil)")
-        let result = processCPU(pixels: pixels, width: width, height: height,
-                          levels: levels, thresholds: thresholds, minRegionSize: minRegionSize,
-                          conversion: conversion)
-        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-        print("[ValueStudy] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
-        return result
     }
 
     // MARK: - GPU path
@@ -49,33 +70,42 @@ enum ValueStudyProcessor {
         let total = width * height
         let thresholdFloats = thresholds.map { Float($0) }
 
-        // Quantize on GPU → get label map and source buffer
-        var stepStart = CFAbsoluteTimeGetCurrent()
-        guard let (srcBuffer, labelMap) = gpu.quantize(
-            pixels: pixels, width: width, height: height,
-            thresholds: thresholdFloats, totalLevels: levels
-        ) else {
-            print("[ValueStudy] ⚠️ GPU quantize failed, falling back to CPU")
-            return processCPU(pixels: pixels, width: width, height: height,
-                              levels: levels, thresholds: thresholds, minRegionSize: minRegionSize,
-                              conversion: .luminance)
+        guard let (srcBuffer, labelMap) = AppInstrumentation.measure("GPUQuantizeBands", log: signpostLog, {
+            gpu.quantize(
+                pixels: pixels,
+                width: width,
+                height: height,
+                thresholds: thresholdFloats,
+                totalLevels: levels
+            )
+        }) else {
+            logger.notice("GPU quantize failed; falling back to CPU value-study processing")
+            return AppInstrumentation.measure("CPUFallbackQuantize", log: signpostLog) {
+                processCPU(
+                    pixels: pixels,
+                    width: width,
+                    height: height,
+                    levels: levels,
+                    thresholds: thresholds,
+                    minRegionSize: minRegionSize,
+                    conversion: .luminance
+                )
+            }
         }
-        print("[ValueStudy]   quantize: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         var labels = labelMap
 
-        // Region cleanup stays on CPU (BFS flood-fill with branching logic)
-        stepStart = CFAbsoluteTimeGetCurrent()
-        if let factor = minRegionSize.factor {
-            RegionCleaner.clean(
-                labels: &labels,
-                width: width,
-                height: height,
-                minFactor: factor,
-                labelCapacity: levels
-            )
+        AppInstrumentation.measure("CleanupRegions", log: signpostLog) {
+            if let factor = minRegionSize.factor {
+                RegionCleaner.clean(
+                    labels: &labels,
+                    width: width,
+                    height: height,
+                    minFactor: factor,
+                    labelCapacity: levels
+                )
+            }
         }
-        print("[ValueStudy]   region_cleanup: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
         // Build level colors
         var levelColors: [UIColor] = []
@@ -89,17 +119,18 @@ enum ValueStudyProcessor {
             levelColors.append(UIColor(white: CGFloat(t) / 255.0, alpha: 1))
         }
 
-        // Re-render labels → gray output on GPU (reuse srcBuffer from quantize)
-        stepStart = CFAbsoluteTimeGetCurrent()
-        guard let out = gpu.valueRemap(srcBuffer: srcBuffer, labels: labels,
-                                       count: total, totalLevels: levels) else {
+        guard let out = AppInstrumentation.measure("RenderBands", log: signpostLog, {
+            gpu.valueRemap(srcBuffer: srcBuffer, labels: labels,
+                           count: total, totalLevels: levels)
+        }) else {
             return nil
         }
-        print("[ValueStudy]   value_remap: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
 
-        stepStart = CFAbsoluteTimeGetCurrent()
-        guard let img = UIImage.fromPixelData(out, width: width, height: height) else { return nil }
-        print("[ValueStudy]   fromPixelData: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - stepStart) * 1000)) ms")
+        guard let img = AppInstrumentation.measure("EncodeImage", log: signpostLog, {
+            UIImage.fromPixelData(out, width: width, height: height)
+        }) else {
+            return nil
+        }
         return Result(image: img, levelColors: levelColors, pixelBands: labels.map(Int.init))
     }
 

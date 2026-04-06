@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import os
 
 // MARK: - Processing result
 
@@ -27,6 +28,9 @@ struct ProcessingResult {
 
 actor ImageProcessor {
 
+    private static let logger = AppInstrumentation.logger(category: "Processing.ImageProcessor")
+    private static let signpostLog = AppInstrumentation.signpostLog(category: "Processing.ImageProcessor")
+
     func process(
         image: UIImage,
         mode: RefPlaneMode,
@@ -34,95 +38,105 @@ actor ImageProcessor {
         colorConfig: ColorConfig,
         onProgress: @escaping (Double) -> Void
     ) async throws -> ProcessingResult {
-        onProgress(0.1)
-        try Task.checkCancellation()
-
-        let start = CFAbsoluteTimeGetCurrent()
-        print("[ImageProcessor] Processing mode=\(mode) image=\(image.size.width)×\(image.size.height)")
-
-        switch mode {
-        case .original:
-            return ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
-
-        case .tonal:
-            onProgress(0.3)
-            try Task.checkCancellation()
-            guard let gray = GrayscaleProcessor.process(
-                image: image,
-                conversion: valueConfig.grayscaleConversion
-            ) else {
-                throw ProcessingError.conversionFailed
-            }
-            let tonalMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            print("[ImageProcessor] Tonal total: \(String(format: "%.1f", tonalMs)) ms")
-            onProgress(1.0)
-            return ProcessingResult(image: gray, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
-
-        case .value:
-            onProgress(0.2)
-            try Task.checkCancellation()
-            guard let valueResult = ValueStudyProcessor.process(image: image, config: valueConfig) else {
-                throw ProcessingError.conversionFailed
-            }
-            let valueMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            print("[ImageProcessor] Value total: \(String(format: "%.1f", valueMs)) ms")
-
-            let baseResult = makeBaseProcessingResult(
-                image: valueResult.image,
-                palette: valueResult.levelColors.map { Color($0) },
-                pixelBands: valueResult.pixelBands
+        try await AppInstrumentation.measure("ProcessRequest", log: Self.signpostLog) {
+            let imageWidth = Int(image.size.width.rounded())
+            let imageHeight = Int(image.size.height.rounded())
+            Self.logger.debug(
+                "Processing mode=\(String(describing: mode), privacy: .public) image=\(imageWidth, privacy: .public)x\(imageHeight, privacy: .public)"
             )
 
-            guard colorConfig.paletteSelectionEnabled else {
+            onProgress(0.1)
+            try Task.checkCancellation()
+
+            switch mode {
+            case .original:
+                return ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
+
+            case .tonal:
+                return try AppInstrumentation.measure("RenderTonalMode", log: Self.signpostLog) {
+                    onProgress(0.3)
+                    try Task.checkCancellation()
+                    guard let gray = GrayscaleProcessor.process(
+                        image: image,
+                        conversion: valueConfig.grayscaleConversion
+                    ) else {
+                        throw ProcessingError.conversionFailed
+                    }
+                    onProgress(1.0)
+                    return ProcessingResult(image: gray, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
+                }
+
+            case .value:
+                onProgress(0.2)
+                try Task.checkCancellation()
+
+                let (valueResult, baseResult) = try AppInstrumentation.measure("RenderValueMode", log: Self.signpostLog) {
+                    guard let valueResult = ValueStudyProcessor.process(image: image, config: valueConfig) else {
+                        throw ProcessingError.conversionFailed
+                    }
+
+                    let baseResult = makeBaseProcessingResult(
+                        image: valueResult.image,
+                        palette: valueResult.levelColors.map { Color($0) },
+                        pixelBands: valueResult.pixelBands
+                    )
+                    return (valueResult, baseResult)
+                }
+
+                guard colorConfig.paletteSelectionEnabled else {
+                    onProgress(1.0)
+                    return baseResult
+                }
+
+                let colorRegions = makeColorRegions(from: valueResult)
+                let paletteResult = try await applyPaletteSelection(
+                    to: colorRegions,
+                    baseResult: baseResult,
+                    config: grayscalePaletteConfig(from: colorConfig, levels: valueResult.levelColors.count),
+                    onProgress: onProgress
+                )
                 onProgress(1.0)
-                return baseResult
-            }
+                return paletteResult
 
-            let colorRegions = makeColorRegions(from: valueResult)
-            let paletteResult = try await applyPaletteSelection(
-                to: colorRegions,
-                baseResult: baseResult,
-                config: grayscalePaletteConfig(from: colorConfig, levels: valueResult.levelColors.count),
-                onProgress: onProgress
-            )
-            onProgress(1.0)
-            return paletteResult
+            case .color:
+                onProgress(0.05)
+                try Task.checkCancellation()
 
-        case .color:
-            onProgress(0.05)
-            try Task.checkCancellation()
-            let overclusterK = colorConfig.paletteSelectionEnabled
-                ? min(2 * max(2, colorConfig.numShades), 48)
-                : nil
-            guard let result = ColorRegionsProcessor.process(image: image, config: colorConfig, overclusterK: overclusterK) else {
-                throw ProcessingError.conversionFailed
-            }
-            let colorMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            print("[ImageProcessor] Color total: \(String(format: "%.1f", colorMs)) ms")
+                let overclusterK = colorConfig.paletteSelectionEnabled
+                    ? min(2 * max(2, colorConfig.numShades), 48)
+                    : nil
 
-            let baseResult = ProcessingResult(
-                image: result.image,
-                palette: result.palette,
-                paletteBands: result.paletteBands,
-                pixelBands: result.pixelBands,
-                pigmentRecipes: nil,
-                selectedTubes: [],
-                clippedRecipeIndices: []
-            )
+                let (result, baseResult) = try AppInstrumentation.measure("RenderColorMode", log: Self.signpostLog) {
+                    guard let result = ColorRegionsProcessor.process(image: image, config: colorConfig, overclusterK: overclusterK) else {
+                        throw ProcessingError.conversionFailed
+                    }
 
-            guard colorConfig.paletteSelectionEnabled else {
+                    let baseResult = ProcessingResult(
+                        image: result.image,
+                        palette: result.palette,
+                        paletteBands: result.paletteBands,
+                        pixelBands: result.pixelBands,
+                        pigmentRecipes: nil,
+                        selectedTubes: [],
+                        clippedRecipeIndices: []
+                    )
+                    return (result, baseResult)
+                }
+
+                guard colorConfig.paletteSelectionEnabled else {
+                    onProgress(1.0)
+                    return baseResult
+                }
+
+                let paletteResult = try await applyPaletteSelection(
+                    to: result,
+                    baseResult: baseResult,
+                    config: colorConfig,
+                    onProgress: onProgress
+                )
                 onProgress(1.0)
-                return baseResult
+                return paletteResult
             }
-
-            let paletteResult = try await applyPaletteSelection(
-                to: result,
-                baseResult: baseResult,
-                config: colorConfig,
-                onProgress: onProgress
-            )
-            onProgress(1.0)
-            return paletteResult
         }
     }
 }
@@ -186,7 +200,9 @@ private extension ImageProcessor {
                 clippedRecipeIndices: pb.clippedRecipeIndices
             )
         } catch {
-            print("[ImageProcessor] Palette selection failed, using quantized base image: \(error)")
+            Self.logger.notice(
+                "Palette selection failed; using quantized base image: \(String(describing: error), privacy: .public)"
+            )
             return baseResult
         }
     }
