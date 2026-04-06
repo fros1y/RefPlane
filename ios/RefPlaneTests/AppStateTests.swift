@@ -245,6 +245,39 @@ func processingResultsClearFocusedBands() async throws {
     #expect(pixels?[2] == 0)
 }
 
+@Test
+func canvasBandTapTrackerShowsBubbleOnFirstTapAndFocusesOnSecondQuickSameBandTap() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: 2, at: 10.0) == .inspect(2))
+    #expect(tracker.action(for: 2, at: 10.2) == .focus(2))
+}
+
+@Test
+func canvasBandTapTrackerTreatsSlowRepeatAsAnotherInspect() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: 2, at: 10.0) == .inspect(2))
+    #expect(tracker.action(for: 2, at: 10.7) == .inspect(2))
+}
+
+@Test
+func canvasBandTapTrackerReplacesPendingBandWhenTappingDifferentBand() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: 1, at: 10.0) == .inspect(1))
+    #expect(tracker.action(for: 3, at: 10.2) == .inspect(3))
+    #expect(tracker.action(for: 3, at: 10.35) == .focus(3))
+}
+
+@Test
+func canvasBandTapTrackerResetsViewportOnSecondQuickEmptyCanvasTap() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: nil, at: 10.0) == .inspect(nil))
+    #expect(tracker.action(for: nil, at: 10.2) == .resetViewport)
+}
+
 // MARK: - Additional AppState coverage
 
 @MainActor

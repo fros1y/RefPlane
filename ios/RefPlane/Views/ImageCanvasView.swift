@@ -1,5 +1,50 @@
 import SwiftUI
 
+enum CanvasBandTapAction: Equatable {
+    case inspect(Int?)
+    case focus(Int)
+    case resetViewport
+}
+
+struct CanvasBandTapTracker {
+    struct Entry: Equatable {
+        let band: Int?
+        let timestamp: TimeInterval
+    }
+
+    static let defaultRepeatWindow: TimeInterval = 0.45
+
+    let repeatWindow: TimeInterval
+    private(set) var lastTap: Entry?
+
+    init(
+        repeatWindow: TimeInterval = Self.defaultRepeatWindow,
+        lastTap: Entry? = nil
+    ) {
+        self.repeatWindow = repeatWindow
+        self.lastTap = lastTap
+    }
+
+    mutating func action(for band: Int?, at timestamp: TimeInterval) -> CanvasBandTapAction {
+        if let lastTap,
+           timestamp - lastTap.timestamp <= repeatWindow,
+           lastTap.band == band {
+            self.lastTap = nil
+            if let band {
+                return .focus(band)
+            }
+            return .resetViewport
+        }
+
+        lastTap = Entry(band: band, timestamp: timestamp)
+        return .inspect(band)
+    }
+
+    mutating func reset() {
+        lastTap = nil
+    }
+}
+
 struct ImageCanvasView: View {
     @Environment(AppState.self) private var state
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,6 +58,7 @@ struct ImageCanvasView: View {
     @State private var currentOffset: CGSize = .zero
     @State private var isBreathing = false
     @State private var inspectedBand: Int? = nil
+    @State private var bandTapTracker = CanvasBandTapTracker()
 
     private var displayImage: UIImage? {
         state.currentDisplayImage
@@ -89,10 +135,12 @@ struct ImageCanvasView: View {
         .onChange(of: state.isProcessing) { _, isProcessing in
             if isProcessing {
                 inspectedBand = nil
+                bandTapTracker.reset()
             }
         }
         .onChange(of: state.activeMode) { _, _ in
             inspectedBand = nil
+            bandTapTracker.reset()
         }
     }
 
@@ -165,11 +213,19 @@ struct ImageCanvasView: View {
                     )
                 }
         )
-        .onTapGesture(count: 2, perform: resetViewport)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(state.activeMode.label) study canvas")
-        .accessibilityHint("Pinch to zoom, drag to pan, and double tap to reset.")
+        .accessibilityHint(canvasAccessibilityHint)
         .accessibilityIdentifier("canvas.image")
+    }
+
+    private var canvasAccessibilityHint: String {
+        switch state.activeMode {
+        case .value, .color:
+            return "Pinch to zoom, drag to pan, tap once for swatch info, tap the same swatch again to focus, and double tap empty canvas to reset."
+        case .original, .tonal:
+            return "Pinch to zoom, drag to pan, and double tap to reset."
+        }
     }
 
     private func clampedOffset(_ offset: CGSize, scale: CGFloat, image: UIImage, container: CGSize) -> CGSize {
@@ -266,9 +322,39 @@ struct ImageCanvasView: View {
         image: UIImage,
         containerSize: CGSize
     ) {
-        guard state.activeMode == .value || state.activeMode == .color else {
+        let tappedBand = tappedBand(
+            at: location,
+            image: image,
+            containerSize: containerSize
+        )
+        let action = bandTapTracker.action(
+            for: tappedBand,
+            at: ProcessInfo.processInfo.systemUptime
+        )
+
+        switch action {
+        case .inspect(let band):
+            inspectedBand = band
+
+        case .focus(let band):
+            inspectedBand = band
+            if !state.focusedBands.contains(band) {
+                state.toggleFocusedBand(band)
+            }
+
+        case .resetViewport:
             inspectedBand = nil
-            return
+            resetViewport()
+        }
+    }
+
+    private func tappedBand(
+        at location: CGPoint,
+        image: UIImage,
+        containerSize: CGSize
+    ) -> Int? {
+        guard state.activeMode == .value || state.activeMode == .color else {
+            return nil
         }
 
         let imageRect = transformedImageRect(
@@ -280,15 +366,14 @@ struct ImageCanvasView: View {
         guard imageRect.width > 0, imageRect.height > 0,
               imageRect.contains(location)
         else {
-            inspectedBand = nil
-            return
+            return nil
         }
 
         let normalizedPoint = CGPoint(
             x: (location.x - imageRect.minX) / imageRect.width,
             y: (location.y - imageRect.minY) / imageRect.height
         )
-        inspectedBand = state.band(atNormalizedPoint: normalizedPoint)
+        return state.band(atNormalizedPoint: normalizedPoint)
     }
 
     private func transformedImageRect(
@@ -347,6 +432,7 @@ struct ImageCanvasView: View {
 
     private func dismissInspectedBand() {
         inspectedBand = nil
+        bandTapTracker.reset()
     }
 
     private func openPhotoPicker() {
