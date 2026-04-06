@@ -76,9 +76,9 @@ struct ImageCanvasView: View {
         let recipe = state.pigmentRecipes.flatMap { recipes in
             recipes.indices.contains(paletteIndex) ? recipes[paletteIndex] : nil
         }
-        let title = recipe?.components.max(by: {
-            $0.concentration < $1.concentration
-        })?.pigmentName ?? "Swatch"
+        let title = PaletteColorNamer.name(for: state.paletteColors[paletteIndex])
+            ?? recipe.map { PaletteColorNamer.name(for: $0.predictedColor) }
+            ?? "Swatch"
 
         return CanvasBandSummary(
             band: inspectedBand,

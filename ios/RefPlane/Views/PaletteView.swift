@@ -21,6 +21,7 @@ struct PaletteView: View {
                 ForEach(sections, id: \.band) { section in
                     PaletteMixCard(
                         bandID: section.band,
+                        title: title(for: section),
                         section: section,
                         colors: colors(for: section),
                         recipes: recipes(for: section),
@@ -48,32 +49,39 @@ struct PaletteView: View {
     }
 
     private func sortedSections(_ sections: [PaletteBandSection]) -> [PaletteBandSection] {
-        guard let recipes = state.pigmentRecipes else { return sections }
-
         return sections.sorted { lhs, rhs in
-            let nameA = majorityPigmentName(for: lhs, recipes: recipes)
-            let nameB = majorityPigmentName(for: rhs, recipes: recipes)
-            return nameA.localizedCaseInsensitiveCompare(nameB) == .orderedAscending
+            let nameA = title(for: lhs)
+            let nameB = title(for: rhs)
+            let comparison = nameA.localizedCaseInsensitiveCompare(nameB)
+            if comparison == .orderedSame {
+                return lhs.band < rhs.band
+            }
+            return comparison == .orderedAscending
         }
     }
 
-    private func majorityPigmentName(
-        for section: PaletteBandSection,
-        recipes: [PigmentRecipe]
-    ) -> String {
-        guard let firstIndex = section.indices.first,
-              recipes.indices.contains(firstIndex),
-              let dominantPigment = recipes[firstIndex].components.max(by: {
-                  $0.concentration < $1.concentration
-              })
-        else { return "" }
+    private func title(for section: PaletteBandSection) -> String {
+        guard let firstIndex = section.indices.first else {
+            return "Swatch"
+        }
 
-        return dominantPigment.pigmentName
+        if state.paletteColors.indices.contains(firstIndex),
+           let name = PaletteColorNamer.name(for: state.paletteColors[firstIndex]) {
+            return name
+        }
+
+        if let pigmentRecipes = state.pigmentRecipes,
+           pigmentRecipes.indices.contains(firstIndex) {
+            return PaletteColorNamer.name(for: pigmentRecipes[firstIndex].predictedColor)
+        }
+
+        return "Swatch"
     }
 }
 
 private struct PaletteMixCard: View {
     let bandID: Int
+    let title: String
     let section: PaletteBandSection
     let colors: [Color]
     let recipes: [PigmentRecipe]
@@ -141,18 +149,6 @@ private struct PaletteMixCard: View {
         .accessibilityValue(isFocused ? "Focused on canvas" : "Showing all mixes")
         .accessibilityHint(isFocused ? "Double tap to remove focus from this mix" : "Double tap to focus this mix")
         .accessibilityIdentifier("mix-card.\(bandID)")
-    }
-
-    private var title: String {
-        guard let firstRecipe = recipes.first,
-              let dominantPigment = firstRecipe.components.max(by: {
-                  $0.concentration < $1.concentration
-              })
-        else {
-            return "Swatch"
-        }
-
-        return dominantPigment.pigmentName
     }
 }
 
