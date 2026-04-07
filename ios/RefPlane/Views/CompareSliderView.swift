@@ -46,17 +46,17 @@ struct CompareSliderView: View {
     }
 
     private var processedTitle: String {
-        if state.mode == .original {
+        if state.activeMode == .original {
             return state.abstractionStrength > 0 ? "Abstracted" : "Natural"
         }
-        return state.mode.label
+        return state.activeMode.label
     }
 
     private var processedIcon: String {
-        if state.mode == .original {
+        if state.activeMode == .original {
             return state.abstractionStrength > 0 ? "wand.and.stars" : "photo"
         }
-        return state.mode.iconName
+        return state.activeMode.iconName
     }
 
     private var compareLabels: some View {

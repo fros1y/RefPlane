@@ -58,6 +58,7 @@ struct ImageCanvasView: View {
     @State private var currentOffset: CGSize = .zero
     @State private var isBreathing = false
     @State private var inspectedBand: Int? = nil
+    @State private var longPressLocation: CGPoint? = nil
     @State private var bandTapTracker = CanvasBandTapTracker()
 
     private var displayImage: UIImage? {
@@ -175,6 +176,29 @@ struct ImageCanvasView: View {
                     )
                 }
         )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if longPressLocation == nil {
+                        longPressLocation = value.location
+                    }
+                }
+                .onEnded { _ in
+                    longPressLocation = nil
+                }
+        )
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.4)
+                .onEnded { _ in
+                    if let location = longPressLocation {
+                        handleLongPress(
+                            at: location,
+                            image: image,
+                            containerSize: containerSize
+                        )
+                    }
+                }
+        )
         .gesture(
             MagnificationGesture()
                 .updating($gestureScale) { value, gestureState, _ in
@@ -220,11 +244,20 @@ struct ImageCanvasView: View {
     }
 
     private var canvasAccessibilityHint: String {
+        let isMac = ProcessInfo.processInfo.isiOSAppOnMac || ProcessInfo.processInfo.isMacCatalystApp
         switch state.activeMode {
         case .value, .color:
-            return "Pinch to zoom, drag to pan, tap once for swatch info, tap the same swatch again to focus, and double tap empty canvas to reset."
+            if isMac {
+                return "Pinch to zoom, drag to pan, tap once for swatch info, tap the same swatch again to focus, and double tap empty canvas to reset."
+            } else {
+                return "Pinch to zoom, drag to pan, tap once for swatch info, long press a swatch to toggle focus, and tap empty canvas to reset."
+            }
         case .original, .tonal:
-            return "Pinch to zoom, drag to pan, and double tap to reset."
+            if isMac {
+                return "Pinch to zoom, drag to pan, and double tap to reset."
+            } else {
+                return "Pinch to zoom, drag to pan, and tap to reset."
+            }
         }
     }
 
@@ -322,29 +355,56 @@ struct ImageCanvasView: View {
         image: UIImage,
         containerSize: CGSize
     ) {
-        let tappedBand = tappedBand(
+        let band = tappedBand(
             at: location,
             image: image,
             containerSize: containerSize
         )
-        let action = bandTapTracker.action(
-            for: tappedBand,
-            at: ProcessInfo.processInfo.systemUptime
+
+        let isMac = ProcessInfo.processInfo.isiOSAppOnMac || ProcessInfo.processInfo.isMacCatalystApp
+        
+        if isMac {
+            let action = bandTapTracker.action(
+                for: band,
+                at: ProcessInfo.processInfo.systemUptime
+            )
+
+            switch action {
+            case .inspect(let band):
+                inspectedBand = band
+            case .focus(let band):
+                inspectedBand = band
+                if !state.focusedBands.contains(band) {
+                    state.toggleFocusedBand(band)
+                }
+            case .resetViewport:
+                inspectedBand = nil
+                resetViewport()
+            }
+        } else {
+            if let validBand = band {
+                inspectedBand = validBand
+            } else {
+                inspectedBand = nil
+                resetViewport()
+            }
+        }
+    }
+
+    private func handleLongPress(
+        at location: CGPoint,
+        image: UIImage,
+        containerSize: CGSize
+    ) {
+        let band = tappedBand(
+            at: location,
+            image: image,
+            containerSize: containerSize
         )
 
-        switch action {
-        case .inspect(let band):
-            inspectedBand = band
-
-        case .focus(let band):
-            inspectedBand = band
-            if !state.focusedBands.contains(band) {
-                state.toggleFocusedBand(band)
-            }
-
-        case .resetViewport:
-            inspectedBand = nil
-            resetViewport()
+        if let validBand = band {
+            inspectedBand = validBand
+            state.toggleFocusedBand(validBand)
         }
     }
 
