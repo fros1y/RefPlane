@@ -331,13 +331,10 @@ class AppState {
     @ObservationIgnored private var processingDebounceTask: Task<Void, Never>? = nil
     @ObservationIgnored private let processOperation: ProcessOperation
     /// Incremented on every triggerProcessing() call; lets each task know if it is still current.
-    @ObservationIgnored private var processingGeneration: Int = 0
 
     @ObservationIgnored private let abstractionOperation: AbstractionOperation
     @ObservationIgnored private var abstractionTask: Task<Void, Never>? = nil
-    @ObservationIgnored private var abstractionGeneration: Int = 0
     @ObservationIgnored private var focusIsolationTask: Task<Void, Never>? = nil
-    @ObservationIgnored private var focusIsolationGeneration: Int = 0
 
     @ObservationIgnored private var loadingTask: Task<Void, Never>? = nil
     @ObservationIgnored private(set) var sourceImageMetadata: SourceImageMetadata = .empty
@@ -348,11 +345,8 @@ class AppState {
     @ObservationIgnored private var depthTask: Task<Void, Never>? = nil
     @ObservationIgnored private var depthEffectTask: Task<Void, Never>? = nil
     @ObservationIgnored private var depthPreviewDismissTask: Task<Void, Never>? = nil
-    @ObservationIgnored private var depthGeneration: Int = 0
-    @ObservationIgnored private var depthEffectGeneration: Int = 0
 
     @ObservationIgnored private var contourTask: Task<Void, Never>? = nil
-    @ObservationIgnored private var contourGeneration: Int = 0
     @ObservationIgnored private var memoryWarningObserver: NSObjectProtocol? = nil
     @ObservationIgnored private var presetPersistenceTask: Task<Void, Never>? = nil
 
@@ -499,11 +493,6 @@ class AppState {
         contourTask?.cancel()
 
         // Invalidate stale completions in case any task ignores cancellation.
-        processingGeneration += 1
-        abstractionGeneration += 1
-        depthGeneration += 1
-        depthEffectGeneration += 1
-        contourGeneration += 1
 
         // Show the picked image immediately, then swap in the scaled version
         // once preprocessing finishes so the canvas never blanks out.
@@ -537,19 +526,23 @@ class AppState {
         processingLabel           = "Loading…"
         processingIsIndeterminate = true
 
-        loadingTask = Task {
+        loadingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             let maxSize: CGFloat = 1600
             let scaled = await image.scaledDownAsync(toMaxDimension: maxSize)
+            
+            try? Task.checkCancellation()
             guard !Task.isCancelled else { return }
-            originalImage             = scaled
-            sourceImage               = scaled
-            if abstractionIsEnabled {
-                applyAbstraction()
+            
+            self.originalImage             = scaled
+            self.sourceImage               = scaled
+            if self.abstractionIsEnabled {
+                self.applyAbstraction()
             } else {
-                isSimplifying             = false
-                processingLabel           = "Processing…"
-                processingIsIndeterminate = false
-                triggerProcessing()
+                self.isSimplifying             = false
+                self.processingLabel           = "Processing…"
+                self.processingIsIndeterminate = false
+                self.triggerProcessing()
             }
         }
     }
@@ -583,53 +576,44 @@ class AppState {
         isProcessing = true
         processingProgress = 0
 
-        processingGeneration += 1
-        let myGeneration = processingGeneration
         let mode = activeMode
 
-        processingTask = Task {
+        processingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                let result = try await processOperation(
+                let result = try await self.processOperation(
                     source,
                     mode,
-                    valueConfig,
-                    colorConfig,
+                    self.valueConfig,
+                    self.colorConfig,
                     { [weak self] p in
                         Task { @MainActor [weak self] in self?.processingProgress = p }
                     }
                 )
                 try Task.checkCancellation()
 
-                try Task.checkCancellation()
-                await MainActor.run {
-                    self.processedImage      = result.image
-                    self.processedPixelBands = result.pixelBands
-                    self.paletteColors       = result.palette
-                    self.paletteBands        = result.paletteBands
-                    self.pigmentRecipes      = result.pigmentRecipes
-                    self.selectedTubes       = result.selectedTubes
-                    self.clippedRecipeIndices = result.clippedRecipeIndices
-                    self.processingProgress  = 1
-                    if self.depthConfig.enabled && self.depthMap != nil {
-                        self.applyDepthEffects()
-                    }
+                self.processedImage      = result.image
+                self.processedPixelBands = result.pixelBands
+                self.paletteColors       = result.palette
+                self.paletteBands        = result.paletteBands
+                self.pigmentRecipes      = result.pigmentRecipes
+                self.selectedTubes       = result.selectedTubes
+                self.clippedRecipeIndices = result.clippedRecipeIndices
+                self.processingProgress  = 1
+                if self.depthConfig.enabled && self.depthMap != nil {
+                    self.applyDepthEffects()
                 }
             } catch is CancellationError {
                 // Mode switched or new image loaded — new task will update state
             } catch {
                 if !Task.isCancelled {
-                    await MainActor.run {
-                        self.errorMessage = error.localizedDescription
-                    }
+                    self.errorMessage = error.localizedDescription
                 }
             }
-            // Only clear the flag if we are still the most-recent processing task
-            // and depth-effect rendering hasn't taken ownership of the indicator.
-            await MainActor.run {
-                if self.processingGeneration == myGeneration &&
-                   !(self.depthConfig.enabled && self.depthMap != nil) {
-                    self.isProcessing = false
-                }
+            
+            // Only clear the flag if depth-effect rendering hasn't taken ownership of the indicator.
+            if !Task.isCancelled && !(self.depthConfig.enabled && self.depthMap != nil) {
+                self.isProcessing = false
             }
         }
     }
@@ -1329,8 +1313,6 @@ class AppState {
         }
 
         abstractionTask?.cancel()
-        abstractionGeneration += 1
-        let generation = abstractionGeneration
 
         // Normalize the downscale factor to the image resolution so that the
         // absolute intermediate pixel size — what determines the visual degree of
@@ -1352,9 +1334,10 @@ class AppState {
         processingIsIndeterminate = false
         errorMessage = nil
 
-        abstractionTask = Task {
+        abstractionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                let abstracted = try await abstractionOperation(
+                let abstracted = try await self.abstractionOperation(
                     source,
                     downscale,
                     method,
@@ -1364,34 +1347,27 @@ class AppState {
                 )
                 try Task.checkCancellation()
 
-                await MainActor.run {
-                    guard self.abstractionGeneration == generation else { return }
-                    self.abstractedImage = abstracted
-                    self.isSimplifying   = false
-                    self.isProcessing    = false
-                    self.processingLabel = "Processing…"
-                    if self.depthConfig.enabled {
-                        self.computeDepthMap()
-                    }
-                    self.triggerProcessing()
+                self.abstractedImage = abstracted
+                self.isSimplifying   = false
+                self.isProcessing    = false
+                self.processingLabel = "Processing…"
+                if self.depthConfig.enabled {
+                    self.computeDepthMap()
                 }
+                self.triggerProcessing()
             } catch is CancellationError {
                 // superseded by a newer request
             } catch {
-                await MainActor.run {
-                    guard self.abstractionGeneration == generation else { return }
-                    self.isSimplifying = false
-                    self.isProcessing = false
-                    self.processingLabel = "Processing…"
-                    self.errorMessage = error.localizedDescription
-                }
+                self.isSimplifying = false
+                self.isProcessing = false
+                self.processingLabel = "Processing…"
+                self.errorMessage = error.localizedDescription
             }
         }
     }
 
     func resetAbstraction() {
         abstractionTask?.cancel()
-        abstractionGeneration += 1
         isSimplifying = false
         abstractedImage = nil
         processedPixelBands = []
@@ -1444,21 +1420,17 @@ class AppState {
             return
         }
 
-        let generation = focusIsolationGeneration
         let pixelBands = processedPixelBands
         let selectedBands = focusedBands
 
-        focusIsolationTask = Task { [weak self] in
+        focusIsolationTask = Task { @MainActor [weak self] in
             let isolated = await BandIsolationRenderer.isolateAsync(
                 image: processedImage,
                 pixelBands: pixelBands,
                 selectedBands: selectedBands
             )
-            guard !Task.isCancelled,
-                  let self,
-                  self.focusIsolationGeneration == generation else {
-                return
-            }
+            try? Task.checkCancellation()
+            guard !Task.isCancelled, let self else { return }
 
             self.isolatedProcessedImage = isolated
         }
@@ -1467,7 +1439,6 @@ class AppState {
     private func invalidateFocusIsolation(clearSelection: Bool) {
         focusIsolationTask?.cancel()
         focusIsolationTask = nil
-        focusIsolationGeneration += 1
         isolatedProcessedImage = nil
         if clearSelection {
             focusedBands = []
@@ -1490,8 +1461,6 @@ class AppState {
             return
         }
 
-        depthGeneration += 1
-        let generation = depthGeneration
 
         if let embedded = embeddedDepthMap {
             let resized = DepthEstimator.resize(embedded, toMatch: source)
@@ -1518,38 +1487,33 @@ class AppState {
         processingLabel = "Estimating depth…"
         processingIsIndeterminate = true
 
-        depthTask = Task {
+        depthTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                let result = try await depthMapOperation(source)
+                let result = try await self.depthMapOperation(source)
                 try Task.checkCancellation()
 
                 let range = DepthEstimator.depthRange(from: result)
 
-                await MainActor.run {
-                    guard self.depthGeneration == generation else { return }
-                    let isFirstCompute = self.depthMap == nil
-                    self.depthMap = result
-                    self.depthRange = range
-                    self.depthSource = .estimated
-                    // Keep cutoffs aligned with the latest measured range.
-                    self.syncDepthCutoffs(to: range, resetToDefaults: isFirstCompute)
-                    self.logDepthDiagnostics(event: "estimated-depth-selected", depth: result)
-                    self.processingIsIndeterminate = false
-                    self.processingLabel = "Processing…"
-                    self.isProcessing = false
-                    self.applyDepthEffects()
-                    self.recomputeContours()
-                }
+                let isFirstCompute = self.depthMap == nil
+                self.depthMap = result
+                self.depthRange = range
+                self.depthSource = .estimated
+                // Keep cutoffs aligned with the latest measured range.
+                self.syncDepthCutoffs(to: range, resetToDefaults: isFirstCompute)
+                self.logDepthDiagnostics(event: "estimated-depth-selected", depth: result)
+                self.processingIsIndeterminate = false
+                self.processingLabel = "Processing…"
+                self.isProcessing = false
+                self.applyDepthEffects()
+                self.recomputeContours()
             } catch is CancellationError {
                 // superseded
             } catch {
-                await MainActor.run {
-                    guard self.depthGeneration == generation else { return }
-                    self.isProcessing = false
-                    self.processingIsIndeterminate = false
-                    self.processingLabel = "Processing…"
-                    self.errorMessage = error.localizedDescription
-                }
+                self.isProcessing = false
+                self.processingIsIndeterminate = false
+                self.processingLabel = "Processing…"
+                self.errorMessage = error.localizedDescription
             }
         }
     }
@@ -1569,23 +1533,25 @@ class AppState {
 
         let config = depthConfig
 
-        depthEffectGeneration += 1
-        let gen = depthEffectGeneration
 
         isProcessing = true
         processingLabel = "Applying depth…"
         processingIsIndeterminate = true
 
-        depthEffectTask = Task {
-            let result = depthEffectOperation(sourceImage, depth, config)
-            await MainActor.run {
-                guard self.depthEffectGeneration == gen else { return }
-                self.isProcessing = false
-                guard !Task.isCancelled else { return }
-                self.depthProcessedImage = result
-                self.processingIsIndeterminate = false
-                self.processingLabel = "Processing…"
-            }
+        depthEffectTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Let the synchronous operation run on a background thread
+            let result = await Task.detached(priority: .userInitiated) {
+                self.depthEffectOperation(sourceImage, depth, config)
+            }.value
+            
+            try? Task.checkCancellation()
+            guard !Task.isCancelled else { return }
+            
+            self.isProcessing = false
+            self.depthProcessedImage = result
+            self.processingIsIndeterminate = false
+            self.processingLabel = "Processing…"
         }
     }
 
@@ -1602,9 +1568,6 @@ class AppState {
         depthEffectTask?.cancel()
         depthPreviewDismissTask?.cancel()
         contourTask?.cancel()
-        depthGeneration += 1
-        depthEffectGeneration += 1
-        contourGeneration += 1
         depthMap = nil
         depthProcessedImage = nil
         isEditingDepthThreshold = false
@@ -1950,12 +1913,11 @@ class AppState {
             contourSegments = []
             return
         }
-        contourGeneration += 1
-        let gen = contourGeneration
         let cfg = contourConfig
         let depthCfg = depthConfig
         let range = depthRange
-        contourTask = Task {
+        contourTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             let segs = await Task.detached(priority: .userInitiated) {
                 ContourGenerator.generateSegments(
                     depthMap: depth,
@@ -1964,11 +1926,10 @@ class AppState {
                     backgroundCutoff: depthCfg.backgroundCutoff
                 )
             }.value
+            
+            try? Task.checkCancellation()
             guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard self.contourGeneration == gen else { return }
-                self.contourSegments = segs
-            }
+            self.contourSegments = segs
         }
     }
 
