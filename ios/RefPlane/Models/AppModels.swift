@@ -675,3 +675,88 @@ class TransformPresetManager {
         }
     }
 }
+
+// MARK: - AppState child state
+
+@Observable
+@MainActor
+final class TransformState {
+    var activeMode: RefPlaneMode = .original
+    var gridConfig: GridConfig = GridConfig()
+    var valueConfig: ValueConfig = ValueConfig()
+    var colorConfig: ColorConfig = ColorConfig()
+    var contourConfig: ContourConfig = ContourConfig()
+
+    var abstractionStrength: Double = 0.5
+    var abstractionMethod: AbstractionMethod = .apisr
+
+    var previousTransformSnapshot: TransformationSnapshot? = nil
+    var selectedTransformPresetSelection: TransformPresetSelection = .previous
+    var presetManager: TransformPresetManager = TransformPresetManager()
+
+    var savedTransformPresets: [SavedTransformPreset] {
+        presetManager.savedPresets
+    }
+
+    var abstractionIsEnabled: Bool {
+        abstractionStrength > 0
+    }
+
+    var availableAbstractionMethods: [AbstractionMethod] {
+        AbstractionMethod.allCases.filter { method in
+            switch method.processingKind {
+            case .superResolution4x, .fullImageModel:
+                guard let name = method.modelBundleName else { return false }
+                return Bundle.main.url(forResource: name, withExtension: "mlmodelc") != nil
+                    || Bundle.main.url(forResource: name, withExtension: "mlpackage") != nil
+                    || Bundle.main.url(forResource: name, withExtension: "mlmodel") != nil
+            }
+        }
+    }
+}
+
+@Observable
+@MainActor
+final class DepthState {
+    var depthConfig: DepthConfig = DepthConfig()
+    var depthMap: UIImage? = nil
+    var embeddedDepthMap: UIImage? = nil
+    var depthSource: DepthSource? = nil
+    var depthProcessedImage: UIImage? = nil
+    var depthRange: ClosedRange<Double> = 0...1
+
+    var isEditingDepthThreshold: Bool = false
+    var depthThresholdPreview: UIImage? = nil
+    var contourSegments: [GridLineSegment] = []
+
+    @ObservationIgnored var cachedDepthTexture: AnyObject? = nil
+    @ObservationIgnored var cachedSourceTexture: AnyObject? = nil
+    @ObservationIgnored var depthSliderActive: Bool = false
+}
+
+@Observable
+@MainActor
+final class PipelineState {
+    var isProcessing: Bool = false
+    var isSimplifying: Bool = false
+    var processingProgress: Double = 0
+    var processingLabel: String = "Processing…"
+    var processingIsIndeterminate: Bool = false
+
+    var compareMode: Bool = false
+    var focusedBands: Set<Int> = []
+    var errorMessage: String? = nil
+    var panelCollapsed: Bool = false
+    var isolatedProcessedImage: UIImage? = nil
+
+    @ObservationIgnored var activeSliderCount: Int = 0
+    var isAnySliderActive: Bool = false
+
+    func sliderEditingChanged(_ editing: Bool) {
+        activeSliderCount += editing ? 1 : -1
+        if activeSliderCount < 0 {
+            activeSliderCount = 0
+        }
+        isAnySliderActive = activeSliderCount > 0
+    }
+}
