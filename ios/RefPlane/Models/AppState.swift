@@ -7,7 +7,7 @@ import os
 @Observable
 @MainActor
 class AppState {
-    @ObservationIgnored private static let depthLogger = Logger(subsystem: "com.refplane.app", category: "DepthPipeline")
+    @ObservationIgnored private static let depthLogger = Logger(subsystem: AppInstrumentation.subsystem, category: "DepthPipeline")
 
     typealias ProcessOperation = @Sendable (
         UIImage,

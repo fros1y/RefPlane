@@ -3,7 +3,7 @@ import os.signpost
 
 enum AppInstrumentation {
 
-    static let subsystem = "com.refplane.app"
+    static let subsystem = "net.galese.understudy"
 
     static func logger(category: String) -> Logger {
         Logger(subsystem: subsystem, category: category)

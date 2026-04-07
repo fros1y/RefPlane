@@ -19,7 +19,7 @@ struct PaywallView: View {
                 Spacer()
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("Unlock Underpaint")
+			.navigationTitle("Unlock Underpaint")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -92,7 +92,7 @@ struct PaywallView: View {
                         if let product = unlockManager.product {
                             Text("Unlock — \(product.displayPrice)")
                         } else {
-                            Text("Unlock Underpaint")
+							Text("Unlock Underpaint")
                         }
                     }
                     .font(.headline)

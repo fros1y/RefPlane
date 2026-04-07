@@ -11,7 +11,7 @@ import os
 /// Convention: 0 = nearest (foreground), 1 = farthest (background).
 enum DepthEstimator {
 
-    private static let logger = Logger(subsystem: "com.refplane.app", category: "DepthEstimator")
+    private static let logger = Logger(subsystem: AppInstrumentation.subsystem, category: "DepthEstimator")
 
     /// The model's expected input dimensions.
     private static let modelWidth = 518

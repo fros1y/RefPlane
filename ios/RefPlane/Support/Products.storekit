@@ -11,7 +11,7 @@
       "localizations" : [
         {
           "description" : "Unlock the ability to load and process your own photos from your library.",
-          "displayName" : "Unlock Underpaint",
+		  "displayName" : "Unlock Underpaint",
           "locale" : "en_US"
         }
       ],

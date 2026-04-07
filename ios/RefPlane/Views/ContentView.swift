@@ -332,7 +332,7 @@ struct ContentView: View {
         let modeName = state.activeMode.label
             .replacingOccurrences(of: " ", with: "-")
             .lowercased()
-        return "underpaint-\(modeName)"
+		return "underpaint-\(modeName)"
     }
 
     private var prefersDesktopFileExport: Bool {

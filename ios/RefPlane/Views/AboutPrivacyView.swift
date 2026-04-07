@@ -43,7 +43,7 @@ struct AboutPrivacyView: View {
                 Section("About") {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("Underpaint")
+    							Text("Underpaint")
                                 .font(.headline)
                             Spacer()
                             Text(appVersionString)
@@ -118,7 +118,7 @@ struct AboutPrivacyView: View {
 
                 Section("Privacy") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Underpaint collects no personal data.")
+    						Text("Underpaint collects no personal data.")
                         Text("The app uses no analytics, no tracking, and no accounts.")
                         Text("Images you choose are processed on-device.")
                     }
