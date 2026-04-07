@@ -8,219 +8,6 @@ import os
 @MainActor
 class AppState {
     @ObservationIgnored private static let depthLogger = Logger(subsystem: "com.refplane.app", category: "DepthPipeline")
-    enum TransformPresetSelection: Hashable {
-        case previous
-        case appDefault
-        case saved(UUID)
-    }
-
-    enum TransformPresetError: LocalizedError {
-        case emptyName
-        case duplicateName
-        case presetNotFound
-
-        var errorDescription: String? {
-            switch self {
-            case .emptyName:
-                return "Preset name cannot be empty."
-            case .duplicateName:
-                return "A preset with that name already exists."
-            case .presetNotFound:
-                return "Preset not found."
-            }
-        }
-    }
-
-    struct SavedTransformPreset: Identifiable, Codable, Equatable {
-        var id: UUID
-        var name: String
-        var createdAt: Date
-        var updatedAt: Date
-        var snapshot: TransformationSnapshot
-    }
-
-    struct CodableColor: Codable, Equatable {
-        var red: Double
-        var green: Double
-        var blue: Double
-        var alpha: Double
-
-        init(_ color: Color) {
-            let uiColor = UIColor(color)
-            var redComponent: CGFloat = 0
-            var greenComponent: CGFloat = 0
-            var blueComponent: CGFloat = 0
-            var alphaComponent: CGFloat = 0
-
-            if uiColor.getRed(
-                &redComponent,
-                green: &greenComponent,
-                blue: &blueComponent,
-                alpha: &alphaComponent
-            ) {
-                red = redComponent
-                green = greenComponent
-                blue = blueComponent
-                alpha = alphaComponent
-            } else {
-                red = 1
-                green = 1
-                blue = 1
-                alpha = 1
-            }
-        }
-
-        var color: Color {
-            Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
-        }
-    }
-
-    struct TransformationSnapshot: Codable, Equatable {
-        var activeMode: RefPlaneMode
-        var abstractionStrength: Double
-        var abstractionMethod: AbstractionMethod
-
-        var gridEnabled: Bool
-        var gridDivisions: Int
-        var gridShowDiagonals: Bool
-        var gridLineStyle: LineStyle
-        var gridCustomColor: CodableColor
-        var gridOpacity: Double
-
-        var grayscaleConversion: GrayscaleConversion
-        var valueLevels: Int
-        var valueThresholds: [Double]
-        var valueDistribution: ThresholdDistribution
-        var valueQuantizationBias: Double
-
-        var paletteSelectionEnabled: Bool
-        var colorLimit: Int
-        var enabledPigmentIDs: [String]
-        var paletteSpread: Double
-        var colorQuantizationBias: Double
-        var maxPigmentsPerMix: Int
-        var minConcentration: Float
-
-        var depthEnabled: Bool
-        var foregroundCutoff: Double
-        var backgroundCutoff: Double
-        var depthEffectIntensity: Double
-        var backgroundMode: BackgroundMode
-
-        var contourEnabled: Bool
-        var contourLevels: Int
-        var contourLineStyle: LineStyle
-        var contourCustomColor: CodableColor
-        var contourOpacity: Double
-
-        init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            activeMode = try c.decode(RefPlaneMode.self, forKey: .activeMode)
-            abstractionStrength = try c.decode(Double.self, forKey: .abstractionStrength)
-            abstractionMethod = try c.decode(AbstractionMethod.self, forKey: .abstractionMethod)
-            gridEnabled = try c.decode(Bool.self, forKey: .gridEnabled)
-            gridDivisions = try c.decode(Int.self, forKey: .gridDivisions)
-            gridShowDiagonals = try c.decode(Bool.self, forKey: .gridShowDiagonals)
-            gridLineStyle = try c.decode(LineStyle.self, forKey: .gridLineStyle)
-            gridCustomColor = try c.decode(CodableColor.self, forKey: .gridCustomColor)
-            gridOpacity = try c.decode(Double.self, forKey: .gridOpacity)
-            grayscaleConversion = try c.decode(GrayscaleConversion.self, forKey: .grayscaleConversion)
-            valueLevels = try c.decode(Int.self, forKey: .valueLevels)
-            valueThresholds = try c.decode([Double].self, forKey: .valueThresholds)
-            valueDistribution = try c.decode(ThresholdDistribution.self, forKey: .valueDistribution)
-            valueQuantizationBias = try c.decode(Double.self, forKey: .valueQuantizationBias)
-            paletteSelectionEnabled = try c.decode(Bool.self, forKey: .paletteSelectionEnabled)
-            colorLimit = try c.decode(Int.self, forKey: .colorLimit)
-            enabledPigmentIDs = try c.decode([String].self, forKey: .enabledPigmentIDs)
-            paletteSpread = try c.decode(Double.self, forKey: .paletteSpread)
-            colorQuantizationBias = try c.decode(Double.self, forKey: .colorQuantizationBias)
-            maxPigmentsPerMix = try c.decode(Int.self, forKey: .maxPigmentsPerMix)
-            minConcentration = try c.decode(Float.self, forKey: .minConcentration)
-            depthEnabled = try c.decode(Bool.self, forKey: .depthEnabled)
-            foregroundCutoff = try c.decode(Double.self, forKey: .foregroundCutoff)
-            backgroundCutoff = try c.decode(Double.self, forKey: .backgroundCutoff)
-            depthEffectIntensity = try c.decode(Double.self, forKey: .depthEffectIntensity)
-            backgroundMode = try c.decode(BackgroundMode.self, forKey: .backgroundMode)
-            contourEnabled = try c.decode(Bool.self, forKey: .contourEnabled)
-            contourLevels = try c.decode(Int.self, forKey: .contourLevels)
-            contourLineStyle = try c.decode(LineStyle.self, forKey: .contourLineStyle)
-            contourCustomColor = try c.decode(CodableColor.self, forKey: .contourCustomColor)
-            contourOpacity = try c.decode(Double.self, forKey: .contourOpacity)
-        }
-
-        // Explicit memberwise init (required because custom init(from:) suppresses synthesis).
-        init(
-            activeMode: RefPlaneMode,
-            abstractionStrength: Double,
-            abstractionMethod: AbstractionMethod,
-            gridEnabled: Bool,
-            gridDivisions: Int,
-            gridShowDiagonals: Bool,
-            gridLineStyle: LineStyle,
-            gridCustomColor: CodableColor,
-            gridOpacity: Double,
-            grayscaleConversion: GrayscaleConversion,
-            valueLevels: Int,
-            valueThresholds: [Double],
-            valueDistribution: ThresholdDistribution,
-            valueQuantizationBias: Double,
-            paletteSelectionEnabled: Bool,
-            colorLimit: Int,
-            enabledPigmentIDs: [String],
-            paletteSpread: Double,
-            colorQuantizationBias: Double,
-            maxPigmentsPerMix: Int,
-            minConcentration: Float,
-            depthEnabled: Bool,
-            foregroundCutoff: Double,
-            backgroundCutoff: Double,
-            depthEffectIntensity: Double,
-            backgroundMode: BackgroundMode,
-            contourEnabled: Bool,
-            contourLevels: Int,
-            contourLineStyle: LineStyle,
-            contourCustomColor: CodableColor,
-            contourOpacity: Double
-        ) {
-            self.activeMode = activeMode
-            self.abstractionStrength = abstractionStrength
-            self.abstractionMethod = abstractionMethod
-            self.gridEnabled = gridEnabled
-            self.gridDivisions = gridDivisions
-            self.gridShowDiagonals = gridShowDiagonals
-            self.gridLineStyle = gridLineStyle
-            self.gridCustomColor = gridCustomColor
-            self.gridOpacity = gridOpacity
-            self.grayscaleConversion = grayscaleConversion
-            self.valueLevels = valueLevels
-            self.valueThresholds = valueThresholds
-            self.valueDistribution = valueDistribution
-            self.valueQuantizationBias = valueQuantizationBias
-            self.paletteSelectionEnabled = paletteSelectionEnabled
-            self.colorLimit = colorLimit
-            self.enabledPigmentIDs = enabledPigmentIDs
-            self.paletteSpread = paletteSpread
-            self.colorQuantizationBias = colorQuantizationBias
-            self.maxPigmentsPerMix = maxPigmentsPerMix
-            self.minConcentration = minConcentration
-            self.depthEnabled = depthEnabled
-            self.foregroundCutoff = foregroundCutoff
-            self.backgroundCutoff = backgroundCutoff
-            self.depthEffectIntensity = depthEffectIntensity
-            self.backgroundMode = backgroundMode
-            self.contourEnabled = contourEnabled
-            self.contourLevels = contourLevels
-            self.contourLineStyle = contourLineStyle
-            self.contourCustomColor = contourCustomColor
-            self.contourOpacity = contourOpacity
-        }
-    }
-
-    private struct TransformPresetStore: Codable {
-        var schemaVersion: Int
-        var savedPresets: [SavedTransformPreset]
-        var previousSnapshot: TransformationSnapshot?
-    }
 
     typealias ProcessOperation = @Sendable (
         UIImage,
@@ -278,7 +65,6 @@ class AppState {
     var contourSegments: [GridLineSegment] = []
 
     // Transformation preset state
-    var savedTransformPresets: [SavedTransformPreset] = []
     var previousTransformSnapshot: TransformationSnapshot? = nil
     var selectedTransformPresetSelection: TransformPresetSelection = .previous
 
@@ -350,7 +136,13 @@ class AppState {
     @ObservationIgnored private var memoryWarningObserver: NSObjectProtocol? = nil
     @ObservationIgnored private var presetPersistenceTask: Task<Void, Never>? = nil
 
-    @ObservationIgnored private static let transformPresetStoreKey = "AppState.transformPresetStore.v1"
+    var presetManager = TransformPresetManager()
+
+    // MARK: - Transform Preset Manager Facade
+
+    var savedTransformPresets: [SavedTransformPreset] {
+        presetManager.savedPresets
+    }
 
     var abstractionIsEnabled: Bool {
         abstractionStrength > 0
@@ -408,7 +200,6 @@ class AppState {
             DepthEstimator.clearModelCache()
         }
 
-        loadTransformPresetStore()
         restoreInitialTransformSnapshotSelection()
     }
 
@@ -694,58 +485,17 @@ class AppState {
     }
 
     func saveCurrentTransformPreset(named rawName: String) throws {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else {
-            throw TransformPresetError.emptyName
-        }
-
-        let normalizedName = normalizedPresetName(name)
-        guard !savedTransformPresets.contains(where: { normalizedPresetName($0.name) == normalizedName }) else {
-            throw TransformPresetError.duplicateName
-        }
-
-        let now = Date()
-        let preset = SavedTransformPreset(
-            id: UUID(),
-            name: name,
-            createdAt: now,
-            updatedAt: now,
-            snapshot: makeTransformationSnapshot()
-        )
-
-        savedTransformPresets.append(preset)
-        savedTransformPresets.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        selectedTransformPresetSelection = .saved(preset.id)
-        persistTransformPresetStore()
+        let snapshot = makeTransformationSnapshot()
+        let id = try presetManager.savePreset(named: rawName, snapshot: snapshot)
+        selectedTransformPresetSelection = .saved(id)
     }
 
     func renameTransformPreset(id: UUID, to rawName: String) throws {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else {
-            throw TransformPresetError.emptyName
-        }
-
-        let normalizedName = normalizedPresetName(name)
-        guard !savedTransformPresets.contains(where: {
-            $0.id != id && normalizedPresetName($0.name) == normalizedName
-        }) else {
-            throw TransformPresetError.duplicateName
-        }
-
-        guard let index = savedTransformPresets.firstIndex(where: { $0.id == id }) else {
-            throw TransformPresetError.presetNotFound
-        }
-
-        savedTransformPresets[index].name = name
-        savedTransformPresets[index].updatedAt = Date()
-        savedTransformPresets.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        persistTransformPresetStore()
+        try presetManager.renamePreset(id: id, to: rawName)
     }
 
     func deleteTransformPreset(id: UUID) {
-        savedTransformPresets.removeAll { $0.id == id }
-        selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
-        persistTransformPresetStore()
+        presetManager.deletePreset(id: id)
     }
 
     func selectTransformPreset(_ selection: TransformPresetSelection) {
@@ -901,64 +651,30 @@ class AppState {
     }
 
     private func updatePreviousTransformSnapshot() {
-        previousTransformSnapshot = makeTransformationSnapshot()
         selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
 
         presetPersistenceTask?.cancel()
         presetPersistenceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(220))
             guard let self, !Task.isCancelled else { return }
-            self.persistTransformPresetStore()
+            self.presetManager.savePreviousSnapshot(self.makeTransformationSnapshot())
         }
     }
 
-    private func loadTransformPresetStore() {
-        guard let data = UserDefaults.standard.data(forKey: Self.transformPresetStoreKey) else {
-            savedTransformPresets = []
-            previousTransformSnapshot = nil
-            return
-        }
 
-        let decoder = JSONDecoder()
-        guard let decoded = try? decoder.decode(TransformPresetStore.self, from: data),
-              decoded.schemaVersion == 1
-        else {
-            savedTransformPresets = []
-            previousTransformSnapshot = nil
-            return
-        }
 
-        savedTransformPresets = decoded.savedPresets
-        previousTransformSnapshot = decoded.previousSnapshot
-    }
 
-    private func persistTransformPresetStore() {
-        let store = TransformPresetStore(
-            schemaVersion: 1,
-            savedPresets: savedTransformPresets,
-            previousSnapshot: previousTransformSnapshot
-        )
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let encoded = try? encoder.encode(store) else { return }
-        UserDefaults.standard.set(encoded, forKey: Self.transformPresetStoreKey)
-    }
 
     private func restoreInitialTransformSnapshotSelection() {
-        guard let previousTransformSnapshot else {
+        guard let prev = presetManager.previousSnapshot else {
             selectedTransformPresetSelection = .appDefault
             return
         }
-
-        if let matchingPresetID = matchingSavedPresetID(for: previousTransformSnapshot) {
+        if let matchingPresetID = matchingSavedPresetID(for: prev) {
             selectedTransformPresetSelection = .saved(matchingPresetID)
-            applyTransformationSnapshot(previousTransformSnapshot)
-            return
+        } else {
+            selectedTransformPresetSelection = .previous
         }
-
-        selectedTransformPresetSelection = .previous
-        applyTransformationSnapshot(previousTransformSnapshot)
     }
 
     private static func defaultTransformationSnapshot() -> TransformationSnapshot {
