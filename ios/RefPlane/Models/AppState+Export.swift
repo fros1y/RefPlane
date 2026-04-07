@@ -25,7 +25,7 @@ extension AppState {
     func exportCurrentImagePayload() -> ExportedImagePayload? {
         guard let image = exportCurrentImage() else { return nil }
         guard let imageData = image.pngData() else { return nil }
-        return ExportedImagePayload(imageData: imageData, contentType: .png)
+        return ExportedImagePayload(image: image, imageData: imageData, contentType: .png)
     }
 
     func currentSettingsDescription() -> String {

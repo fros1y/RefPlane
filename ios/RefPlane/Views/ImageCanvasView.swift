@@ -248,7 +248,7 @@ struct ImageCanvasView: View {
         switch state.transform.activeMode {
         case .value, .color:
             if isMac {
-                return "Pinch to zoom, drag to pan, tap once for swatch info, tap the same swatch again to focus, and double tap empty canvas to reset."
+                return "Pinch to zoom, drag to pan, tap once for swatch info, tap the same swatch again to toggle focus, and double tap empty canvas to reset."
             } else {
                 return "Pinch to zoom, drag to pan, tap once for swatch info, long press a swatch to toggle focus, and tap empty canvas to reset."
             }
@@ -374,9 +374,7 @@ struct ImageCanvasView: View {
                 inspectedBand = band
             case .focus(let band):
                 inspectedBand = band
-                if !state.pipeline.focusedBands.contains(band) {
-                    state.toggleFocusedBand(band)
-                }
+                state.toggleFocusedBand(band)
             case .resetViewport:
                 inspectedBand = nil
                 resetViewport()
@@ -519,7 +517,7 @@ private struct CanvasBandSummaryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(summary.color)
                     .frame(width: 44, height: 36)
@@ -531,25 +529,31 @@ private struct CanvasBandSummaryCard: View {
                 Text(summary.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
 
                 Spacer(minLength: 8)
 
-                Button(action: onToggleFocus) {
-                    FocusPill(isFocused: isFocused)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isFocused ? "Remove focus from swatch" : "Focus swatch")
+                HStack(spacing: 8) {
+                    Button(action: onToggleFocus) {
+                        FocusPill(isFocused: isFocused)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isFocused ? "Remove focus from swatch" : "Focus swatch")
 
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.08), in: Circle())
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.08), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Hide swatch")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Hide swatch")
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             if let recipe = summary.recipe {
@@ -558,7 +562,7 @@ private struct CanvasBandSummaryCard: View {
             }
         }
         .padding(14)
-        .frame(width: 260, alignment: .leading)
+        .frame(maxWidth: 320, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)

@@ -194,6 +194,18 @@ func selectingMultipleFocusedBandsSubduesOnlyUnfocusedPixels() async throws {
 
 @MainActor
 @Test
+func toggleFocusedBandRemovesExistingBandOnSecondToggle() {
+    let state = AppState()
+
+    state.toggleFocusedBand(2)
+    #expect(state.pipeline.focusedBands == Set([2]))
+
+    state.toggleFocusedBand(2)
+    #expect(state.pipeline.focusedBands.isEmpty)
+}
+
+@MainActor
+@Test
 func processingResultsClearFocusedBands() async throws {
     let firstImage = TestImageFactory.makeSplitColors(
         pixels: [

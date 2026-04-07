@@ -43,8 +43,12 @@ struct ContentView: View {
         }
         .sheet(item: $presentedSheet, content: presentedSheetView)
         .sheet(item: $exportItem) { item in
-            ShareSheet(items: [item.fileURL]) {
-                removeTemporaryExport(at: item.fileURL)
+            ShareSheet(items: item.activityItems) {
+                if let temporaryFileURL = item.temporaryFileURL {
+                    removeTemporaryExport(at: temporaryFileURL)
+                } else {
+                    exportItem = nil
+                }
             }
         }
         .fileExporter(
@@ -290,11 +294,24 @@ struct ContentView: View {
             showExportFileExporter = true
         } else {
             do {
-                exportItem = ExportItem(fileURL: try writeTemporaryExport(exportPayload))
+                exportItem = try makeShareExportItem(from: exportPayload)
             } catch {
                 state.pipeline.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func makeShareExportItem(from payload: ExportedImagePayload) throws -> ExportItem {
+        let fileURL = try writeTemporaryExport(payload)
+        let subject = fileURL.lastPathComponent
+
+        return ExportItem(
+            activityItems: [
+                ExportImageActivityItemSource(image: payload.image, subject: subject),
+                ExportFileActivityItemSource(fileURL: fileURL, subject: subject)
+            ],
+            temporaryFileURL: fileURL
+        )
     }
 
     private func writeTemporaryExport(_ payload: ExportedImagePayload) throws -> URL {
@@ -315,7 +332,7 @@ struct ContentView: View {
 
     private func removeTemporaryExport(at fileURL: URL) {
         try? FileManager.default.removeItem(at: fileURL)
-        if exportItem?.fileURL == fileURL {
+        if exportItem?.temporaryFileURL == fileURL {
             exportItem = nil
         }
     }
@@ -614,7 +631,8 @@ private struct StudioModeDock: View {
 
 private struct ExportItem: Identifiable {
     let id = UUID()
-    let fileURL: URL
+    let activityItems: [Any]
+    let temporaryFileURL: URL?
 }
 
 private struct ExportImageDocument: FileDocument {

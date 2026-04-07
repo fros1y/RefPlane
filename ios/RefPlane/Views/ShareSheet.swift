@@ -25,3 +25,73 @@ struct ShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+
+enum ExportShareActivityRouter {
+    // UIKit exposes Save to Files via a raw identifier rather than a public static constant.
+    static let saveToFilesActivityType = UIActivity.ActivityType(
+        rawValue: "com.apple.DocumentManagerUICore.SaveToFiles"
+    )
+
+    static func usesFileURL(_ activityType: UIActivity.ActivityType?) -> Bool {
+        guard let activityType else { return false }
+        return activityType == .airDrop || activityType == saveToFilesActivityType
+    }
+}
+
+final class ExportImageActivityItemSource: NSObject, UIActivityItemSource {
+    private let image: UIImage
+    private let subject: String
+
+    init(image: UIImage, subject: String) {
+        self.image = image
+        self.subject = subject
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        image
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        guard !ExportShareActivityRouter.usesFileURL(activityType) else { return nil }
+        return image
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        subjectForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        subject
+    }
+}
+
+final class ExportFileActivityItemSource: NSObject, UIActivityItemSource {
+    private let fileURL: URL
+    private let subject: String
+
+    init(fileURL: URL, subject: String) {
+        self.fileURL = fileURL
+        self.subject = subject
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        guard ExportShareActivityRouter.usesFileURL(activityType) else { return nil }
+        return fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        subjectForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        subject
+    }
+}

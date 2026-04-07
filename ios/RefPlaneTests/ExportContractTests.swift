@@ -52,12 +52,76 @@ func exportedImagePayloadAlwaysUsesPNGAndRenderedImageDimensions() throws {
     let pixelSize = try exportedPixelSize(from: exportPayload.imageData)
 
     #expect(exportPayload.contentType == .png)
+    #expect(exportPayload.image.size == processedImage.size)
     #expect(pixelSize.width == 60)
     #expect(pixelSize.height == 30)
     #expect(tiff == nil)
     #expect(exif == nil)
     #expect(png?[kCGImagePropertyPNGComment as String] as? String == nil)
     #expect(png?[kCGImagePropertyPNGDescription as String] as? String == nil)
+}
+
+@MainActor
+@Test
+func mobileShareSourcesPreferImageForPhotosAndFileForAirDropOrFiles() throws {
+    let image = TestImageFactory.makeSolid(width: 40, height: 24, color: .purple)
+    let fileURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("export-contract-share-item")
+        .appendingPathExtension("png")
+    let controller = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+
+    try Data([0x89, 0x50, 0x4E, 0x47]).write(to: fileURL, options: .atomic)
+    defer {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    let imageSource = ExportImageActivityItemSource(
+        image: image,
+        subject: "underpaint-value.png"
+    )
+    let fileSource = ExportFileActivityItemSource(
+        fileURL: fileURL,
+        subject: "underpaint-value.png"
+    )
+
+    #expect(imageSource.activityViewControllerPlaceholderItem(controller) is UIImage)
+    #expect(fileSource.activityViewControllerPlaceholderItem(controller) as? URL == fileURL)
+    #expect(
+        imageSource.activityViewController(
+            controller,
+            itemForActivityType: .saveToCameraRoll
+        ) is UIImage
+    )
+    #expect(
+        fileSource.activityViewController(
+            controller,
+            itemForActivityType: .saveToCameraRoll
+        ) == nil
+    )
+    #expect(
+        imageSource.activityViewController(
+            controller,
+            itemForActivityType: .airDrop
+        ) == nil
+    )
+    #expect(
+        fileSource.activityViewController(
+            controller,
+            itemForActivityType: .airDrop
+        ) as? URL == fileURL
+    )
+    #expect(
+        imageSource.activityViewController(
+            controller,
+            itemForActivityType: ExportShareActivityRouter.saveToFilesActivityType
+        ) == nil
+    )
+    #expect(
+        fileSource.activityViewController(
+            controller,
+            itemForActivityType: ExportShareActivityRouter.saveToFilesActivityType
+        ) as? URL == fileURL
+    )
 }
 
 @MainActor

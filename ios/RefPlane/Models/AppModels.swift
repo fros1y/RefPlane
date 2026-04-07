@@ -333,6 +333,7 @@ struct ImportedImagePayload {
 }
 
 struct ExportedImagePayload {
+    var image: UIImage
     var imageData: Data
     var contentType: UTType
 }
