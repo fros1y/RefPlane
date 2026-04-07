@@ -8,7 +8,7 @@ struct GridOverlayView: View {
     var body: some View {
         GeometryReader { _ in
             Canvas { ctx, size in
-                let config = state.gridConfig
+                let config = state.transform.gridConfig
                 guard config.enabled else { return }
                 let sourceImage = image ?? state.currentDisplayImage
 

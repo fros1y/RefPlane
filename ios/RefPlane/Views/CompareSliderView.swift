@@ -13,10 +13,10 @@ struct CompareSliderView: View {
             ZStack(alignment: .leading) {
                 StudyImageLayer(
                     image: afterImage,
-                    showsGrid: state.gridConfig.enabled,
-                    showsContours: state.contourConfig.enabled
-                        && state.depthConfig.enabled
-                        && !state.isEditingDepthThreshold
+                    showsGrid: state.transform.gridConfig.enabled,
+                    showsContours: state.transform.contourConfig.enabled
+                        && state.depth.depthConfig.enabled
+                        && !state.depth.isEditingDepthThreshold
                 )
                 .frame(width: geo.size.width, height: geo.size.height)
 
@@ -35,7 +35,7 @@ struct CompareSliderView: View {
 
                 compareLabels
 
-                if state.isProcessing {
+                if state.pipeline.isProcessing {
                     compareProcessingOverlay
                 }
             }
@@ -46,17 +46,17 @@ struct CompareSliderView: View {
     }
 
     private var processedTitle: String {
-        if state.activeMode == .original {
-            return state.abstractionStrength > 0 ? "Abstracted" : "Natural"
+        if state.transform.activeMode == .original {
+            return state.transform.abstractionStrength > 0 ? "Abstracted" : "Natural"
         }
-        return state.activeMode.label
+        return state.transform.activeMode.label
     }
 
     private var processedIcon: String {
-        if state.activeMode == .original {
-            return state.abstractionStrength > 0 ? "wand.and.stars" : "photo"
+        if state.transform.activeMode == .original {
+            return state.transform.abstractionStrength > 0 ? "wand.and.stars" : "photo"
         }
-        return state.activeMode.iconName
+        return state.transform.activeMode.iconName
     }
 
     private var compareLabels: some View {
@@ -80,12 +80,12 @@ struct CompareSliderView: View {
             Color.black.opacity(0.28)
 
             VStack(spacing: 12) {
-                if state.processingIsIndeterminate {
+                if state.pipeline.processingIsIndeterminate {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.1)
                 } else {
-                    ProgressView(value: state.processingProgress)
+                    ProgressView(value: state.pipeline.processingProgress)
                         .tint(.white)
                         .frame(width: 188)
                 }
@@ -109,13 +109,13 @@ struct CompareSliderView: View {
     }
 
     private var processingDisplayLabel: String {
-        switch state.processingLabel {
+        switch state.pipeline.processingLabel {
         case "Loading…":
             return "Preparing image"
         case "Abstracting…":
             return "Abstracting image"
         case "Processing…":
-            switch state.activeMode {
+            switch state.transform.activeMode {
             case .original:
                 return "Preparing image"
             case .tonal:
@@ -126,7 +126,7 @@ struct CompareSliderView: View {
                 return "Generating color study"
             }
         default:
-            return state.processingLabel
+            return state.pipeline.processingLabel
         }
     }
 }

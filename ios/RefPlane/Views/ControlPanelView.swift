@@ -27,7 +27,7 @@ struct ControlPanelView: View {
     /// is being dragged so the panel collapses to just the scroll content and
     /// the user can see the canvas preview.
     private var isCompact: Bool {
-        presentation == .bottomPanel && state.isAnySliderActive
+        presentation == .bottomPanel && state.pipeline.isAnySliderActive
     }
 
     var body: some View {
@@ -135,10 +135,10 @@ struct ControlPanelView: View {
                     state.selectTransformPreset(.appDefault)
                 }
 
-                if !state.savedTransformPresets.isEmpty {
+                if !state.transform.savedTransformPresets.isEmpty {
                     Divider()
 
-                    ForEach(state.savedTransformPresets) { preset in
+                    ForEach(state.transform.savedTransformPresets) { preset in
                         Menu(preset.name) {
                             Button("Apply") {
                                 state.selectTransformPreset(.saved(preset.id))
@@ -286,14 +286,14 @@ struct ControlPanelView: View {
                 TipView(PaletteSelectionTip())
 
                 Toggle("Use Pigments", isOn: Binding(
-                    get: { state.colorConfig.paletteSelectionEnabled },
+                    get: { state.transform.colorConfig.paletteSelectionEnabled },
                     set: setPaletteSelectionEnabled
                 ))
                 .disabled(!usesQuantization)
                 .accessibilityIdentifier("studio.palette-selection-toggle")
 
                 if usesQuantization {
-                    if state.colorConfig.paletteSelectionEnabled {
+                    if state.transform.colorConfig.paletteSelectionEnabled {
                         PaletteSelectionSettingsView()
                         Divider().opacity(0.18)
                     }
@@ -315,7 +315,7 @@ struct ControlPanelView: View {
             accessibilityID: "studio.card.overlays"
         ) {
             VStack(spacing: 14) {
-                if state.depthMap != nil && state.depthConfig.backgroundMode != .none {
+                if state.depth.depthMap != nil && state.depth.depthConfig.backgroundMode != .none {
                     ContourSettingsView()
                 } else {
                     Text("Contours need Adjust Background.")
@@ -331,15 +331,15 @@ struct ControlPanelView: View {
     }
 
     private var usesTonalRendering: Bool {
-        state.activeMode == .tonal || state.activeMode == .value
+        state.transform.activeMode == .tonal || state.transform.activeMode == .value
     }
 
     private var usesQuantization: Bool {
-        state.activeMode == .value || state.activeMode == .color
+        state.transform.activeMode == .value || state.transform.activeMode == .color
     }
 
     private var grayscaleConversionSelection: GrayscaleConversion {
-        usesTonalRendering ? state.valueConfig.grayscaleConversion : .none
+        usesTonalRendering ? state.transform.valueConfig.grayscaleConversion : .none
     }
 
     private var abstractionControls: some View {
@@ -347,8 +347,8 @@ struct ControlPanelView: View {
             LabeledSlider(
                 label: "Strength",
                 value: Binding(
-                    get: { state.abstractionStrength },
-                    set: { state.abstractionStrength = $0 }
+                    get: { state.transform.abstractionStrength },
+                    set: { state.transform.abstractionStrength = $0 }
                 ),
                 range: 0...1,
                 step: 0.05,
@@ -358,12 +358,12 @@ struct ControlPanelView: View {
                 onEditingChanged: handleAbstractionDrag
             )
 
-            if state.availableAbstractionMethods.count > 1 {
+            if state.transform.availableAbstractionMethods.count > 1 {
                 Picker("Style", selection: Binding(
-                    get: { state.abstractionMethod },
+                    get: { state.transform.abstractionMethod },
                     set: selectAbstractionMethod
                 )) {
-                    ForEach(state.availableAbstractionMethods) { method in
+                    ForEach(state.transform.availableAbstractionMethods) { method in
                         Text(method.label).tag(method)
                     }
                 }
@@ -435,11 +435,11 @@ struct ControlPanelView: View {
 
     private func handleAbstractionDrag(_ editing: Bool) {
         if editing {
-            abstractionStrengthAtDragStart = state.abstractionStrength
+            abstractionStrengthAtDragStart = state.transform.abstractionStrength
             return
         }
 
-        let didChange = abstractionStrengthAtDragStart.map { $0 != state.abstractionStrength } ?? false
+        let didChange = abstractionStrengthAtDragStart.map { $0 != state.transform.abstractionStrength } ?? false
         abstractionStrengthAtDragStart = nil
 
         if didChange {
@@ -448,16 +448,16 @@ struct ControlPanelView: View {
     }
 
     private func selectAbstractionMethod(_ method: AbstractionMethod) {
-        state.abstractionMethod = method
+        state.transform.abstractionMethod = method
 
-        if state.abstractionIsEnabled {
+        if state.transform.abstractionIsEnabled {
             state.applyAbstraction()
         }
     }
 
     private func setUsesQuantization(_ newValue: Bool) {
         if !newValue {
-            state.colorConfig.paletteSelectionEnabled = false
+            state.transform.colorConfig.paletteSelectionEnabled = false
         }
 
         let targetMode: RefPlaneMode
@@ -470,14 +470,14 @@ struct ControlPanelView: View {
     }
 
     private func setPaletteSelectionEnabled(_ enabled: Bool) {
-        guard state.colorConfig.paletteSelectionEnabled != enabled else { return }
-        state.colorConfig.paletteSelectionEnabled = enabled
+        guard state.transform.colorConfig.paletteSelectionEnabled != enabled else { return }
+        state.transform.colorConfig.paletteSelectionEnabled = enabled
         state.scheduleProcessing()
     }
 
     private func selectGrayscaleConversion(_ conversion: GrayscaleConversion) {
         guard conversion != grayscaleConversionSelection else { return }
-        state.valueConfig.grayscaleConversion = conversion
+        state.transform.valueConfig.grayscaleConversion = conversion
 
         let targetMode: RefPlaneMode
         if conversion == .none {
@@ -486,7 +486,7 @@ struct ControlPanelView: View {
             targetMode = usesQuantization ? .value : .tonal
         }
 
-        if targetMode == state.activeMode {
+        if targetMode == state.transform.activeMode {
             state.scheduleProcessing()
         } else {
             state.setMode(targetMode)

@@ -57,19 +57,19 @@ struct ContentView: View {
         .alert(
             "Unable to Continue",
             isPresented: Binding(
-                get: { state.errorMessage != nil },
+                get: { state.pipeline.errorMessage != nil },
                 set: { isPresented in
                     if !isPresented {
-                        state.errorMessage = nil
+                        state.pipeline.errorMessage = nil
                     }
                 }
             )
         ) {
             Button("OK", role: .cancel) {
-                state.errorMessage = nil
+                state.pipeline.errorMessage = nil
             }
         } message: {
-            Text(state.errorMessage ?? "")
+            Text(state.pipeline.errorMessage ?? "")
         }
     }
 
@@ -118,7 +118,7 @@ struct ContentView: View {
                     onClose: collapseInspector
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: state.isAnySliderActive
+                .frame(height: state.pipeline.isAnySliderActive
                     ? min(maxHeight * 0.25, 180)
                     : min(maxHeight * 0.8, 700))
                 .clipShape(.rect(topLeadingRadius: 32, topTrailingRadius: 32))
@@ -127,7 +127,7 @@ struct ContentView: View {
                         .padding(.top, 10)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.25), value: state.isAnySliderActive)
+                .animation(.easeInOut(duration: 0.25), value: state.pipeline.isAnySliderActive)
                 .ignoresSafeArea(edges: .bottom)
             }
         }
@@ -292,7 +292,7 @@ struct ContentView: View {
             do {
                 exportItem = ExportItem(fileURL: try writeTemporaryExport(exportPayload))
             } catch {
-                state.errorMessage = error.localizedDescription
+                state.pipeline.errorMessage = error.localizedDescription
             }
         }
     }
@@ -322,14 +322,14 @@ struct ContentView: View {
 
     private func handleExportCompletion(_ result: Result<URL, Error>) {
         if case .failure(let error) = result {
-            state.errorMessage = error.localizedDescription
+            state.pipeline.errorMessage = error.localizedDescription
         }
         exportDocument = nil
         exportContentType = .png
     }
 
     private var exportFilename: String {
-        let modeName = state.activeMode.label
+        let modeName = state.transform.activeMode.label
             .replacingOccurrences(of: " ", with: "-")
             .lowercased()
 		return "underpaint-\(modeName)"
@@ -443,7 +443,7 @@ private struct StudioCanvasSurface: View {
     @Binding var showSamplePicker: Bool
 
     var body: some View {
-        if state.compareMode,
+        if state.pipeline.compareMode,
            let beforeImage = state.compareBeforeImage,
            let afterImage = state.compareAfterImage {
             CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
@@ -491,8 +491,8 @@ private struct StudioCanvasChrome: View {
 
             HStack(spacing: 8) {
                 chromeButton(
-                    title: state.compareMode ? "Hide compare" : "Compare",
-                    systemImage: state.compareMode ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
+                    title: state.pipeline.compareMode ? "Hide compare" : "Compare",
+                    systemImage: state.pipeline.compareMode ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
                     isEnabled: state.displayBaseImage != nil,
                     accessibilityID: "chrome.compare",
                     action: toggleCompare
@@ -532,7 +532,7 @@ private struct StudioCanvasChrome: View {
     }
 
     private func toggleCompare() {
-        state.compareMode.toggle()
+        state.pipeline.compareMode.toggle()
     }
 
     private func chromeButton(
@@ -585,14 +585,14 @@ private struct StudioModeDock: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.82)
                     }
-                    .foregroundStyle(state.activeMode == mode ? Color.black : Color.white.opacity(0.9))
+                    .foregroundStyle(state.transform.activeMode == mode ? Color.black : Color.white.opacity(0.9))
                     .frame(minWidth: 72)
                     .frame(height: 52)
-                    .background(modeBackground(isSelected: state.activeMode == mode))
+                    .background(modeBackground(isSelected: state.transform.activeMode == mode))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(mode.label) study")
-                .accessibilityAddTraits(state.activeMode == mode ? .isSelected : [])
+                .accessibilityAddTraits(state.transform.activeMode == mode ? .isSelected : [])
                 .accessibilityIdentifier("mode-dock.\(mode.rawValue)")
             }
         }

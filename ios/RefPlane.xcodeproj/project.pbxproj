@@ -45,6 +45,10 @@
 		54865C4DBC864140A2C83A6E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F160D00F80954B0C9211E7F6 /* Assets.xcassets */; };
 		FA33445566778899AABBCC01 /* chair-spatial.heic in Resources */ = {isa = PBXBuildFile; fileRef = FA33445566778899AABBCC02 /* chair-spatial.heic */; };
 		59B41B79D851484E8F2028BC /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523EB845BCBA42B4BBDC7E12 /* AppState.swift */; };
+		AA11BB2233D44E55F6670001 /* AppState+Depth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB2233D44E55F6670011 /* AppState+Depth.swift */; };
+		AA11BB2233D44E55F6670002 /* AppState+Export.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB2233D44E55F6670012 /* AppState+Export.swift */; };
+		AA11BB2233D44E55F6670003 /* AppState+FocusIsolation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB2233D44E55F6670013 /* AppState+FocusIsolation.swift */; };
+		AA11BB2233D44E55F6670004 /* AppState+TransformPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB2233D44E55F6670014 /* AppState+TransformPresets.swift */; };
 		6256FE8690AA438BAFA74E15 /* ThresholdSliderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9960E48DDC404E14A65578E6 /* ThresholdSliderView.swift */; };
 		6A0D66489A3D486AA65C28D1 /* AboutPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */; };
 		77475E85729846BCB2B25460 /* ErrorToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0493CA914D0B4273902F650E /* ErrorToastView.swift */; };
@@ -138,6 +142,10 @@
 		3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageProcessor.swift; path = Processing/ImageProcessor.swift; sourceTree = "<group>"; };
 		3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ValueSettingsView.swift; path = Views/ValueSettingsView.swift; sourceTree = "<group>"; };
 		523EB845BCBA42B4BBDC7E12 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppState.swift; path = Models/AppState.swift; sourceTree = "<group>"; };
+		AA11BB2233D44E55F6670011 /* AppState+Depth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState+Depth.swift"; path = "Models/AppState+Depth.swift"; sourceTree = "<group>"; };
+		AA11BB2233D44E55F6670012 /* AppState+Export.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState+Export.swift"; path = "Models/AppState+Export.swift"; sourceTree = "<group>"; };
+		AA11BB2233D44E55F6670013 /* AppState+FocusIsolation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState+FocusIsolation.swift"; path = "Models/AppState+FocusIsolation.swift"; sourceTree = "<group>"; };
+		AA11BB2233D44E55F6670014 /* AppState+TransformPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState+TransformPresets.swift"; path = "Models/AppState+TransformPresets.swift"; sourceTree = "<group>"; };
 		632255DE24DC47B99F2567C2 /* RegionCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegionCleaner.swift; path = Processing/RegionCleaner.swift; sourceTree = "<group>"; };
 		6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AboutPrivacyView.swift; path = Views/AboutPrivacyView.swift; sourceTree = "<group>"; };
 		7D7329730C1F74CACF021E22 /* PigmentDecomposerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PigmentDecomposerTests.swift; path = RefPlaneTests/PigmentDecomposerTests.swift; sourceTree = "<group>"; };
@@ -246,6 +254,10 @@
 			children = (
 				9A5CCCFD76564CEA842044F7 /* AppModels.swift */,
 				523EB845BCBA42B4BBDC7E12 /* AppState.swift */,
+				AA11BB2233D44E55F6670011 /* AppState+Depth.swift */,
+				AA11BB2233D44E55F6670012 /* AppState+Export.swift */,
+				AA11BB2233D44E55F6670013 /* AppState+FocusIsolation.swift */,
+				AA11BB2233D44E55F6670014 /* AppState+TransformPresets.swift */,
 				B1C2D3E4F5A6B7C8D9E0F101 /* SpectralData.swift */,
 				FA22AA33BB44CC55DD660001 /* UnlockManager.swift */,
 			);
@@ -490,6 +502,10 @@
 				289C0A7CB43C45138A1973EE /* RefPlaneApp.swift in Sources */,
 				240039E8209342798ACFEEFF /* AppModels.swift in Sources */,
 				59B41B79D851484E8F2028BC /* AppState.swift in Sources */,
+				AA11BB2233D44E55F6670001 /* AppState+Depth.swift in Sources */,
+				AA11BB2233D44E55F6670002 /* AppState+Export.swift in Sources */,
+				AA11BB2233D44E55F6670003 /* AppState+FocusIsolation.swift in Sources */,
+				AA11BB2233D44E55F6670004 /* AppState+TransformPresets.swift in Sources */,
 				E788E13BEB0D4D0FA8C6C2FF /* OklabColorSpace.swift in Sources */,
 				B060BBCBD6FF473F83A23CEA /* KMeansClusterer.swift in Sources */,
 				BF40722118FF4AE6A73E5141 /* RegionCleaner.swift in Sources */,

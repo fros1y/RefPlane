@@ -66,7 +66,7 @@ struct ImageCanvasView: View {
     }
 
     private var inspectedBandSummary: CanvasBandSummary? {
-        guard (state.activeMode == .value || state.activeMode == .color),
+        guard (state.transform.activeMode == .value || state.transform.activeMode == .color),
               let inspectedBand,
               let paletteIndex = state.paletteBands.firstIndex(of: inspectedBand),
               state.paletteColors.indices.contains(paletteIndex)
@@ -114,14 +114,14 @@ struct ImageCanvasView: View {
                     }
                 }
 
-                if state.isProcessing {
+                if state.pipeline.isProcessing {
                     processingOverlay
                 }
 
                 if let inspectedBandSummary {
                     CanvasBandSummaryCard(
                         summary: inspectedBandSummary,
-                        isFocused: state.focusedBands.contains(inspectedBandSummary.band),
+                        isFocused: state.pipeline.focusedBands.contains(inspectedBandSummary.band),
                         onToggleFocus: { state.toggleFocusedBand(inspectedBandSummary.band) },
                         onClose: dismissInspectedBand
                     )
@@ -133,20 +133,20 @@ struct ImageCanvasView: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .onChange(of: state.isProcessing) { _, isProcessing in
+        .onChange(of: state.pipeline.isProcessing) { _, isProcessing in
             if isProcessing {
                 inspectedBand = nil
                 bandTapTracker.reset()
             }
         }
-        .onChange(of: state.activeMode) { _, _ in
+        .onChange(of: state.transform.activeMode) { _, _ in
             inspectedBand = nil
             bandTapTracker.reset()
         }
     }
 
     private var shouldDimCanvas: Bool {
-        state.isProcessing && !state.isSimplifying
+        state.pipeline.isProcessing && !state.pipeline.isSimplifying
     }
 
     private func zoomableCanvas(image: UIImage, containerSize: CGSize) -> some View {
@@ -158,10 +158,10 @@ struct ImageCanvasView: View {
 
         return StudyImageLayer(
             image: image,
-            showsGrid: state.gridConfig.enabled,
-            showsContours: state.contourConfig.enabled
-                && state.depthConfig.enabled
-                && !state.isEditingDepthThreshold
+            showsGrid: state.transform.gridConfig.enabled,
+            showsContours: state.transform.contourConfig.enabled
+                && state.depth.depthConfig.enabled
+                && !state.depth.isEditingDepthThreshold
         )
         .contentShape(Rectangle())
         .scaleEffect(combinedScale)
@@ -238,14 +238,14 @@ struct ImageCanvasView: View {
                 }
         )
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(state.activeMode.label) study canvas")
+        .accessibilityLabel("\(state.transform.activeMode.label) study canvas")
         .accessibilityHint(canvasAccessibilityHint)
         .accessibilityIdentifier("canvas.image")
     }
 
     private var canvasAccessibilityHint: String {
         let isMac = ProcessInfo.processInfo.isiOSAppOnMac || ProcessInfo.processInfo.isMacCatalystApp
-        switch state.activeMode {
+        switch state.transform.activeMode {
         case .value, .color:
             if isMac {
                 return "Pinch to zoom, drag to pan, tap once for swatch info, tap the same swatch again to focus, and double tap empty canvas to reset."
@@ -288,12 +288,12 @@ struct ImageCanvasView: View {
             Color.black.opacity(0.28)
 
             VStack(spacing: 12) {
-                if state.processingIsIndeterminate {
+                if state.pipeline.processingIsIndeterminate {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.1)
                 } else {
-                    ProgressView(value: state.processingProgress)
+                    ProgressView(value: state.pipeline.processingProgress)
                         .tint(.white)
                         .frame(width: 188)
                 }
@@ -317,13 +317,13 @@ struct ImageCanvasView: View {
     }
 
     private var processingDisplayLabel: String {
-        switch state.processingLabel {
+        switch state.pipeline.processingLabel {
         case "Loading…":
             return "Preparing image"
         case "Abstracting…":
             return "Abstracting image"
         case "Processing…":
-            switch state.activeMode {
+            switch state.transform.activeMode {
             case .original:
                 return "Preparing image"
             case .tonal:
@@ -334,7 +334,7 @@ struct ImageCanvasView: View {
                 return "Generating color study"
             }
         default:
-            return state.processingLabel
+            return state.pipeline.processingLabel
         }
     }
 
@@ -374,7 +374,7 @@ struct ImageCanvasView: View {
                 inspectedBand = band
             case .focus(let band):
                 inspectedBand = band
-                if !state.focusedBands.contains(band) {
+                if !state.pipeline.focusedBands.contains(band) {
                     state.toggleFocusedBand(band)
                 }
             case .resetViewport:
@@ -413,7 +413,7 @@ struct ImageCanvasView: View {
         image: UIImage,
         containerSize: CGSize
     ) -> Int? {
-        guard state.activeMode == .value || state.activeMode == .color else {
+        guard state.transform.activeMode == .value || state.transform.activeMode == .color else {
             return nil
         }
 

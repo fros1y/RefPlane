@@ -8,8 +8,8 @@ struct ColorQuantizationSettingsView: View {
             LabeledSlider(
                 label: "Count",
                 value: Binding(
-                    get: { Double(state.colorConfig.numShades) },
-                    set: { state.colorConfig.numShades = Int($0.rounded()) }
+                    get: { Double(state.transform.colorConfig.numShades) },
+                    set: { state.transform.colorConfig.numShades = Int($0.rounded()) }
                 ),
                 range: 2...24,
                 step: 1,
@@ -23,9 +23,9 @@ struct ColorQuantizationSettingsView: View {
 
             QuantizationBiasSlider(
                 value: Binding(
-                    get: { state.colorConfig.quantizationBias },
+                    get: { state.transform.colorConfig.quantizationBias },
                     set: {
-                        state.colorConfig.quantizationBias = QuantizationBias.clamped($0)
+                        state.transform.colorConfig.quantizationBias = QuantizationBias.clamped($0)
                     }
                 ),
                 onEditingChanged: { editing in
@@ -38,8 +38,8 @@ struct ColorQuantizationSettingsView: View {
             LabeledSlider(
                 label: "Group",
                 value: Binding(
-                    get: { state.colorConfig.paletteSpread },
-                    set: { state.colorConfig.paletteSpread = $0 }
+                    get: { state.transform.colorConfig.paletteSpread },
+                    set: { state.transform.colorConfig.paletteSpread = $0 }
                 ),
                 range: 0...1,
                 step: 0.01,
@@ -86,14 +86,14 @@ struct PaletteSelectionSettingsView: View {
                     ForEach(pigments) { pigment in
                         PigmentToggleRow(
                             pigment: pigment,
-                            isEnabled: state.colorConfig.enabledPigmentIDs.contains(pigment.id),
+                            isEnabled: state.transform.colorConfig.enabledPigmentIDs.contains(pigment.id),
                             onToggle: { enabled in
                                 if enabled {
-                                    state.colorConfig.enabledPigmentIDs.insert(pigment.id)
+                                    state.transform.colorConfig.enabledPigmentIDs.insert(pigment.id)
                                 } else {
                                     // Prevent disabling all pigments
-                                    if state.colorConfig.enabledPigmentIDs.count > 1 {
-                                        state.colorConfig.enabledPigmentIDs.remove(pigment.id)
+                                    if state.transform.colorConfig.enabledPigmentIDs.count > 1 {
+                                        state.transform.colorConfig.enabledPigmentIDs.remove(pigment.id)
                                     }
                                 }
                                 pigmentDidChange()
@@ -106,7 +106,7 @@ struct PaletteSelectionSettingsView: View {
                         Text("Tubes")
                             .font(.subheadline)
                         Spacer()
-                        Text("\(state.colorConfig.enabledPigmentIDs.count)")
+                        Text("\(state.transform.colorConfig.enabledPigmentIDs.count)")
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -117,8 +117,8 @@ struct PaletteSelectionSettingsView: View {
             LabeledSlider(
                 label: "Mix Size",
                 value: Binding(
-                    get: { Double(state.colorConfig.maxPigmentsPerMix) },
-                    set: { state.colorConfig.maxPigmentsPerMix = Int($0.rounded()) }
+                    get: { Double(state.transform.colorConfig.maxPigmentsPerMix) },
+                    set: { state.transform.colorConfig.maxPigmentsPerMix = Int($0.rounded()) }
                 ),
                 range: 1...3,
                 step: 1,
@@ -134,22 +134,22 @@ struct PaletteSelectionSettingsView: View {
     private var presetBinding: Binding<PigmentPreset?> {
         Binding<PigmentPreset?>(
             get: {
-                PigmentPreset.allCases.first { $0.pigmentIDs == state.colorConfig.enabledPigmentIDs }
+                PigmentPreset.allCases.first { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }
             },
             set: { newPreset in
                 if let preset = newPreset {
                     // Switching to a named preset — save current as custom first
                     // (only if current selection doesn't already match a preset)
-                    if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.colorConfig.enabledPigmentIDs }) == nil {
-                        state.colorConfig.saveCustomPigmentIDs()
+                    if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }) == nil {
+                        state.transform.colorConfig.saveCustomPigmentIDs()
                     }
-                    state.colorConfig.enabledPigmentIDs = preset.pigmentIDs
-                    state.colorConfig.saveEnabledPigmentIDs()
+                    state.transform.colorConfig.enabledPigmentIDs = preset.pigmentIDs
+                    state.transform.colorConfig.saveEnabledPigmentIDs()
                     state.scheduleProcessing()
                 } else {
                     // "Custom" selected — restore saved custom palette
-                    state.colorConfig.enabledPigmentIDs = ColorConfig.loadCustomPigmentIDs()
-                    state.colorConfig.saveEnabledPigmentIDs()
+                    state.transform.colorConfig.enabledPigmentIDs = ColorConfig.loadCustomPigmentIDs()
+                    state.transform.colorConfig.saveEnabledPigmentIDs()
                     state.scheduleProcessing()
                 }
             }
@@ -158,10 +158,10 @@ struct PaletteSelectionSettingsView: View {
 
     /// Save current selection and trigger reprocessing.
     private func pigmentDidChange() {
-        state.colorConfig.saveEnabledPigmentIDs()
+        state.transform.colorConfig.saveEnabledPigmentIDs()
         // Also keep custom palette in sync when in custom mode
-        if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.colorConfig.enabledPigmentIDs }) == nil {
-            state.colorConfig.saveCustomPigmentIDs()
+        if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }) == nil {
+            state.transform.colorConfig.saveCustomPigmentIDs()
         }
         state.scheduleProcessing()
     }
@@ -174,7 +174,7 @@ struct ColorSettingsView: View {
         VStack(spacing: 14) {
             ColorQuantizationSettingsView()
 
-            if state.activeMode == .color {
+            if state.transform.activeMode == .color {
                 Divider()
                 PaletteSelectionSettingsView()
             }

@@ -15,7 +15,7 @@ func originalModeExportPrefersFullResolutionSource() {
     state.fullResolutionOriginalImage = fullResolution
     state.originalImage = workingCopy
     state.sourceImage = workingCopy
-    state.activeMode = .original
+    state.transform.activeMode = .original
 
     let exported = state.exportCurrentImage()
 
@@ -41,7 +41,7 @@ func exportedImagePayloadAlwaysUsesPNGAndRenderedImageDimensions() throws {
     let state = AppState()
 
     state.loadImage(ImportedImagePayload(image: sourceImage, metadata: sourceMetadata))
-    state.activeMode = .value
+    state.transform.activeMode = .value
     state.processedImage = processedImage
 
     let exportPayload = try #require(state.exportCurrentImagePayload())
@@ -66,23 +66,23 @@ func currentSettingsDescriptionIncludesAllPipelineSectionsAndPigments() {
     let state = AppState()
 
     state.setMode(.value)
-    state.depthConfig.enabled = true
-    state.depthConfig.backgroundMode = .blur
-    state.abstractionStrength = 0.65
-    state.valueConfig.grayscaleConversion = .average
-    state.valueConfig.levels = 5
-    state.valueConfig.quantizationBias = -0.4
-    state.colorConfig.paletteSelectionEnabled = true
-    state.colorConfig.numShades = 6
-    state.colorConfig.quantizationBias = 0.5
-    state.colorConfig.maxPigmentsPerMix = 2
-    state.colorConfig.minConcentration = 0.125
-    state.colorConfig.enabledPigmentIDs = [
+    state.depth.depthConfig.enabled = true
+    state.depth.depthConfig.backgroundMode = .blur
+    state.transform.abstractionStrength = 0.65
+    state.transform.valueConfig.grayscaleConversion = .average
+    state.transform.valueConfig.levels = 5
+    state.transform.valueConfig.quantizationBias = -0.4
+    state.transform.colorConfig.paletteSelectionEnabled = true
+    state.transform.colorConfig.numShades = 6
+    state.transform.colorConfig.quantizationBias = 0.5
+    state.transform.colorConfig.maxPigmentsPerMix = 2
+    state.transform.colorConfig.minConcentration = 0.125
+    state.transform.colorConfig.enabledPigmentIDs = [
         "cadmium_yellow_light",
         "ultramarine_blue"
     ]
-    state.contourConfig.enabled = true
-    state.gridConfig.enabled = true
+    state.transform.contourConfig.enabled = true
+    state.transform.gridConfig.enabled = true
     state.paletteColors = [
         Color(red: 0.91, green: 0.82, blue: 0.61),
         Color(red: 0.05, green: 0.05, blue: 0.05)

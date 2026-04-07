@@ -325,7 +325,7 @@ struct LabeledSlider: View {
                     if editing {
                         valueAtDragStart = value
                     }
-                    state.sliderEditingChanged(editing)
+                    state.pipeline.sliderEditingChanged(editing)
                     onEditingChanged?(editing)
                     if !editing {
                         valueAtDragStart = nil
@@ -370,7 +370,7 @@ struct QuantizationBiasSlider: View {
                     range: QuantizationBias.range,
                     step: QuantizationBias.step,
                     onEditingChanged: { editing in
-                        state.sliderEditingChanged(editing)
+                        state.pipeline.sliderEditingChanged(editing)
                         onEditingChanged?(editing)
                     }
                 )

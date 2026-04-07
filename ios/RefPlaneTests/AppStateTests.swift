@@ -15,14 +15,14 @@ func saveCurrentTransformPresetAddsPresetAndSelectsIt() throws {
     defer { clearTransformPresetStore() }
 
     let state = AppState()
-    state.gridConfig.enabled = true
-    state.gridConfig.divisions = 7
+    state.transform.gridConfig.enabled = true
+    state.transform.gridConfig.divisions = 7
 
     try state.saveCurrentTransformPreset(named: "Studio A")
 
-    #expect(state.savedTransformPresets.count == 1)
-    #expect(state.savedTransformPresets[0].name == "Studio A")
-    #expect(state.selectedTransformPresetSelection == .saved(state.savedTransformPresets[0].id))
+    #expect(state.transform.savedTransformPresets.count == 1)
+    #expect(state.transform.savedTransformPresets[0].name == "Studio A")
+    #expect(state.transform.selectedTransformPresetSelection == .saved(state.transform.savedTransformPresets[0].id))
 }
 
 @MainActor
@@ -34,10 +34,10 @@ func previousSettingsOptionHiddenWhenSnapshotMatchesSavedPreset() throws {
     let state = AppState()
 
     try state.saveCurrentTransformPreset(named: "Balanced")
-    state.selectTransformPreset(.saved(state.savedTransformPresets[0].id))
+    state.selectTransformPreset(.saved(state.transform.savedTransformPresets[0].id))
 
     #expect(state.shouldShowPreviousSettingsOption == false)
-    #expect(state.availableTransformPresetSelections.contains(.saved(state.savedTransformPresets[0].id)))
+    #expect(state.availableTransformPresetSelections.contains(.saved(state.transform.savedTransformPresets[0].id)))
     #expect(!state.availableTransformPresetSelections.contains(.previous))
 }
 
@@ -49,21 +49,21 @@ func selectingDefaultPresetRestoresDefaultTransformationValues() {
 
     let state = AppState()
 
-    state.abstractionStrength = 0.9
-    state.gridConfig.enabled = true
-    state.gridConfig.divisions = 9
-    state.valueConfig.levels = 5
-    state.colorConfig.paletteSpread = 0
-    state.depthConfig.enabled = true
+    state.transform.abstractionStrength = 0.9
+    state.transform.gridConfig.enabled = true
+    state.transform.gridConfig.divisions = 9
+    state.transform.valueConfig.levels = 5
+    state.transform.colorConfig.paletteSpread = 0
+    state.depth.depthConfig.enabled = true
 
     state.selectTransformPreset(.appDefault)
 
-    #expect(state.abstractionStrength == 0.5)
-    #expect(state.gridConfig.enabled == false)
-    #expect(state.gridConfig.divisions == 4)
-    #expect(state.valueConfig.levels == 3)
-    #expect(state.colorConfig.paletteSpread == 1)
-    #expect(state.depthConfig.enabled == false)
+    #expect(state.transform.abstractionStrength == 0.5)
+    #expect(state.transform.gridConfig.enabled == false)
+    #expect(state.transform.gridConfig.divisions == 4)
+    #expect(state.transform.valueConfig.levels == 3)
+    #expect(state.transform.colorConfig.paletteSpread == 1)
+    #expect(state.depth.depthConfig.enabled == false)
 }
 
 @MainActor
@@ -94,7 +94,7 @@ func resetAbstractionCancelsInflightAbstractionTask() async throws {
     await Task.yield()
 
     #expect(state.abstractedImage == nil)
-    #expect(state.processingLabel == "Processing…")
+    #expect(state.pipeline.processingLabel == "Processing…")
 }
 
 @MainActor
@@ -124,9 +124,9 @@ func selectingFocusedBandChangesDisplayedImage() async throws {
     )
 
     state.sourceImage = processedImage
-    state.activeMode = .color
+    state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
     state.toggleFocusedBand(1)
 
@@ -170,14 +170,14 @@ func selectingMultipleFocusedBandsSubduesOnlyUnfocusedPixels() async throws {
     )
 
     state.sourceImage = processedImage
-    state.activeMode = .color
+    state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
     state.toggleFocusedBand(0)
     state.toggleFocusedBand(2)
 
-    #expect(state.focusedBands == Set([0, 2]))
+    #expect(state.pipeline.focusedBands == Set([0, 2]))
 
     let pixels = state.currentDisplayImage?.toPixelData()?.data
     #expect(pixels != nil)
@@ -227,18 +227,18 @@ func processingResultsClearFocusedBands() async throws {
     )
 
     state.sourceImage = firstImage
-    state.activeMode = .color
+    state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
     state.toggleFocusedBand(1)
-    #expect(state.focusedBands == Set([1]))
+    #expect(state.pipeline.focusedBands == Set([1]))
 
     state.sourceImage = secondImage
     state.triggerProcessing()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
-    #expect(state.focusedBands.isEmpty)
+    #expect(state.pipeline.focusedBands.isEmpty)
     let pixels = state.currentDisplayImage?.toPixelData()?.data
     #expect(pixels?[0] == 0)
     #expect(pixels?[1] == 255)
@@ -292,16 +292,16 @@ func setModeClearsProcessedState() {
     state.processedImage = img
     state.paletteColors = [.red]
     state.paletteBands = [0]
-    state.focusedBands = [0]
-    state.activeMode = .value
+    state.pipeline.focusedBands = [0]
+    state.transform.activeMode = .value
 
     state.setMode(.tonal)
 
-    #expect(state.activeMode == .tonal)
+    #expect(state.transform.activeMode == .tonal)
     #expect(state.processedImage == nil)
     #expect(state.paletteColors.isEmpty)
     #expect(state.paletteBands.isEmpty)
-    #expect(state.focusedBands.isEmpty)
+    #expect(state.pipeline.focusedBands.isEmpty)
 }
 
 @MainActor
@@ -315,7 +315,7 @@ func setModeToSameModeIsNoOp() {
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
     state.processedImage = img
     state.paletteColors = [.red]
-    state.activeMode = .value
+    state.transform.activeMode = .value
 
     state.setMode(.value)  // same mode — guard returns early
 
@@ -357,7 +357,7 @@ func currentDisplayImageShowsBaseImageInOriginalMode() {
 
     state.sourceImage    = source
     state.processedImage = processed
-    state.activeMode     = .original
+    state.transform.activeMode     = .original
 
     #expect(state.currentDisplayImage === source)
 }
@@ -389,9 +389,9 @@ func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
     )
 
     state.sourceImage = processedImage
-    state.activeMode = .color
+    state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
     #expect(state.compareAfterImage === state.currentDisplayImage)
 
@@ -421,12 +421,12 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     )
 
     state.sourceImage         = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.abstractionStrength  = 0.5
+    state.transform.abstractionStrength  = 0.5
 
     state.applyAbstraction()
 
     // isSimplifying should be true while the abstraction task is running
-    #expect(state.isSimplifying == true)
+    #expect(state.pipeline.isSimplifying == true)
 
     let result = TestImageFactory.makeSolid(width: 20, height: 20, color: .blue)
     // Yield to let the Task start and reach the continuation
@@ -436,10 +436,10 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     }
     await abstractor.resume(with: result)
     // Allow the MainActor continuation to run
-    for _ in 0..<50 where state.isSimplifying { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isSimplifying { await Task.yield() }
 
     // isSimplifying should be cleared once abstraction completes
-    #expect(state.isSimplifying == false)
+    #expect(state.pipeline.isSimplifying == false)
 }
 
 @MainActor
@@ -469,13 +469,13 @@ func isSimplifyingIsFalseAfterResetAbstraction() {
     )
 
     state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.abstractionStrength = 0.5
+    state.transform.abstractionStrength = 0.5
     state.applyAbstraction()
-    #expect(state.isSimplifying == true)
+    #expect(state.pipeline.isSimplifying == true)
 
     state.resetAbstraction()
 
-    #expect(state.isSimplifying == false)
+    #expect(state.pipeline.isSimplifying == false)
 }
 
 @MainActor
@@ -491,16 +491,16 @@ func computeDepthMapUsesEmbeddedDepthAndSkipsML() async throws {
     let fakeDepth = TestImageFactory.makeHorizontalDepthRamp(width: 50, height: 50)
 
     state.loadImage(ImportedImagePayload(image: baseImage, embeddedDepthMap: fakeDepth))
-    state.depthConfig.enabled = true
+    state.depth.depthConfig.enabled = true
     state.computeDepthMap()
 
     try await Task.sleep(for: .milliseconds(200))
 
     #expect(mlWasCalled == false)
-    #expect(state.depthSource == .embedded)
-    #expect(state.depthMap != nil)
-    #expect(state.depthMap?.cgImage?.width == 100)
-    #expect(state.depthMap?.cgImage?.height == 100)
+    #expect(state.depth.depthSource == .embedded)
+    #expect(state.depth.depthMap != nil)
+    #expect(state.depth.depthMap?.cgImage?.width == 100)
+    #expect(state.depth.depthMap?.cgImage?.height == 100)
 }
 
 @MainActor
@@ -515,12 +515,12 @@ func loadImageClearsDepthSourceAndEmbeddedMap() {
             embeddedDepthMap: fakeDepth
         )
     )
-    state.depthSource = .embedded
+    state.depth.depthSource = .embedded
 
     state.loadImage(TestImageFactory.makeSolid(width: 100, height: 100, color: .red))
 
-    #expect(state.embeddedDepthMap == nil)
-    #expect(state.depthSource == nil)
+    #expect(state.depth.embeddedDepthMap == nil)
+    #expect(state.depth.depthSource == nil)
 }
 
 @MainActor
@@ -587,8 +587,8 @@ func legacyKuwaharaPresetFallsBackToBalancedAbstraction() throws {
 
     let state = AppState()
 
-    #expect(state.previousTransformSnapshot?.abstractionMethod == .apisr)
-    #expect(state.abstractionMethod == .apisr)
+    #expect(state.transform.previousTransformSnapshot?.abstractionMethod == .apisr)
+    #expect(state.transform.abstractionMethod == .apisr)
 }
 
 // MARK: -

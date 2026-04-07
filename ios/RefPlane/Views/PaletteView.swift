@@ -25,7 +25,7 @@ struct PaletteView: View {
                         section: section,
                         colors: colors(for: section),
                         recipes: recipes(for: section),
-                        isFocused: state.focusedBands.contains(section.band),
+                        isFocused: state.pipeline.focusedBands.contains(section.band),
                         onToggleFocus: { state.toggleFocusedBand(section.band) }
                     )
                 }
