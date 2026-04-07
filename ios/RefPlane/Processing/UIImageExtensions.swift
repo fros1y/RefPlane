@@ -21,12 +21,9 @@ extension UIImage {
 
     /// Async version of scaledDown that performs rendering off the main/UI thread.
     func scaledDownAsync(toMaxDimension maxDimension: CGFloat) async -> UIImage {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let result = self.scaledDown(toMaxDimension: maxDimension)
-                continuation.resume(returning: result)
-            }
-        }
+        await Task.detached(priority: .userInitiated) {
+            self.scaledDown(toMaxDimension: maxDimension)
+        }.value
     }
 
     /// Crop using a normalized rect (0..1 in both axes relative to image size).

@@ -1,13 +1,24 @@
 import SwiftUI
+import ImageIO
 
 private struct SampleItem: Identifiable {
     let id: String
     let displayName: String
     let assetName: String
     let description: String
+    var bundledFilename: String? = nil
+    var bundledTypeIdentifier: String? = nil
 }
 
 private let sampleImages: [SampleItem] = [
+    SampleItem(
+        id: "chair-spatial",
+        displayName: "Chair Spatial",
+        assetName: "sample-statue",
+        description: "Spatial HEIC sample with embedded depth/disparity for depth-aware workflows",
+        bundledFilename: "chair-spatial",
+        bundledTypeIdentifier: "public.heic"
+    ),
     SampleItem(
         id: "statue",
         displayName: "Sculpture",
@@ -62,8 +73,8 @@ struct SampleImagePickerView: View {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(sampleImages) { sample in
                         SampleThumbnailButton(sample: sample) {
-                            if let image = UIImage(named: sample.assetName) {
-                                onImageSelected(ImportedImagePayload(image: image))
+                            if let payload = payloadForSample(sample) {
+                                onImageSelected(payload)
                                 dismiss()
                             } else {
                                 failedSample = sample
@@ -100,6 +111,46 @@ struct SampleImagePickerView: View {
             }
         }
     }
+
+    private func payloadForSample(_ sample: SampleItem) -> ImportedImagePayload? {
+        if let filename = sample.bundledFilename,
+           let url = Bundle.main.url(forResource: filename, withExtension: "heic"),
+           let data = try? Data(contentsOf: url),
+           let image = UIImage(data: data) {
+            let metadata = readMetadata(
+                from: data,
+                fallbackTypeIdentifier: sample.bundledTypeIdentifier ?? "public.heic"
+            )
+            let embeddedDepth = DepthEstimator.extractEmbeddedDepth(from: data)
+            return ImportedImagePayload(
+                image: image,
+                metadata: metadata,
+                embeddedDepthMap: embeddedDepth
+            )
+        }
+
+        guard let image = UIImage(named: sample.assetName) else { return nil }
+        return ImportedImagePayload(image: image)
+    }
+
+    private func readMetadata(
+        from data: Data,
+        fallbackTypeIdentifier: String
+    ) -> SourceImageMetadata {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return SourceImageMetadata(
+                properties: [:],
+                uniformTypeIdentifier: fallbackTypeIdentifier
+            )
+        }
+
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] ?? [:]
+        let typeIdentifier = (CGImageSourceGetType(source) as String?) ?? fallbackTypeIdentifier
+        return SourceImageMetadata(
+            properties: properties,
+            uniformTypeIdentifier: typeIdentifier
+        )
+    }
 }
 
 private struct SampleThumbnailButton: View {
@@ -110,7 +161,7 @@ private struct SampleThumbnailButton: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 10) {
                 GeometryReader { proxy in
-                    Image(sample.assetName)
+                    thumbnailImage
                         .resizable()
                         .scaledToFill()
                         .frame(width: proxy.size.width, height: 132)
@@ -144,6 +195,17 @@ private struct SampleThumbnailButton: View {
         .accessibilityHint(sample.description)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("sample-picker.\(sample.id)")
+    }
+
+    private var thumbnailImage: Image {
+        if let filename = sample.bundledFilename,
+           let url = Bundle.main.url(forResource: filename, withExtension: "heic"),
+           let data = try? Data(contentsOf: url),
+           let image = UIImage(data: data) {
+            return Image(uiImage: image)
+        }
+
+        return Image(sample.assetName)
     }
 }
 

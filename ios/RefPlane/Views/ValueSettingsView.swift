@@ -8,13 +8,13 @@ struct ValueSettingsView: View {
             LabeledSlider(
                 label: "Count",
                 value: Binding(
-                    get: { Double(state.valueConfig.levels) },
+                    get: { Double(state.transform.valueConfig.levels) },
                     set: { newVal in
                         let level = Int(newVal.rounded())
-                        state.valueConfig.levels = level
-                        state.valueConfig.thresholds = QuantizationBias.thresholds(
+                        state.transform.valueConfig.levels = level
+                        state.transform.valueConfig.thresholds = QuantizationBias.thresholds(
                             for: level,
-                            bias: state.valueConfig.quantizationBias
+                            bias: state.transform.valueConfig.quantizationBias
                         )
                     }
                 ),
@@ -30,15 +30,15 @@ struct ValueSettingsView: View {
 
             QuantizationBiasSlider(
                 value: Binding(
-                    get: { state.valueConfig.quantizationBias },
+                    get: { state.transform.valueConfig.quantizationBias },
                     set: { newBias in
                         let clampedBias = QuantizationBias.clamped(newBias)
-                        state.valueConfig.quantizationBias = clampedBias
-                        state.valueConfig.distribution = QuantizationBias.distribution(
+                        state.transform.valueConfig.quantizationBias = clampedBias
+                        state.transform.valueConfig.distribution = QuantizationBias.distribution(
                             for: clampedBias
                         )
-                        state.valueConfig.thresholds = QuantizationBias.thresholds(
-                            for: state.valueConfig.levels,
+                        state.transform.valueConfig.thresholds = QuantizationBias.thresholds(
+                            for: state.transform.valueConfig.levels,
                             bias: clampedBias
                         )
                     }
@@ -57,20 +57,21 @@ struct ValueSettingsView: View {
 
                 ThresholdSliderView(
                     thresholds: Binding(
-                        get: { state.valueConfig.thresholds },
+                        get: { state.transform.valueConfig.thresholds },
                         set: {
-                            state.valueConfig.thresholds = $0
+                            state.transform.valueConfig.thresholds = $0
                             // Any manual adjustment switches to Custom
-                            if state.valueConfig.distribution != .custom {
-                                state.valueConfig.distribution = .custom
+                            if state.transform.valueConfig.distribution != .custom {
+                                state.transform.valueConfig.distribution = .custom
                             }
                         }
                     ),
-                    levels: state.valueConfig.levels,
+                    levels: state.transform.valueConfig.levels,
                     colorForLevel: { level, total in
                         let t = total > 1 ? Double(level) / Double(total - 1) : 0.5
                         return Color(white: t)
                     },
+                    onEditingChanged: state.pipeline.sliderEditingChanged,
                     onEditingEnded: {
                         state.scheduleProcessing()
                     }

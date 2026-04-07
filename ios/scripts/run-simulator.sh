@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PROJECT="$REPO_ROOT/ios/RefPlane.xcodeproj"
 SCHEME="RefPlane"
-BUNDLE_ID="com.refplane.app"
+BUNDLE_ID="net.galese.understudy"
 SIM_NAME="${1:-iPhone 16}"
 
 # ── 1. Find a suitable simulator (prefer already-booted) ────────────────────

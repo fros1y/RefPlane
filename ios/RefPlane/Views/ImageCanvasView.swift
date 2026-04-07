@@ -1,5 +1,50 @@
 import SwiftUI
 
+enum CanvasBandTapAction: Equatable {
+    case inspect(Int?)
+    case focus(Int)
+    case resetViewport
+}
+
+struct CanvasBandTapTracker {
+    struct Entry: Equatable {
+        let band: Int?
+        let timestamp: TimeInterval
+    }
+
+    static let defaultRepeatWindow: TimeInterval = 0.45
+
+    let repeatWindow: TimeInterval
+    private(set) var lastTap: Entry?
+
+    init(
+        repeatWindow: TimeInterval = Self.defaultRepeatWindow,
+        lastTap: Entry? = nil
+    ) {
+        self.repeatWindow = repeatWindow
+        self.lastTap = lastTap
+    }
+
+    mutating func action(for band: Int?, at timestamp: TimeInterval) -> CanvasBandTapAction {
+        if let lastTap,
+           timestamp - lastTap.timestamp <= repeatWindow,
+           lastTap.band == band {
+            self.lastTap = nil
+            if let band {
+                return .focus(band)
+            }
+            return .resetViewport
+        }
+
+        lastTap = Entry(band: band, timestamp: timestamp)
+        return .inspect(band)
+    }
+
+    mutating func reset() {
+        lastTap = nil
+    }
+}
+
 struct ImageCanvasView: View {
     @Environment(AppState.self) private var state
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -12,15 +57,18 @@ struct ImageCanvasView: View {
     @State private var currentScale: CGFloat = 1.0
     @State private var currentOffset: CGSize = .zero
     @State private var isBreathing = false
+    @State private var inspectedBand: Int? = nil
+    @State private var longPressLocation: CGPoint? = nil
+    @State private var bandTapTracker = CanvasBandTapTracker()
 
     private var displayImage: UIImage? {
         state.currentDisplayImage
     }
 
-    private var focusedBandSummary: CanvasBandSummary? {
-        guard (state.activeMode == .value || state.activeMode == .color),
-              let isolatedBand = state.isolatedBand,
-              let paletteIndex = state.paletteBands.firstIndex(of: isolatedBand),
+    private var inspectedBandSummary: CanvasBandSummary? {
+        guard (state.transform.activeMode == .value || state.transform.activeMode == .color),
+              let inspectedBand,
+              let paletteIndex = state.paletteBands.firstIndex(of: inspectedBand),
               state.paletteColors.indices.contains(paletteIndex)
         else {
             return nil
@@ -29,12 +77,12 @@ struct ImageCanvasView: View {
         let recipe = state.pigmentRecipes.flatMap { recipes in
             recipes.indices.contains(paletteIndex) ? recipes[paletteIndex] : nil
         }
-        let title = recipe?.components.max(by: {
-            $0.concentration < $1.concentration
-        })?.pigmentName ?? "Swatch"
+        let title = PaletteColorNamer.name(for: state.paletteColors[paletteIndex])
+            ?? recipe.map { PaletteColorNamer.name(for: $0.predictedColor) }
+            ?? "Swatch"
 
         return CanvasBandSummary(
-            band: isolatedBand,
+            band: inspectedBand,
             title: title,
             color: state.paletteColors[paletteIndex],
             recipe: recipe
@@ -66,14 +114,16 @@ struct ImageCanvasView: View {
                     }
                 }
 
-                if state.isProcessing {
+                if state.pipeline.isProcessing {
                     processingOverlay
                 }
 
-                if let focusedBandSummary {
+                if let inspectedBandSummary {
                     CanvasBandSummaryCard(
-                        summary: focusedBandSummary,
-                        onClose: clearFocusedBand
+                        summary: inspectedBandSummary,
+                        isFocused: state.pipeline.focusedBands.contains(inspectedBandSummary.band),
+                        onToggleFocus: { state.toggleFocusedBand(inspectedBandSummary.band) },
+                        onClose: dismissInspectedBand
                     )
                     .padding(.horizontal, 20)
                     .padding(.top, 90)
@@ -83,10 +133,20 @@ struct ImageCanvasView: View {
             }
         }
         .environment(\.colorScheme, .dark)
+        .onChange(of: state.pipeline.isProcessing) { _, isProcessing in
+            if isProcessing {
+                inspectedBand = nil
+                bandTapTracker.reset()
+            }
+        }
+        .onChange(of: state.transform.activeMode) { _, _ in
+            inspectedBand = nil
+            bandTapTracker.reset()
+        }
     }
 
     private var shouldDimCanvas: Bool {
-        state.isProcessing && !state.isSimplifying
+        state.pipeline.isProcessing && !state.pipeline.isSimplifying
     }
 
     private func zoomableCanvas(image: UIImage, containerSize: CGSize) -> some View {
@@ -98,10 +158,10 @@ struct ImageCanvasView: View {
 
         return StudyImageLayer(
             image: image,
-            showsGrid: state.gridConfig.enabled,
-            showsContours: state.contourConfig.enabled
-                && state.depthConfig.enabled
-                && !state.isEditingDepthThreshold
+            showsGrid: state.transform.gridConfig.enabled,
+            showsContours: state.transform.contourConfig.enabled
+                && state.depth.depthConfig.enabled
+                && !state.depth.isEditingDepthThreshold
         )
         .contentShape(Rectangle())
         .scaleEffect(combinedScale)
@@ -114,6 +174,29 @@ struct ImageCanvasView: View {
                         image: image,
                         containerSize: containerSize
                     )
+                }
+        )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if longPressLocation == nil {
+                        longPressLocation = value.location
+                    }
+                }
+                .onEnded { _ in
+                    longPressLocation = nil
+                }
+        )
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.4)
+                .onEnded { _ in
+                    if let location = longPressLocation {
+                        handleLongPress(
+                            at: location,
+                            image: image,
+                            containerSize: containerSize
+                        )
+                    }
                 }
         )
         .gesture(
@@ -154,11 +237,28 @@ struct ImageCanvasView: View {
                     )
                 }
         )
-        .onTapGesture(count: 2, perform: resetViewport)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(state.activeMode.label) study canvas")
-        .accessibilityHint("Pinch to zoom, drag to pan, and double tap to reset.")
+        .accessibilityLabel("\(state.transform.activeMode.label) study canvas")
+        .accessibilityHint(canvasAccessibilityHint)
         .accessibilityIdentifier("canvas.image")
+    }
+
+    private var canvasAccessibilityHint: String {
+        let isMac = ProcessInfo.processInfo.isiOSAppOnMac || ProcessInfo.processInfo.isMacCatalystApp
+        switch state.transform.activeMode {
+        case .value, .color:
+            if isMac {
+                return "Pinch to zoom, drag to pan, tap once for swatch info, tap the same swatch again to toggle focus, and double tap empty canvas to reset."
+            } else {
+                return "Pinch to zoom, drag to pan, tap once for swatch info, long press a swatch to toggle focus, and tap empty canvas to reset."
+            }
+        case .original, .tonal:
+            if isMac {
+                return "Pinch to zoom, drag to pan, and double tap to reset."
+            } else {
+                return "Pinch to zoom, drag to pan, and tap to reset."
+            }
+        }
     }
 
     private func clampedOffset(_ offset: CGSize, scale: CGFloat, image: UIImage, container: CGSize) -> CGSize {
@@ -188,12 +288,12 @@ struct ImageCanvasView: View {
             Color.black.opacity(0.28)
 
             VStack(spacing: 12) {
-                if state.processingIsIndeterminate {
+                if state.pipeline.processingIsIndeterminate {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.1)
                 } else {
-                    ProgressView(value: state.processingProgress)
+                    ProgressView(value: state.pipeline.processingProgress)
                         .tint(.white)
                         .frame(width: 188)
                 }
@@ -217,13 +317,13 @@ struct ImageCanvasView: View {
     }
 
     private var processingDisplayLabel: String {
-        switch state.processingLabel {
+        switch state.pipeline.processingLabel {
         case "Loading…":
             return "Preparing image"
         case "Abstracting…":
             return "Abstracting image"
         case "Processing…":
-            switch state.activeMode {
+            switch state.transform.activeMode {
             case .original:
                 return "Preparing image"
             case .tonal:
@@ -234,7 +334,7 @@ struct ImageCanvasView: View {
                 return "Generating color study"
             }
         default:
-            return state.processingLabel
+            return state.pipeline.processingLabel
         }
     }
 
@@ -255,8 +355,64 @@ struct ImageCanvasView: View {
         image: UIImage,
         containerSize: CGSize
     ) {
-        guard state.activeMode == .value || state.activeMode == .color else {
-            return
+        let band = tappedBand(
+            at: location,
+            image: image,
+            containerSize: containerSize
+        )
+
+        let isMac = ProcessInfo.processInfo.isiOSAppOnMac || ProcessInfo.processInfo.isMacCatalystApp
+        
+        if isMac {
+            let action = bandTapTracker.action(
+                for: band,
+                at: ProcessInfo.processInfo.systemUptime
+            )
+
+            switch action {
+            case .inspect(let band):
+                inspectedBand = band
+            case .focus(let band):
+                inspectedBand = band
+                state.toggleFocusedBand(band)
+            case .resetViewport:
+                inspectedBand = nil
+                resetViewport()
+            }
+        } else {
+            if let validBand = band {
+                inspectedBand = validBand
+            } else {
+                inspectedBand = nil
+                resetViewport()
+            }
+        }
+    }
+
+    private func handleLongPress(
+        at location: CGPoint,
+        image: UIImage,
+        containerSize: CGSize
+    ) {
+        let band = tappedBand(
+            at: location,
+            image: image,
+            containerSize: containerSize
+        )
+
+        if let validBand = band {
+            inspectedBand = validBand
+            state.toggleFocusedBand(validBand)
+        }
+    }
+
+    private func tappedBand(
+        at location: CGPoint,
+        image: UIImage,
+        containerSize: CGSize
+    ) -> Int? {
+        guard state.transform.activeMode == .value || state.transform.activeMode == .color else {
+            return nil
         }
 
         let imageRect = transformedImageRect(
@@ -268,15 +424,14 @@ struct ImageCanvasView: View {
         guard imageRect.width > 0, imageRect.height > 0,
               imageRect.contains(location)
         else {
-            state.clearIsolatedBandSelection()
-            return
+            return nil
         }
 
         let normalizedPoint = CGPoint(
             x: (location.x - imageRect.minX) / imageRect.width,
             y: (location.y - imageRect.minY) / imageRect.height
         )
-        state.toggleIsolatedBand(atNormalizedPoint: normalizedPoint)
+        return state.band(atNormalizedPoint: normalizedPoint)
     }
 
     private func transformedImageRect(
@@ -333,8 +488,9 @@ struct ImageCanvasView: View {
         )
     }
 
-    private func clearFocusedBand() {
-        state.clearIsolatedBandSelection()
+    private func dismissInspectedBand() {
+        inspectedBand = nil
+        bandTapTracker.reset()
     }
 
     private func openPhotoPicker() {
@@ -355,11 +511,13 @@ private struct CanvasBandSummary {
 
 private struct CanvasBandSummaryCard: View {
     let summary: CanvasBandSummary
+    let isFocused: Bool
+    let onToggleFocus: () -> Void
     let onClose: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(summary.color)
                     .frame(width: 44, height: 36)
@@ -371,19 +529,31 @@ private struct CanvasBandSummaryCard: View {
                 Text(summary.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
 
                 Spacer(minLength: 8)
 
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.08), in: Circle())
+                HStack(spacing: 8) {
+                    Button(action: onToggleFocus) {
+                        FocusPill(isFocused: isFocused)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isFocused ? "Remove focus from swatch" : "Focus swatch")
+
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.08), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Hide swatch")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Hide swatch")
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             if let recipe = summary.recipe {
@@ -392,7 +562,7 @@ private struct CanvasBandSummaryCard: View {
             }
         }
         .padding(14)
-        .frame(width: 260, alignment: .leading)
+        .frame(maxWidth: 320, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -428,6 +598,7 @@ struct StudyImageLayer: View {
 
 private struct CanvasEmptyStateCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(UnlockManager.self) private var unlockManager
 
     let isBreathing: Bool
     let onOpenPhoto: () -> Void
@@ -458,11 +629,15 @@ private struct CanvasEmptyStateCard: View {
 
             VStack(spacing: 12) {
                 Button(action: onOpenPhoto) {
-                    Label("Choose Photo", systemImage: "photo")
+                    Label(
+                        unlockManager.isUnlocked ? "Choose Photo" : "Unlock to Choose Photo",
+                        systemImage: unlockManager.isUnlocked ? "photo" : "lock.fill"
+                    )
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 52)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel(unlockManager.isUnlocked ? "Choose Photo" : "Choose Photo (requires unlock)")
                 .accessibilityIdentifier("canvas.empty.library")
 
                 Button(action: onOpenSamples) {
@@ -494,6 +669,7 @@ private struct CanvasEmptyStateCard: View {
         showSamplePicker: .constant(false)
     )
     .environment(AppState())
+    .environment(UnlockManager())
 }
 
 private struct ImageCanvasPreviewHarness: View {
@@ -522,6 +698,7 @@ private struct ImageCanvasPreviewHarness: View {
             showSamplePicker: .constant(false)
         )
         .environment(state)
+        .environment(UnlockManager())
     }
 }
 

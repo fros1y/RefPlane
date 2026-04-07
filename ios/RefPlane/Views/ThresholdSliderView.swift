@@ -6,6 +6,7 @@ struct ThresholdSliderView: View {
     @Binding var thresholds: [Double]
     let levels: Int
     let colorForLevel: (Int, Int) -> Color
+    var onEditingChanged: ((Bool) -> Void)? = nil
     var onEditingEnded: (() -> Void)? = nil
 
     var body: some View {
@@ -18,6 +19,7 @@ struct ThresholdSliderView: View {
             colorForLevel: { level in
                 colorForLevel(level, max(1, levels))
             },
+            onEditingChanged: onEditingChanged,
             onEditingEnded: onEditingEnded
         )
         .frame(height: 52)
@@ -47,6 +49,7 @@ private struct MultiHandleSliderRepresentable: UIViewRepresentable {
     let expectedHandles: Int
     let minimumGap: Double
     let colorForLevel: (Int) -> Color
+    let onEditingChanged: ((Bool) -> Void)?
     let onEditingEnded: (() -> Void)?
 
     func makeUIView(context: Context) -> MultiHandleSliderControl {
@@ -55,6 +58,7 @@ private struct MultiHandleSliderRepresentable: UIViewRepresentable {
         control.onThresholdsChanged = { newValues in
             thresholds = newValues
         }
+        control.onEditingChanged = onEditingChanged
         control.onEditingEnded = onEditingEnded
         updateControl(control)
         return control
@@ -88,6 +92,7 @@ private struct MultiHandleSliderRepresentable: UIViewRepresentable {
 private final class MultiHandleSliderControl: UIControl {
     var minimumGap: Double = 0.02
     var onThresholdsChanged: (([Double]) -> Void)?
+    var onEditingChanged: ((Bool) -> Void)?
     var onEditingEnded: (() -> Void)?
     var expectedHandles: Int = 0
 
@@ -225,6 +230,7 @@ private final class MultiHandleSliderControl: UIControl {
         activeHandleIndex = index
         dragStartValue = thresholdValues[index]
         isActivelyDragging = true
+        onEditingChanged?(true)
         setNeedsDisplay()
 
         // Haptic feedback
@@ -260,12 +266,16 @@ private final class MultiHandleSliderControl: UIControl {
     }
 
     private func finishDrag() {
+        let wasDragging = isActivelyDragging
         let didMove = activeHandleIndex != nil &&
             activeHandleIndex! < thresholdValues.count &&
             thresholdValues[activeHandleIndex!] != dragStartValue
 
         isActivelyDragging = false
         activeHandleIndex = nil
+        if wasDragging {
+            onEditingChanged?(false)
+        }
         setNeedsDisplay()
 
         if didMove {
@@ -290,6 +300,7 @@ struct LabeledSlider: View {
     let displayFormat: (Double) -> String
     var onEditingChanged: ((Bool) -> Void)? = nil
 
+    @Environment(AppState.self) private var state
     @State private var valueAtDragStart: Double? = nil
 
     var body: some View {
@@ -314,6 +325,7 @@ struct LabeledSlider: View {
                     if editing {
                         valueAtDragStart = value
                     }
+                    state.pipeline.sliderEditingChanged(editing)
                     onEditingChanged?(editing)
                     if !editing {
                         valueAtDragStart = nil
@@ -327,6 +339,8 @@ struct LabeledSlider: View {
 struct QuantizationBiasSlider: View {
     @Binding var value: Double
     var onEditingChanged: ((Bool) -> Void)? = nil
+
+    @Environment(AppState.self) private var state
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -355,7 +369,10 @@ struct QuantizationBiasSlider: View {
                     value: $value,
                     range: QuantizationBias.range,
                     step: QuantizationBias.step,
-                    onEditingChanged: onEditingChanged
+                    onEditingChanged: { editing in
+                        state.pipeline.sliderEditingChanged(editing)
+                        onEditingChanged?(editing)
+                    }
                 )
             }
 
@@ -559,4 +576,5 @@ private struct ThresholdSliderPreviewHarness: View {
 
 #Preview("Threshold Controls") {
     ThresholdSliderPreviewHarness()
+        .environment(AppState())
 }

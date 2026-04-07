@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -12,6 +13,7 @@ struct ContentView: View {
     @State private var isInspectorCollapsed = true
     @State private var didSetInitialInspectorState = false
     @State private var currentWorkspaceLayout: StudioWorkspaceLayout = .drawer
+    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -34,10 +36,19 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .environment(state)
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(item: $presentedSheet, content: presentedSheetView)
         .sheet(item: $exportItem) { item in
-            ShareSheet(items: [item.fileURL]) {
-                removeTemporaryExport(at: item.fileURL)
+            ShareSheet(items: item.activityItems) {
+                if let temporaryFileURL = item.temporaryFileURL {
+                    removeTemporaryExport(at: temporaryFileURL)
+                } else {
+                    exportItem = nil
+                }
             }
         }
         .fileExporter(
@@ -50,19 +61,19 @@ struct ContentView: View {
         .alert(
             "Unable to Continue",
             isPresented: Binding(
-                get: { state.errorMessage != nil },
+                get: { state.pipeline.errorMessage != nil },
                 set: { isPresented in
                     if !isPresented {
-                        state.errorMessage = nil
+                        state.pipeline.errorMessage = nil
                     }
                 }
             )
         ) {
             Button("OK", role: .cancel) {
-                state.errorMessage = nil
+                state.pipeline.errorMessage = nil
             }
         } message: {
-            Text(state.errorMessage ?? "")
+            Text(state.pipeline.errorMessage ?? "")
         }
     }
 
@@ -111,13 +122,16 @@ struct ContentView: View {
                     onClose: collapseInspector
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: min(maxHeight * 0.8, 700))
+                .frame(height: state.pipeline.isAnySliderActive
+                    ? min(maxHeight * 0.25, 180)
+                    : min(maxHeight * 0.8, 700))
                 .clipShape(.rect(topLeadingRadius: 32, topTrailingRadius: 32))
                 .overlay(alignment: .top) {
                     drawerDragHandle
                         .padding(.top, 10)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.25), value: state.pipeline.isAnySliderActive)
                 .ignoresSafeArea(edges: .bottom)
             }
         }
@@ -177,7 +191,6 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Hide studio controls")
-        .accessibilityHidden(true)
         .accessibilityIdentifier("studio.drawer-close")
     }
 
@@ -242,8 +255,14 @@ struct ContentView: View {
         }
     }
 
+    @Environment(UnlockManager.self) private var unlockManager
+
     private func openPhotoLibrary() {
-        presentedSheet = .photoLibrary
+        if unlockManager.isUnlocked {
+            presentedSheet = .photoLibrary
+        } else {
+            showPaywall = true
+        }
     }
 
     private func openSampleLibrary() {
@@ -275,11 +294,24 @@ struct ContentView: View {
             showExportFileExporter = true
         } else {
             do {
-                exportItem = ExportItem(fileURL: try writeTemporaryExport(exportPayload))
+                exportItem = try makeShareExportItem(from: exportPayload)
             } catch {
-                state.errorMessage = error.localizedDescription
+                state.pipeline.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func makeShareExportItem(from payload: ExportedImagePayload) throws -> ExportItem {
+        let fileURL = try writeTemporaryExport(payload)
+        let subject = fileURL.lastPathComponent
+
+        return ExportItem(
+            activityItems: [
+                ExportImageActivityItemSource(image: payload.image, subject: subject),
+                ExportFileActivityItemSource(fileURL: fileURL, subject: subject)
+            ],
+            temporaryFileURL: fileURL
+        )
     }
 
     private func writeTemporaryExport(_ payload: ExportedImagePayload) throws -> URL {
@@ -300,24 +332,24 @@ struct ContentView: View {
 
     private func removeTemporaryExport(at fileURL: URL) {
         try? FileManager.default.removeItem(at: fileURL)
-        if exportItem?.fileURL == fileURL {
+        if exportItem?.temporaryFileURL == fileURL {
             exportItem = nil
         }
     }
 
     private func handleExportCompletion(_ result: Result<URL, Error>) {
         if case .failure(let error) = result {
-            state.errorMessage = error.localizedDescription
+            state.pipeline.errorMessage = error.localizedDescription
         }
         exportDocument = nil
         exportContentType = .png
     }
 
     private var exportFilename: String {
-        let modeName = state.activeMode.label
+        let modeName = state.transform.activeMode.label
             .replacingOccurrences(of: " ", with: "-")
             .lowercased()
-        return "underpaint-\(modeName)"
+		return "underpaint-\(modeName)"
     }
 
     private var prefersDesktopFileExport: Bool {
@@ -415,7 +447,7 @@ private struct StudioCanvasStage: View {
 
     private var inspectorIconName: String {
         if layout == .sidebar {
-            return isInspectorCollapsed ? "sidebar.trailing" : "sidebar.trailing"
+            return isInspectorCollapsed ? "sidebar.trailing" : "rectangle.righthalf.inset.filled"
         }
         return isInspectorCollapsed ? "slider.horizontal.3" : "rectangle.bottomthird.inset.filled"
     }
@@ -428,7 +460,7 @@ private struct StudioCanvasSurface: View {
     @Binding var showSamplePicker: Bool
 
     var body: some View {
-        if state.compareMode,
+        if state.pipeline.compareMode,
            let beforeImage = state.compareBeforeImage,
            let afterImage = state.compareAfterImage {
             CompareSliderView(beforeImage: beforeImage, afterImage: afterImage)
@@ -443,6 +475,7 @@ private struct StudioCanvasSurface: View {
 
 private struct StudioCanvasChrome: View {
     @Environment(AppState.self) private var state
+    @Environment(UnlockManager.self) private var unlockManager
 
     let isInspectorCollapsed: Bool
     let inspectorIcon: String
@@ -456,9 +489,10 @@ private struct StudioCanvasChrome: View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
                 chromeButton(
-                    title: "Library",
+                    title: unlockManager.isUnlocked ? "Library" : "Library (Locked)",
                     systemImage: "photo.on.rectangle",
                     accessibilityID: "chrome.library",
+                    showsLockBadge: !unlockManager.isUnlocked,
                     action: onOpenPhoto
                 )
 
@@ -474,12 +508,13 @@ private struct StudioCanvasChrome: View {
 
             HStack(spacing: 8) {
                 chromeButton(
-                    title: state.compareMode ? "Hide compare" : "Compare",
-                    systemImage: state.compareMode ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
+                    title: state.pipeline.compareMode ? "Hide compare" : "Compare",
+                    systemImage: state.pipeline.compareMode ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
                     isEnabled: state.displayBaseImage != nil,
                     accessibilityID: "chrome.compare",
                     action: toggleCompare
                 )
+                .popoverTip(CompareModeTip(), arrowEdge: .top)
 
                 chromeButton(
                     title: "Export",
@@ -488,6 +523,7 @@ private struct StudioCanvasChrome: View {
                     accessibilityID: "chrome.export",
                     action: onExport
                 )
+                .popoverTip(ExportTip(), arrowEdge: .top)
 
                 chromeButton(
                     title: isInspectorCollapsed ? "Show studio" : "Hide studio",
@@ -513,7 +549,7 @@ private struct StudioCanvasChrome: View {
     }
 
     private func toggleCompare() {
-        state.compareMode.toggle()
+        state.pipeline.compareMode.toggle()
     }
 
     private func chromeButton(
@@ -521,6 +557,7 @@ private struct StudioCanvasChrome: View {
         systemImage: String,
         isEnabled: Bool = true,
         accessibilityID: String,
+        showsLockBadge: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -528,6 +565,16 @@ private struct StudioCanvasChrome: View {
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
+                .overlay(alignment: .bottomTrailing) {
+                    if showsLockBadge {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(3)
+                            .background(Color.accentColor, in: Circle())
+                            .offset(x: 2, y: 2)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .foregroundStyle(isEnabled ? .white : .white.opacity(0.25))
@@ -555,14 +602,14 @@ private struct StudioModeDock: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.82)
                     }
-                    .foregroundStyle(state.activeMode == mode ? Color.black : Color.white.opacity(0.9))
+                    .foregroundStyle(state.transform.activeMode == mode ? Color.black : Color.white.opacity(0.9))
                     .frame(minWidth: 72)
                     .frame(height: 52)
-                    .background(modeBackground(isSelected: state.activeMode == mode))
+                    .background(modeBackground(isSelected: state.transform.activeMode == mode))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(mode.label) study")
-                .accessibilityAddTraits(state.activeMode == mode ? .isSelected : [])
+                .accessibilityAddTraits(state.transform.activeMode == mode ? .isSelected : [])
                 .accessibilityIdentifier("mode-dock.\(mode.rawValue)")
             }
         }
@@ -584,7 +631,8 @@ private struct StudioModeDock: View {
 
 private struct ExportItem: Identifiable {
     let id = UUID()
-    let fileURL: URL
+    let activityItems: [Any]
+    let temporaryFileURL: URL?
 }
 
 private struct ExportImageDocument: FileDocument {
@@ -610,16 +658,19 @@ private struct ExportImageDocument: FileDocument {
 
 #Preview("iPhone Drawer") {
     ContentView()
+        .environment(UnlockManager())
         .frame(width: 393, height: 852)
 }
 
 #Preview("iPad Sidebar") {
     ContentView()
+        .environment(UnlockManager())
         .frame(width: 1180, height: 820)
 }
 
 #Preview("Large Type") {
     ContentView()
+        .environment(UnlockManager())
         .frame(width: 393, height: 852)
         .environment(\.dynamicTypeSize, .accessibility3)
 }

@@ -21,11 +21,12 @@ struct PaletteView: View {
                 ForEach(sections, id: \.band) { section in
                     PaletteMixCard(
                         bandID: section.band,
+                        title: title(for: section),
                         section: section,
                         colors: colors(for: section),
                         recipes: recipes(for: section),
-                        isIsolated: state.isolatedBand == section.band,
-                        onToggleIsolation: { state.toggleIsolatedBand(section.band) }
+                        isFocused: state.pipeline.focusedBands.contains(section.band),
+                        onToggleFocus: { state.toggleFocusedBand(section.band) }
                     )
                 }
             }
@@ -48,40 +49,47 @@ struct PaletteView: View {
     }
 
     private func sortedSections(_ sections: [PaletteBandSection]) -> [PaletteBandSection] {
-        guard let recipes = state.pigmentRecipes else { return sections }
-
         return sections.sorted { lhs, rhs in
-            let nameA = majorityPigmentName(for: lhs, recipes: recipes)
-            let nameB = majorityPigmentName(for: rhs, recipes: recipes)
-            return nameA.localizedCaseInsensitiveCompare(nameB) == .orderedAscending
+            let nameA = title(for: lhs)
+            let nameB = title(for: rhs)
+            let comparison = nameA.localizedCaseInsensitiveCompare(nameB)
+            if comparison == .orderedSame {
+                return lhs.band < rhs.band
+            }
+            return comparison == .orderedAscending
         }
     }
 
-    private func majorityPigmentName(
-        for section: PaletteBandSection,
-        recipes: [PigmentRecipe]
-    ) -> String {
-        guard let firstIndex = section.indices.first,
-              recipes.indices.contains(firstIndex),
-              let dominantPigment = recipes[firstIndex].components.max(by: {
-                  $0.concentration < $1.concentration
-              })
-        else { return "" }
+    private func title(for section: PaletteBandSection) -> String {
+        guard let firstIndex = section.indices.first else {
+            return "Swatch"
+        }
 
-        return dominantPigment.pigmentName
+        if state.paletteColors.indices.contains(firstIndex),
+           let name = PaletteColorNamer.name(for: state.paletteColors[firstIndex]) {
+            return name
+        }
+
+        if let pigmentRecipes = state.pigmentRecipes,
+           pigmentRecipes.indices.contains(firstIndex) {
+            return PaletteColorNamer.name(for: pigmentRecipes[firstIndex].predictedColor)
+        }
+
+        return "Swatch"
     }
 }
 
 private struct PaletteMixCard: View {
     let bandID: Int
+    let title: String
     let section: PaletteBandSection
     let colors: [Color]
     let recipes: [PigmentRecipe]
-    let isIsolated: Bool
-    let onToggleIsolation: () -> Void
+    let isFocused: Bool
+    let onToggleFocus: () -> Void
 
     var body: some View {
-        Button(action: onToggleIsolation) {
+        Button(action: onToggleFocus) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Text(title)
@@ -90,7 +98,7 @@ private struct PaletteMixCard: View {
 
                     Spacer(minLength: 8)
 
-                    focusPill
+                    FocusPill(isFocused: isFocused)
                 }
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -102,8 +110,8 @@ private struct PaletteMixCard: View {
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                                         .stroke(
-                                            isIsolated ? Color.accentColor : Color(.separator),
-                                            lineWidth: isIsolated ? 2 : 1
+                                            isFocused ? Color.accentColor : Color(.separator),
+                                            lineWidth: isFocused ? 2 : 1
                                         )
                                 }
                         }
@@ -123,7 +131,7 @@ private struct PaletteMixCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .background(
-                isIsolated
+                isFocused
                     ? Color.accentColor.opacity(0.08)
                     : Color.primary.opacity(0.04),
                 in: RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -131,29 +139,34 @@ private struct PaletteMixCard: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(
-                        isIsolated ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08),
+                        isFocused ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08),
                         lineWidth: 1
                     )
             }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
-        .accessibilityValue(isIsolated ? "Isolated on canvas" : "Showing all mixes")
-        .accessibilityHint(isIsolated ? "Double tap to show all mixes" : "Double tap to focus this mix")
+        .accessibilityValue(isFocused ? "Focused on canvas" : "Showing all mixes")
+        .accessibilityHint(isFocused ? "Double tap to remove focus from this mix" : "Double tap to focus this mix")
         .accessibilityIdentifier("mix-card.\(bandID)")
     }
+}
 
-    private var focusPill: some View {
+struct FocusPill: View {
+    let isFocused: Bool
+
+    var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: isIsolated ? "scope" : "circle.dashed")
-            Text(isIsolated ? "Focused" : "Focus")
+            Image(systemName: isFocused ? "scope" : "circle.dashed")
+            Text(isFocused ? "Focused" : "Focus")
+                .lineLimit(1)
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(isIsolated ? Color.accentColor : Color.primary.opacity(0.7))
+        .foregroundStyle(isFocused ? Color.accentColor : Color.primary.opacity(0.7))
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(
-            isIsolated
+            isFocused
                 ? Color.accentColor.opacity(0.12)
                 : Color.primary.opacity(0.05),
             in: Capsule()
@@ -161,24 +174,13 @@ private struct PaletteMixCard: View {
         .overlay {
             Capsule()
                 .strokeBorder(
-                    isIsolated
+                    isFocused
                         ? Color.accentColor.opacity(0.35)
                         : Color.primary.opacity(0.08),
                     lineWidth: 1
                 )
         }
-    }
-
-    private var title: String {
-        guard let firstRecipe = recipes.first,
-              let dominantPigment = firstRecipe.components.max(by: {
-                  $0.concentration < $1.concentration
-              })
-        else {
-            return "Swatch"
-        }
-
-        return dominantPigment.pigmentName
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -229,7 +231,7 @@ private struct PalettePreviewHarness: View {
                 deltaE: 0.5
             ),
         ]
-        previewState.isolatedBand = 0
+        previewState.focusedBands = [0]
         _state = State(initialValue: previewState)
     }
 

@@ -12,13 +12,13 @@ Reference Prep for Painters & Artists
 
 *(Up to 170 characters — updated without a new app review. Use for seasonal or timely copy.)*
 
-Study photos smarter. Tonal studies, value maps, color breakdowns, depth effects, surface contours, and real paint recipes — all on‑device.
+Study photos smarter. Spatial depth, tonal studies, value maps, color breakdowns, surface contours, and real paint recipes — all on‑device.
 
 ## Keywords
 
 *(100 characters max, comma-separated — no spaces after commas)*
 
-painting,reference,color palette,value study,art,illustration,pigment,painter,tonal,depth,contour
+painting,reference,color palette,value study,art,illustration,pigment,painter,tonal,spatial,contour
 
 ## Description
 
@@ -54,23 +54,25 @@ Choose from curated palette presets — Zorn, Primary, Warm, Cool, or the full l
 
 —
 
-DEPTH EFFECTS
+SPATIAL DEPTH
 
-Enable Depth Effects and an on-device depth estimation model separates your scene into foreground and background. Use the Background slider to set the depth cutoff, then choose how the background is treated:
+Photos taken in Spatial mode on iPhone already contain a precision depth map — Underpaint reads it directly for the best possible foreground/background separation. For any other photo, an on-device depth estimation model fills in automatically.
 
-Depth Effects — de-emphasizes the background with reduced contrast and muted color, like atmospheric perspective.
+Use the Background slider to set the depth cutoff, then choose how the background is treated:
+
+Compress — de-emphasizes the background with reduced contrast and muted color, like atmospheric perspective.
 Blur — softens the background with Gaussian blur, simulating shallow depth of field. The blur can be dialed up for a strongly smoothed background.
 Remove — replaces the background with a solid neutral tone, isolating your subject entirely.
 
 Surface Contours — with depth on, overlay contour lines (isolines) that trace equal-depth curves across the scene, revealing the 3D form of your subject.
+
+For the sharpest results, shoot your reference in Spatial mode — the embedded depth map gives Underpaint a head start that no estimation model can match.
 
 —
 
 SIMPLIFY
 
 The Simplify control runs your reference through an on-device super-resolution model that smooths texture and simplifies detail while keeping the major shapes intact. Use it to strip away photographic noise and see the underlying forms more clearly. A Strength slider lets you control how aggressively the image is simplified.
-
-The Kuwahara filter gives your image a painterly, flat-color look by averaging local color while preserving edges. Dial from R1 (subtle) to R16 (aggressive) and see your photo as broad, paintable shapes.
 
 —
 
@@ -113,18 +115,16 @@ Secondary: Education
 
 ## Pricing
 
-Paid (suggested: $4.99)
+Free with In-App Purchase ($9.99 non-consumable "Unlock Underpaint" — loads user photos from library). Family Sharing enabled.
 
 ## Support URL
 
-*(To be set when support page is published)*
+https://fros1y.github.io/RefPlane/support.html
 
 ## Privacy Policy URL
 
-*(To be set when privacy page is published. May reference the in-app privacy statement in the About sheet.)*
-
----
+https://fros1y.github.io/RefPlane/privacy.html
 
 ## What's New (initial release)
 
-Underpaint is a new reference-preparation tool for painters and illustrators. Study any photo as a tonal image, a value map, or a simplified color breakdown — with physically accurate paint recipes, on-device depth effects, surface contour overlays, and a Kuwahara painterly filter, right on your device.
+Underpaint is a new reference-preparation tool for painters and illustrators. Study any photo as a tonal image, a value map, or a simplified color breakdown — with physically accurate paint recipes, Spatial depth support, surface contour overlays, and on-device simplification, right on your device. Shoot in Spatial mode for the best depth separation.

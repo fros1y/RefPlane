@@ -49,7 +49,14 @@ struct ImagePickerView: UIViewControllerRepresentable {
                 if let data,
                    let image = UIImage(data: data) {
                     let metadata = Self.readMetadata(from: data, fallbackTypeIdentifier: typeIdentifier)
-                    self.deliverSelection(ImportedImagePayload(image: image, metadata: metadata))
+                    let embeddedDepth = DepthEstimator.extractEmbeddedDepth(from: data)
+                    self.deliverSelection(
+                        ImportedImagePayload(
+                            image: image,
+                            metadata: metadata,
+                            embeddedDepthMap: embeddedDepth
+                        )
+                    )
                 } else {
                     self.loadFallbackImage(from: provider)
                 }

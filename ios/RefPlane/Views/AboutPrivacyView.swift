@@ -1,10 +1,14 @@
+import StoreKit
 import SwiftUI
+import TipKit
 import UIKit
 
 struct AboutPrivacyView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var state
+    @Environment(UnlockManager.self) private var unlockManager
     @State private var didCopySettings = false
+    @State private var showPaywall = false
 
     private var appVersionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -33,12 +37,13 @@ struct AboutPrivacyView: View {
     }
 
     var body: some View {
+        @Bindable var unlockManager = unlockManager
         NavigationStack {
             List {
                 Section("About") {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("Underpaint")
+    							Text("Underpaint")
                                 .font(.headline)
                             Spacer()
                             Text(appVersionString)
@@ -70,15 +75,70 @@ struct AboutPrivacyView: View {
                     .accessibilityIdentifier("about.copy-settings")
                 }
 
+                Section("Purchase") {
+                    HStack {
+                        if unlockManager.isUnlocked {
+                            Label("Unlocked", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("Free — Samples Only", systemImage: "lock.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .font(.body)
+
+                    if !unlockManager.isUnlocked {
+                        Button(action: { showPaywall = true }) {
+                            Label("Unlock Full App", systemImage: "paintpalette")
+                        }
+                        .accessibilityIdentifier("about.unlock")
+                    }
+
+                    Button(action: { Task { await unlockManager.restorePurchases() } }) {
+                        Label("Restore Purchases", systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityIdentifier("about.restore")
+
+                    if !unlockManager.isUnlocked {
+                        Button(action: redeemCode) {
+                            Label("Redeem Code", systemImage: "giftcard")
+                        }
+                        .accessibilityIdentifier("about.redeem")
+                    }
+
+#if DEBUG
+                    Toggle(isOn: $unlockManager.debugUnlockOverride) {
+                        Label("Force Paid Mode (Debug)", systemImage: "ladybug.fill")
+                    }
+                    .onChange(of: unlockManager.debugUnlockOverride) { _, _ in
+                        Task { await unlockManager.refreshPurchaseStatus() }
+                    }
+#endif
+                }
+
                 Section("Privacy") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Underpaint collects no personal data.")
+    						Text("Underpaint collects no personal data.")
                         Text("The app uses no analytics, no tracking, and no accounts.")
                         Text("Images you choose are processed on-device.")
                     }
                     .font(.body)
                     .padding(.vertical, 4)
                 }
+
+#if DEBUG
+                Section("Tips") {
+                    Button("Reset Tip Datastore") {
+                        AppTips.resetForTesting()
+                    }
+                    .accessibilityIdentifier("about.debug.reset-tips")
+
+                    Button("Show All Tips") {
+                        AppTips.showAllForTesting()
+                    }
+                    .accessibilityIdentifier("about.debug.show-all-tips")
+                }
+#endif
             }
             .navigationTitle("About")
             .navigationBarTitleDisplayMode(.inline)
@@ -88,6 +148,11 @@ struct AboutPrivacyView: View {
                         dismiss()
                     }
                 }
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
@@ -100,5 +165,19 @@ struct AboutPrivacyView: View {
             try? await Task.sleep(for: .seconds(1.5))
             didCopySettings = false
         }
+    }
+
+    private func redeemCode() {
+        #if !targetEnvironment(simulator)
+        Task {
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first else { return }
+            do {
+                try await AppStore.presentOfferCodeRedeemSheet(in: windowScene)
+            } catch {
+                unlockManager.errorMessage = error.localizedDescription
+            }
+        }
+        #endif
     }
 }

@@ -62,9 +62,9 @@ The artist's primary goal is to determine which paints to squeeze onto the palet
 
 ### Pattern 4: Simplification for Composition
 
-The artist uses Simplify and Kuwahara to strip away photographic detail and see the scene as broad, paintable shapes. This helps them assess the composition's strength and plan their block-in.
+The artist uses Simplify to strip away photographic detail and see the scene as broad, paintable shapes. This helps them assess the composition's strength and plan their block-in.
 
-**Flow:** Load image → increase Simplify strength → adjust Kuwahara filter → toggle between Original (compare) and simplified → export simplified version for reference.
+**Flow:** Load image → increase Simplify strength → toggle between Original (compare) and simplified → export simplified version for reference.
 
 ### Pattern 5: Depth-Assisted Portrait Study
 
@@ -275,7 +275,7 @@ Each scenario is a concrete, testable sequence of user actions with defined entr
 
 ---
 
-### Scenario 8: Simplify + Kuwahara for Abstract Composition
+### Scenario 8: Simplify for Abstract Composition
 
 **Persona:** Any artist assessing composition
 **Pattern:** Simplification for Composition
@@ -285,18 +285,16 @@ Each scenario is a concrete, testable sequence of user actions with defined entr
 |------|------------|----------------------|
 | 1 | Loads photo | Image appears |
 | 2 | Opens Study section, increases Simplify strength | ML model runs; progress indicator; simplified image replaces original |
-| 3 | Increases Kuwahara filter strength | Painterly effect applied on top of simplification |
-| 4 | Toggles Compare to see before/after | Split view shows dramatic difference between photo and simplified |
-| 5 | Switches to Value mode on simplified image | Value study of the simplified image (broad, clear bands) |
-| 6 | Switches back to Original mode | Sees simplified image (not raw photo) in Original mode |
-| 7 | Exports simplified version | Exports the current simplified view |
+| 3 | Toggles Compare to see before/after | Split view shows dramatic difference between photo and simplified |
+| 4 | Switches to Value mode on simplified image | Value study of the simplified image (broad, clear bands) |
+| 5 | Switches back to Original mode | Sees simplified image (not raw photo) in Original mode |
+| 6 | Exports simplified version | Exports the current simplified view |
 
 **Success criteria:**
-- Simplify + Kuwahara compose correctly (Kuwahara applied after ML simplification)
 - Original mode with simplification shows the simplified image, not the raw photo
 - Compare shows the raw original (pre-simplification) on the "before" side
-- Adjusting Kuwahara does not re-run the full ML simplification (faster feedback)
-- The distinction between Simplify (ML) and Kuwahara (filter) is clear in the UI
+- Adjusting Simplify updates the abstracted result without stale intermediate images
+- Simplify is clearly presented as the abstraction control in the UI
 
 ---
 
@@ -327,7 +325,7 @@ After making a UX change to the app, walk through the relevant scenarios and sco
 | A1 | Empty state clearly communicates "load an image to begin" | | |
 | A2 | Mode selector (Original/Tonal/Value/Color) is immediately visible after image load | | |
 | A3 | The relationship between modes and the inspector panel is obvious (i.e., relevant controls appear for the active mode) | | |
-| A4 | Simplify and Kuwahara controls are findable without scrolling or navigating | | |
+| A4 | Simplify controls are findable without scrolling or navigating | | |
 | A5 | Export action is discoverable without exploring every panel | | |
 | A6 | The meaning of each mode is understandable from its name/icon alone | | |
 | A7 | Adjusting a slider or toggle produces visible feedback within 1 second (or shows a progress indicator) | | |
@@ -366,7 +364,7 @@ After making a UX change to the app, walk through the relevant scenarios and sco
 | C3 | Changing a preset (pigment palette, threshold distribution) triggers reprocessing automatically | | |
 | C4 | Toggling overlays (grid, contours) takes effect immediately (no processing delay) | | |
 | C5 | Rapid repeated changes (e.g., quickly sliding band count from 3→8) debounce correctly without queueing stale results | | |
-| C6 | Adjusting Kuwahara strength does not re-trigger the full ML simplification | | |
+| C6 | Adjusting Simplify strength replaces older results cleanly without stale flashes | | |
 | C7 | Mode switch preserves current simplification, depth, and overlay settings | | |
 
 **Target scenarios:** Scenario 2, Scenario 3, Scenario 6
@@ -571,7 +569,6 @@ Features touched by each scenario, for impact analysis when changing a specific 
 | Value mode | x | x | | x | | x | | x |
 | Color mode | | x | x | x | | | | |
 | Simplify (ML) | | x | | | | | | x |
-| Kuwahara filter | | x | | | | | | x |
 | Threshold adjustment | | x | | | | | | |
 | Pigment selection | | | x | | | | | |
 | Paint recipes | | | x | | | | | |

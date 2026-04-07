@@ -8,9 +8,9 @@ struct ContourOverlayView: View {
     var body: some View {
         GeometryReader { _ in
             Canvas { ctx, size in
-                let config = state.contourConfig
+                let config = state.transform.contourConfig
                 guard config.enabled else { return }
-                let segments = state.contourSegments
+                let segments = state.depth.contourSegments
                 guard !segments.isEmpty else { return }
                 let sourceImage = image ?? state.currentDisplayImage
 

@@ -8,26 +8,10 @@ struct PaintPaletteBuilderTests {
     let pigments = SpectralDataStore.essentialPigments
 
     private func loadSampleImage(named sampleName: String) throws -> UIImage {
-        let repoRoot = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let imageURL = repoRoot
-            .appendingPathComponent("ios/RefPlane/Assets.xcassets")
-            .appendingPathComponent("\(sampleName).imageset")
-
-        let fileNames = try FileManager.default.contentsOfDirectory(
-            atPath: imageURL.path(percentEncoded: false)
+        return try #require(
+            UIImage(named: sampleName, in: .main, with: nil),
+            "Could not load \(sampleName) from the app bundle"
         )
-        let imageFile = try #require(
-            fileNames.first { fileName in
-                fileName.hasSuffix(".jpg") ||
-                fileName.hasSuffix(".jpeg") ||
-                fileName.hasSuffix(".png")
-            }
-        )
-        let data = try Data(contentsOf: imageURL.appendingPathComponent(imageFile))
-        return try #require(UIImage(data: data))
     }
 
     private func assertPaletteSelectionKeepsGreenAccent(

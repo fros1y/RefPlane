@@ -15,14 +15,14 @@ func saveCurrentTransformPresetAddsPresetAndSelectsIt() throws {
     defer { clearTransformPresetStore() }
 
     let state = AppState()
-    state.gridConfig.enabled = true
-    state.gridConfig.divisions = 7
+    state.transform.gridConfig.enabled = true
+    state.transform.gridConfig.divisions = 7
 
     try state.saveCurrentTransformPreset(named: "Studio A")
 
-    #expect(state.savedTransformPresets.count == 1)
-    #expect(state.savedTransformPresets[0].name == "Studio A")
-    #expect(state.selectedTransformPresetSelection == .saved(state.savedTransformPresets[0].id))
+    #expect(state.transform.savedTransformPresets.count == 1)
+    #expect(state.transform.savedTransformPresets[0].name == "Studio A")
+    #expect(state.transform.selectedTransformPresetSelection == .saved(state.transform.savedTransformPresets[0].id))
 }
 
 @MainActor
@@ -34,10 +34,10 @@ func previousSettingsOptionHiddenWhenSnapshotMatchesSavedPreset() throws {
     let state = AppState()
 
     try state.saveCurrentTransformPreset(named: "Balanced")
-    state.selectTransformPreset(.saved(state.savedTransformPresets[0].id))
+    state.selectTransformPreset(.saved(state.transform.savedTransformPresets[0].id))
 
     #expect(state.shouldShowPreviousSettingsOption == false)
-    #expect(state.availableTransformPresetSelections.contains(.saved(state.savedTransformPresets[0].id)))
+    #expect(state.availableTransformPresetSelections.contains(.saved(state.transform.savedTransformPresets[0].id)))
     #expect(!state.availableTransformPresetSelections.contains(.previous))
 }
 
@@ -49,19 +49,21 @@ func selectingDefaultPresetRestoresDefaultTransformationValues() {
 
     let state = AppState()
 
-    state.abstractionStrength = 0.9
-    state.gridConfig.enabled = true
-    state.gridConfig.divisions = 9
-    state.valueConfig.levels = 5
-    state.depthConfig.enabled = true
+    state.transform.abstractionStrength = 0.9
+    state.transform.gridConfig.enabled = true
+    state.transform.gridConfig.divisions = 9
+    state.transform.valueConfig.levels = 5
+    state.transform.colorConfig.paletteSpread = 0
+    state.depth.depthConfig.enabled = true
 
     state.selectTransformPreset(.appDefault)
 
-    #expect(state.abstractionStrength == 0.5)
-    #expect(state.gridConfig.enabled == false)
-    #expect(state.gridConfig.divisions == 4)
-    #expect(state.valueConfig.levels == 3)
-    #expect(state.depthConfig.enabled == false)
+    #expect(state.transform.abstractionStrength == 0.5)
+    #expect(state.transform.gridConfig.enabled == false)
+    #expect(state.transform.gridConfig.divisions == 4)
+    #expect(state.transform.valueConfig.levels == 3)
+    #expect(state.transform.colorConfig.paletteSpread == 1)
+    #expect(state.depth.depthConfig.enabled == false)
 }
 
 @MainActor
@@ -92,12 +94,12 @@ func resetAbstractionCancelsInflightAbstractionTask() async throws {
     await Task.yield()
 
     #expect(state.abstractedImage == nil)
-    #expect(state.processingLabel == "Processing…")
+    #expect(state.pipeline.processingLabel == "Processing…")
 }
 
 @MainActor
 @Test
-func selectingIsolatedBandChangesDisplayedImage() async throws {
+func selectingFocusedBandChangesDisplayedImage() async throws {
     let processedImage = TestImageFactory.makeSplitColors(
         pixels: [
             (255, 0, 0),
@@ -122,20 +124,170 @@ func selectingIsolatedBandChangesDisplayedImage() async throws {
     )
 
     state.sourceImage = processedImage
-    state.activeMode = .color
+    state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
-    state.toggleIsolatedBand(1)
+    state.toggleFocusedBand(1)
+
+    let pixels = state.currentDisplayImage?.toPixelData()?.data
+    #expect(pixels != nil)
+    // Non-selected pixel (red) should be desaturated and dimmed — much darker than original
+    #expect(pixels![0] < 100)
+    #expect(pixels![1] < 100)
+    #expect(pixels![2] < 100)
+    // Selected band pixel (blue) should remain unchanged
+    #expect(pixels?[4] == 0)
+    #expect(pixels?[5] == 0)
+    #expect(pixels?[6] == 255)
+}
+
+@MainActor
+@Test
+func selectingMultipleFocusedBandsSubduesOnlyUnfocusedPixels() async throws {
+    let processedImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+        ],
+        width: 3,
+        height: 1
+    )
+
+    let state = AppState(
+        processOperation: { _, _, _, _, _ in
+            ProcessingResult(
+                image: processedImage,
+                palette: [],
+                paletteBands: [0, 1, 2],
+                pixelBands: [0, 1, 2],
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
+            )
+        }
+    )
+
+    state.sourceImage = processedImage
+    state.transform.activeMode = .color
+    state.triggerProcessing()
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+
+    state.toggleFocusedBand(0)
+    state.toggleFocusedBand(2)
+
+    #expect(state.pipeline.focusedBands == Set([0, 2]))
 
     let pixels = state.currentDisplayImage?.toPixelData()?.data
     #expect(pixels != nil)
     #expect(pixels?[0] == 255)
+    #expect(pixels?[1] == 0)
+    #expect(pixels?[2] == 0)
+    #expect((pixels?[4] ?? 255) < 120)
+    #expect((pixels?[5] ?? 255) < 120)
+    #expect((pixels?[6] ?? 255) < 120)
+    #expect(pixels?[8] == 0)
+    #expect(pixels?[9] == 0)
+    #expect(pixels?[10] == 255)
+}
+
+@MainActor
+@Test
+func toggleFocusedBandRemovesExistingBandOnSecondToggle() {
+    let state = AppState()
+
+    state.toggleFocusedBand(2)
+    #expect(state.pipeline.focusedBands == Set([2]))
+
+    state.toggleFocusedBand(2)
+    #expect(state.pipeline.focusedBands.isEmpty)
+}
+
+@MainActor
+@Test
+func processingResultsClearFocusedBands() async throws {
+    let firstImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (255, 0, 0),
+            (0, 0, 255),
+        ],
+        width: 2,
+        height: 1
+    )
+    let secondImage = TestImageFactory.makeSplitColors(
+        pixels: [
+            (0, 255, 0),
+            (255, 255, 255),
+        ],
+        width: 2,
+        height: 1
+    )
+
+    let state = AppState(
+        processOperation: { image, _, _, _, _ in
+            ProcessingResult(
+                image: image,
+                palette: [],
+                paletteBands: [0, 1],
+                pixelBands: [0, 1],
+                pigmentRecipes: nil,
+                selectedTubes: [],
+                clippedRecipeIndices: []
+            )
+        }
+    )
+
+    state.sourceImage = firstImage
+    state.transform.activeMode = .color
+    state.triggerProcessing()
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+
+    state.toggleFocusedBand(1)
+    #expect(state.pipeline.focusedBands == Set([1]))
+
+    state.sourceImage = secondImage
+    state.triggerProcessing()
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+
+    #expect(state.pipeline.focusedBands.isEmpty)
+    let pixels = state.currentDisplayImage?.toPixelData()?.data
+    #expect(pixels?[0] == 0)
     #expect(pixels?[1] == 255)
-    #expect(pixels?[2] == 255)
-    #expect(pixels?[4] == 0)
-    #expect(pixels?[5] == 0)
-    #expect(pixels?[6] == 255)
+    #expect(pixels?[2] == 0)
+}
+
+@Test
+func canvasBandTapTrackerShowsBubbleOnFirstTapAndFocusesOnSecondQuickSameBandTap() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: 2, at: 10.0) == .inspect(2))
+    #expect(tracker.action(for: 2, at: 10.2) == .focus(2))
+}
+
+@Test
+func canvasBandTapTrackerTreatsSlowRepeatAsAnotherInspect() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: 2, at: 10.0) == .inspect(2))
+    #expect(tracker.action(for: 2, at: 10.7) == .inspect(2))
+}
+
+@Test
+func canvasBandTapTrackerReplacesPendingBandWhenTappingDifferentBand() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: 1, at: 10.0) == .inspect(1))
+    #expect(tracker.action(for: 3, at: 10.2) == .inspect(3))
+    #expect(tracker.action(for: 3, at: 10.35) == .focus(3))
+}
+
+@Test
+func canvasBandTapTrackerResetsViewportOnSecondQuickEmptyCanvasTap() {
+    var tracker = CanvasBandTapTracker(repeatWindow: 0.45)
+
+    #expect(tracker.action(for: nil, at: 10.0) == .inspect(nil))
+    #expect(tracker.action(for: nil, at: 10.2) == .resetViewport)
 }
 
 // MARK: - Additional AppState coverage
@@ -152,16 +304,16 @@ func setModeClearsProcessedState() {
     state.processedImage = img
     state.paletteColors = [.red]
     state.paletteBands = [0]
-    state.isolatedBand = 0
-    state.activeMode = .value
+    state.pipeline.focusedBands = [0]
+    state.transform.activeMode = .value
 
     state.setMode(.tonal)
 
-    #expect(state.activeMode == .tonal)
+    #expect(state.transform.activeMode == .tonal)
     #expect(state.processedImage == nil)
     #expect(state.paletteColors.isEmpty)
     #expect(state.paletteBands.isEmpty)
-    #expect(state.isolatedBand == nil)
+    #expect(state.pipeline.focusedBands.isEmpty)
 }
 
 @MainActor
@@ -175,7 +327,7 @@ func setModeToSameModeIsNoOp() {
     let img = TestImageFactory.makeSolid(width: 4, height: 4, color: .red)
     state.processedImage = img
     state.paletteColors = [.red]
-    state.activeMode = .value
+    state.transform.activeMode = .value
 
     state.setMode(.value)  // same mode — guard returns early
 
@@ -217,7 +369,7 @@ func currentDisplayImageShowsBaseImageInOriginalMode() {
 
     state.sourceImage    = source
     state.processedImage = processed
-    state.activeMode     = .original
+    state.transform.activeMode     = .original
 
     #expect(state.currentDisplayImage === source)
 }
@@ -249,162 +401,15 @@ func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
     )
 
     state.sourceImage = processedImage
-    state.activeMode = .color
+    state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
     #expect(state.compareAfterImage === state.currentDisplayImage)
 
-    state.toggleIsolatedBand(1)
+    state.toggleFocusedBand(1)
 
     #expect(state.compareAfterImage === state.currentDisplayImage)
-}
-
-// MARK: - Kuwahara tests
-
-@MainActor
-@Test
-func kuwaharaStrengthDefaultsToZero() {
-    let state = AppState()
-    #expect(state.kuwaharaStrength == 0)
-}
-
-@MainActor
-@Test
-func displayBaseImagePrefersKuwaharaFilteredOverAbstracted() {
-    let state = AppState()
-    let source     = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
-    let abstracted = TestImageFactory.makeSolid(width: 10, height: 10, color: .blue)
-    let filtered   = TestImageFactory.makeSolid(width: 10, height: 10, color: .green)
-
-    state.sourceImage         = source
-    state.abstractedImage     = abstracted
-    state.kuwaharaFilteredImage = filtered
-
-    #expect(state.displayBaseImage === filtered)
-}
-
-@MainActor
-@Test
-func displayBaseImageFallsBackToAbstractedWhenNoKuwahara() {
-    let state = AppState()
-    let source     = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
-    let abstracted = TestImageFactory.makeSolid(width: 10, height: 10, color: .blue)
-
-    state.sourceImage         = source
-    state.abstractedImage     = abstracted
-    state.kuwaharaFilteredImage = nil
-
-    #expect(state.displayBaseImage === abstracted)
-}
-
-@MainActor
-@Test
-func applyKuwaharaWithZeroStrengthClearsFilteredImageAndTriggersProcessing() async throws {
-    let state = AppState(
-        processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
-        }
-    )
-    let source   = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
-    let filtered = TestImageFactory.makeSolid(width: 10, height: 10, color: .green)
-
-    state.sourceImage           = source
-    state.kuwaharaFilteredImage = filtered
-    state.kuwaharaStrength      = 0
-
-    state.applyKuwahara()
-
-    #expect(state.kuwaharaFilteredImage == nil)
-}
-
-@MainActor
-@Test
-func applyKuwaharaCallsOperationAndStoresResult() async throws {
-    let expectedImage = TestImageFactory.makeSolid(width: 10, height: 10, color: .green)
-    let kuwaharaProbe = KuwaharaOperationProbe(result: expectedImage)
-
-    let state = AppState(
-        processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
-        },
-        kuwaharaOperation: { image, radius in
-            await kuwaharaProbe.filter(image: image, radius: radius)
-        }
-    )
-
-    let source = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
-    state.sourceImage      = source
-    state.kuwaharaStrength = 0.5  // radius = Int(0.5 * 16) = 8
-
-    state.applyKuwahara()
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
-
-    let callCount = await kuwaharaProbe.callCount
-    let lastRadius = await kuwaharaProbe.lastRadius
-    #expect(callCount == 1)
-    #expect(lastRadius == 8)
-    #expect(state.kuwaharaFilteredImage === expectedImage)
-}
-
-@MainActor
-@Test
-func loadImageResetsKuwaharaFilteredImage() async throws {
-    let state = AppState(
-        processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
-        }
-    )
-
-    let filtered = TestImageFactory.makeSolid(width: 10, height: 10, color: .green)
-    state.kuwaharaFilteredImage = filtered
-
-    let newImage = TestImageFactory.makeSolid(width: 20, height: 20, color: .blue)
-    state.loadImage(newImage)
-
-    #expect(state.kuwaharaFilteredImage == nil)
-}
-
-@MainActor
-@Test
-func abstractionAppliesKuwaharaPostFilter() async throws {
-    let abstractedImage = TestImageFactory.makeSolid(width: 10, height: 10, color: .blue)
-    let filteredImage   = TestImageFactory.makeSolid(width: 10, height: 10, color: .green)
-
-    let abstractor = AbstractionOperationProbe()
-    let kuwaharaProbe = KuwaharaOperationProbe(result: filteredImage)
-
-    let state = AppState(
-        processOperation: { image, _, _, _, _ in
-            ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
-        },
-        abstractionOperation: { image, downscale, method, onProgress in
-            try await abstractor.abstract(image: image, downscale: downscale, method: method, onProgress: onProgress)
-        },
-        kuwaharaOperation: { image, radius in
-            await kuwaharaProbe.filter(image: image, radius: radius)
-        }
-    )
-
-    let source = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.sourceImage          = source
-    state.abstractionStrength  = 0.5
-    state.kuwaharaStrength     = 0.5
-
-    state.applyAbstraction()
-    // Yield to let the Task start and reach the continuation
-    for _ in 0..<50 {
-        await Task.yield()
-        if await abstractor.hasContinuation { break }
-    }
-    await abstractor.resume(with: abstractedImage)
-    for _ in 0..<50 where state.isProcessing { await Task.yield() }
-
-    let callCount = await kuwaharaProbe.callCount
-    #expect(callCount == 1)
-    #expect(state.abstractedImage === abstractedImage)
-    #expect(state.kuwaharaFilteredImage === filteredImage)
-    #expect(state.displayBaseImage === filteredImage)
 }
 
 // MARK: - isSimplifying
@@ -428,12 +433,12 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     )
 
     state.sourceImage         = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.abstractionStrength  = 0.5
+    state.transform.abstractionStrength  = 0.5
 
     state.applyAbstraction()
 
     // isSimplifying should be true while the abstraction task is running
-    #expect(state.isSimplifying == true)
+    #expect(state.pipeline.isSimplifying == true)
 
     let result = TestImageFactory.makeSolid(width: 20, height: 20, color: .blue)
     // Yield to let the Task start and reach the continuation
@@ -443,33 +448,27 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     }
     await abstractor.resume(with: result)
     // Allow the MainActor continuation to run
-    for _ in 0..<50 where state.isSimplifying { await Task.yield() }
+    for _ in 0..<50 where state.pipeline.isSimplifying { await Task.yield() }
 
     // isSimplifying should be cleared once abstraction completes
-    #expect(state.isSimplifying == false)
+    #expect(state.pipeline.isSimplifying == false)
 }
 
 @MainActor
 @Test
-func resetAbstractionClearsKuwaharaFilteredImage() {
+func resetAbstractionClearsAbstractedImage() {
     let state = AppState(
         processOperation: { image, _, _, _, _ in
             ProcessingResult(image: image, palette: [], paletteBands: [], pixelBands: [], pigmentRecipes: nil, selectedTubes: [], clippedRecipeIndices: [])
         }
     )
 
-    let source   = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
-    let filtered = TestImageFactory.makeSolid(width: 10, height: 10, color: .green)
-
-    state.sourceImage           = source
-    state.abstractedImage       = TestImageFactory.makeSolid(width: 10, height: 10, color: .blue)
-    state.kuwaharaFilteredImage = filtered
-    state.kuwaharaStrength      = 0  // no Kuwahara after reset
+    state.sourceImage = TestImageFactory.makeSolid(width: 10, height: 10, color: .red)
+    state.abstractedImage = TestImageFactory.makeSolid(width: 10, height: 10, color: .blue)
 
     state.resetAbstraction()
 
     #expect(state.abstractedImage == nil)
-    #expect(state.kuwaharaFilteredImage == nil)
 }
 
 @MainActor
@@ -482,13 +481,126 @@ func isSimplifyingIsFalseAfterResetAbstraction() {
     )
 
     state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
-    state.abstractionStrength = 0.5
+    state.transform.abstractionStrength = 0.5
     state.applyAbstraction()
-    #expect(state.isSimplifying == true)
+    #expect(state.pipeline.isSimplifying == true)
 
     state.resetAbstraction()
 
-    #expect(state.isSimplifying == false)
+    #expect(state.pipeline.isSimplifying == false)
+}
+
+@MainActor
+@Test
+func computeDepthMapUsesEmbeddedDepthAndSkipsML() async throws {
+    var mlWasCalled = false
+    let state = AppState(depthMapOperation: { _ in
+        mlWasCalled = true
+        throw DepthEstimatorError.modelUnavailable
+    })
+
+    let baseImage = TestImageFactory.makeSolid(width: 100, height: 100, color: .gray)
+    let fakeDepth = TestImageFactory.makeHorizontalDepthRamp(width: 50, height: 50)
+
+    state.loadImage(ImportedImagePayload(image: baseImage, embeddedDepthMap: fakeDepth))
+    state.depth.depthConfig.enabled = true
+    state.computeDepthMap()
+
+    try await Task.sleep(for: .milliseconds(200))
+
+    #expect(mlWasCalled == false)
+    #expect(state.depth.depthSource == .embedded)
+    #expect(state.depth.depthMap != nil)
+    #expect(state.depth.depthMap?.cgImage?.width == 100)
+    #expect(state.depth.depthMap?.cgImage?.height == 100)
+}
+
+@MainActor
+@Test
+func loadImageClearsDepthSourceAndEmbeddedMap() {
+    let state = AppState()
+    let fakeDepth = TestImageFactory.makeHorizontalDepthRamp(width: 50, height: 50)
+
+    state.loadImage(
+        ImportedImagePayload(
+            image: TestImageFactory.makeSolid(width: 100, height: 100, color: .gray),
+            embeddedDepthMap: fakeDepth
+        )
+    )
+    state.depth.depthSource = .embedded
+
+    state.loadImage(TestImageFactory.makeSolid(width: 100, height: 100, color: .red))
+
+    #expect(state.depth.embeddedDepthMap == nil)
+    #expect(state.depth.depthSource == nil)
+}
+
+@MainActor
+@Test
+func legacyKuwaharaPresetFallsBackToBalancedAbstraction() throws {
+    clearTransformPresetStore()
+    defer { clearTransformPresetStore() }
+
+    let payload = """
+    {
+      "previousSnapshot" : {
+        "abstractionMethod" : "Kuwahara",
+        "abstractionStrength" : 0.5,
+        "activeMode" : "original",
+        "backgroundCutoff" : 0.66,
+        "backgroundMode" : "No",
+        "colorLimit" : 24,
+        "colorQuantizationBias" : 0,
+        "contourCustomColor" : {
+          "alpha" : 1,
+          "blue" : 1,
+          "green" : 1,
+          "red" : 1
+        },
+        "contourEnabled" : false,
+        "contourLevels" : 5,
+        "contourLineStyle" : "Auto",
+        "contourOpacity" : 0.7,
+        "depthEffectIntensity" : 0.5,
+        "depthEnabled" : false,
+        "enabledPigmentIDs" : [],
+        "foregroundCutoff" : 0.33,
+        "grayscaleConversion" : "None",
+        "gridCustomColor" : {
+          "alpha" : 1,
+          "blue" : 1,
+          "green" : 1,
+          "red" : 1
+        },
+        "gridDivisions" : 4,
+        "gridEnabled" : false,
+        "gridLineStyle" : "Auto",
+        "gridOpacity" : 0.7,
+        "gridShowDiagonals" : false,
+        "kuwaharaStrength" : 0.5,
+        "maxPigmentsPerMix" : 3,
+        "minConcentration" : 0.02,
+        "paletteSelectionEnabled" : false,
+        "paletteSpread" : 0,
+        "valueDistribution" : "Even",
+        "valueLevels" : 3,
+        "valueQuantizationBias" : 0,
+        "valueThresholds" : [
+          0.3333333333333333,
+          0.6666666666666666
+        ]
+      },
+      "savedPresets" : [],
+      "schemaVersion" : 1
+    }
+    """
+
+    UserDefaults.standard.set(Data(payload.utf8), forKey: transformPresetStoreKey)
+
+    let state = AppState()
+
+    #expect(state.transform.previousTransformSnapshot?.abstractionMethod == .apisr)
+    #expect(state.transform.abstractionMethod == .apisr)
 }
 
 // MARK: -
@@ -512,21 +624,5 @@ private actor AbstractionOperationProbe {
     func resume(with image: UIImage) {
         continuation?.resume(returning: image)
         continuation = nil
-    }
-}
-
-private actor KuwaharaOperationProbe {
-    private let fixedResult: UIImage?
-    private(set) var callCount: Int = 0
-    private(set) var lastRadius: Int? = nil
-
-    init(result: UIImage?) {
-        self.fixedResult = result
-    }
-
-    func filter(image: UIImage, radius: Int) -> UIImage? {
-        callCount += 1
-        lastRadius = radius
-        return fixedResult
     }
 }

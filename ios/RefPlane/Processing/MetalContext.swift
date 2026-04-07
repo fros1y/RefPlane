@@ -1,5 +1,6 @@
 import Metal
 import UIKit
+import os
 
 // MARK: - GPU compute context for image processing
 
@@ -8,17 +9,19 @@ import UIKit
 /// CPU processing when Metal is unavailable.
 final class MetalContext {
 
+    private static let logger = AppInstrumentation.logger(category: "Processing.MetalContext")
+
     static let shared: MetalContext? = {
         guard let device = MTLCreateSystemDefaultDevice() else {
-            print("[MetalContext] ⚠️ MTLCreateSystemDefaultDevice() returned nil — no GPU available")
+            logger.notice("MTLCreateSystemDefaultDevice returned nil; Metal is unavailable")
             return nil
         }
-        print("[MetalContext] ✅ Metal device: \(device.name)")
+        logger.info("Using Metal device \(device.name, privacy: .public)")
         let ctx = MetalContext(device: device)
         if ctx == nil {
-            print("[MetalContext] ⚠️ MetalContext init failed (library or pipeline error)")
+            logger.error("MetalContext initialization failed")
         } else {
-            print("[MetalContext] ✅ All 15 compute pipelines compiled successfully")
+            logger.info("All 15 compute pipelines compiled successfully")
         }
         return ctx
     }()
@@ -31,18 +34,18 @@ final class MetalContext {
     let grayscalePipeline: MTLComputePipelineState
     let rgbToOklabPipeline: MTLComputePipelineState
     let bandAssignPipeline: MTLComputePipelineState
+    let bandIsolationPipeline: MTLComputePipelineState
     let colorBuildLabelsPipeline: MTLComputePipelineState
     let colorHistogramPipeline: MTLComputePipelineState
     let kmeansAssignPipeline: MTLComputePipelineState
     let quantizePipeline: MTLComputePipelineState
     let remapByLabelPipeline: MTLComputePipelineState
     let valueRemapPipeline: MTLComputePipelineState
-    let kuwaharaStructureTensorPipeline: MTLComputePipelineState
-    let kuwaharaFilterPipeline: MTLComputePipelineState
     let depthEffectsPipeline: MTLComputePipelineState
     let depthGaussianBlurHPipeline: MTLComputePipelineState
     let depthGaussianBlurVPipeline: MTLComputePipelineState
     let depthRemoveBackgroundPipeline: MTLComputePipelineState
+    let depthThresholdPreviewPipeline: MTLComputePipelineState
 
     private init?(device: MTLDevice) {
         self.device = device
@@ -55,20 +58,20 @@ final class MetalContext {
             grayscalePipeline              = try Self.makePipeline(device: device, library: lib, name: "grayscale")
             rgbToOklabPipeline             = try Self.makePipeline(device: device, library: lib, name: "rgb_to_oklab")
             bandAssignPipeline             = try Self.makePipeline(device: device, library: lib, name: "band_assign")
+            bandIsolationPipeline          = try Self.makePipeline(device: device, library: lib, name: "band_isolation")
             colorBuildLabelsPipeline       = try Self.makePipeline(device: device, library: lib, name: "color_build_labels")
             colorHistogramPipeline         = try Self.makePipeline(device: device, library: lib, name: "color_histogram")
             kmeansAssignPipeline           = try Self.makePipeline(device: device, library: lib, name: "kmeans_assign")
             quantizePipeline               = try Self.makePipeline(device: device, library: lib, name: "quantize")
             remapByLabelPipeline           = try Self.makePipeline(device: device, library: lib, name: "remap_by_label")
             valueRemapPipeline             = try Self.makePipeline(device: device, library: lib, name: "value_remap")
-            kuwaharaStructureTensorPipeline = try Self.makePipeline(device: device, library: lib, name: "kuwahara_structure_tensor")
-            kuwaharaFilterPipeline          = try Self.makePipeline(device: device, library: lib, name: "kuwahara_filter")
             depthEffectsPipeline            = try Self.makePipeline(device: device, library: lib, name: "depth_painterly_effects")
             depthGaussianBlurHPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_h")
             depthGaussianBlurVPipeline      = try Self.makePipeline(device: device, library: lib, name: "depth_gaussian_blur_v")
             depthRemoveBackgroundPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_remove_background")
+            depthThresholdPreviewPipeline   = try Self.makePipeline(device: device, library: lib, name: "depth_threshold_preview")
         } catch {
-            print("[MetalContext] Pipeline creation failed: \(error)")
+            Self.logger.error("Pipeline creation failed: \(String(describing: error), privacy: .public)")
             return nil
         }
     }
@@ -205,6 +208,60 @@ final class MetalContext {
 
         let ptr = bandBuf.contents().bindMemory(to: Int32.self, capacity: count)
         return Array(UnsafeBufferPointer(start: ptr, count: count))
+    }
+
+    /// Apply focus isolation by dimming and desaturating all non-selected bands.
+    func isolateBands(
+        pixels: [UInt8],
+        pixelBands: [Int],
+        selectedBands: Set<Int>,
+        desaturation: Float,
+        dimming: Float
+    ) -> [UInt8]? {
+        let count = pixelBands.count
+        guard count > 0,
+              pixels.count == count * 4,
+              !selectedBands.isEmpty else {
+            return nil
+        }
+
+        let pixelBands32 = pixelBands.map { Int32(clamping: $0) }
+        let selectedBands32 = selectedBands.sorted().map { Int32(clamping: $0) }
+
+        guard let srcBuffer = makePixelBuffer(pixels),
+              let pixelBandBuffer = makeBuffer(pixelBands32),
+              let selectedBandBuffer = makeBuffer(selectedBands32),
+              let dstBuffer = makeBuffer(length: count * 4) else {
+            return nil
+        }
+
+        var params = BandIsolationParamsSwift(
+            pixelCount: UInt32(count),
+            selectedBandCount: UInt32(selectedBands32.count),
+            desaturation: desaturation,
+            dimming: dimming
+        )
+        guard let paramBuffer = device.makeBuffer(
+            bytes: &params,
+            length: MemoryLayout<BandIsolationParamsSwift>.stride,
+            options: .storageModeShared
+        ) else {
+            return nil
+        }
+
+        dispatch(
+            pipeline: bandIsolationPipeline,
+            buffers: [
+                (srcBuffer, 0),
+                (pixelBandBuffer, 1),
+                (selectedBandBuffer, 2),
+                (dstBuffer, 3),
+                (paramBuffer, 4),
+            ],
+            gridSize: count
+        )
+
+        return readPixels(from: dstBuffer, count: count)
     }
 
     /// K-Means assignment step on GPU. Accepts pre-uploaded pixel lab MTLBuffer.
@@ -394,92 +451,6 @@ final class MetalContext {
         return readPixels(from: dstBuf, count: count)
     }
 
-    // MARK: - Anisotropic Kuwahara (texture-based)
-
-    /// Apply the anisotropic Kuwahara filter to a CGImage.
-    /// Uses two texture-based compute passes (structure tensor + filter).
-    /// - Parameters:
-    ///   - image: Source image (any size; typically the downsampled simplification input).
-    ///   - radius: Kuwahara neighbourhood radius (default 6).
-    /// - Returns: Filtered UIImage of the same pixel dimensions, or nil on failure.
-    func anisotropicKuwahara(_ image: CGImage, radius: Int = 6) -> UIImage? {
-        let width  = image.width
-        let height = image.height
-        guard width > 0, height > 0 else { return nil }
-
-        // Build a Metal texture descriptor for RGBA float textures (intermediate)
-        let floatDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba32Float,
-            width: width, height: height,
-            mipmapped: false
-        )
-        floatDesc.usage = [.shaderRead, .shaderWrite]
-        floatDesc.storageMode = .private
-
-        // BGRA unorm descriptor for source and output
-        let rgbaDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm,
-            width: width, height: height,
-            mipmapped: false
-        )
-        rgbaDesc.usage = [.shaderRead, .shaderWrite]
-        rgbaDesc.storageMode = .shared
-
-        guard let srcTex    = makeTextureFromCGImage(image),
-              let tensorTex = device.makeTexture(descriptor: floatDesc),
-              let dstTex    = device.makeTexture(descriptor: rgbaDesc) else { return nil }
-
-        // Build params buffer (shared for both passes)
-        var params = KuwaharaParamsSwift(
-            width: UInt32(width),
-            height: UInt32(height),
-            radius: Int32(radius)
-        )
-        guard let paramBuf = device.makeBuffer(bytes: &params,
-                                               length: MemoryLayout<KuwaharaParamsSwift>.stride,
-                                               options: .storageModeShared) else { return nil }
-
-        guard let cmdBuf = commandQueue.makeCommandBuffer() else { return nil }
-
-        // Pass 1: structure tensor
-        if let encoder = cmdBuf.makeComputeCommandEncoder() {
-            encoder.setComputePipelineState(kuwaharaStructureTensorPipeline)
-            encoder.setTexture(srcTex,    index: 0)
-            encoder.setTexture(tensorTex, index: 1)
-            encoder.setBuffer(paramBuf, offset: 0, index: 0)
-            let tgs = MTLSize(width: 8, height: 8, depth: 1)
-            let grd = MTLSize(
-                width:  (width  + 7) / 8,
-                height: (height + 7) / 8,
-                depth:  1
-            )
-            encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
-            encoder.endEncoding()
-        }
-
-        // Pass 2: Kuwahara filter
-        if let encoder = cmdBuf.makeComputeCommandEncoder() {
-            encoder.setComputePipelineState(kuwaharaFilterPipeline)
-            encoder.setTexture(srcTex,    index: 0)
-            encoder.setTexture(tensorTex, index: 1)
-            encoder.setTexture(dstTex,    index: 2)
-            encoder.setBuffer(paramBuf, offset: 0, index: 0)
-            let tgs = MTLSize(width: 8, height: 8, depth: 1)
-            let grd = MTLSize(
-                width:  (width  + 7) / 8,
-                height: (height + 7) / 8,
-                depth:  1
-            )
-            encoder.dispatchThreadgroups(grd, threadsPerThreadgroup: tgs)
-            encoder.endEncoding()
-        }
-
-        cmdBuf.commit()
-        cmdBuf.waitUntilCompleted()
-
-        return uiImageFromTexture(dstTex, width: width, height: height)
-    }
-
     // MARK: - Depth-based painterly effects (texture-based)
 
     /// Apply depth-based atmospheric perspective effects to a source image.
@@ -649,6 +620,78 @@ final class MetalContext {
         )
     }
 
+    func makeColorTexture(from image: UIImage) -> MTLTexture? {
+        guard let cgImage = image.cgImage else {
+            return nil
+        }
+        return makeTextureFromCGImage(cgImage)
+    }
+
+    func thresholdPreview(
+        sourceTexture: MTLTexture,
+        depthTexture: MTLTexture,
+        backgroundCutoff: Double,
+        maxDimension: Int = 1280
+    ) -> UIImage? {
+        let sourceWidth = depthTexture.width
+        let sourceHeight = depthTexture.height
+        guard sourceWidth > 0, sourceHeight > 0 else { return nil }
+
+        let largestDimension = max(sourceWidth, sourceHeight)
+        let scale = largestDimension > maxDimension
+            ? Double(maxDimension) / Double(largestDimension)
+            : 1.0
+        let previewWidth = max(1, Int((Double(sourceWidth) * scale).rounded()))
+        let previewHeight = max(1, Int((Double(sourceHeight) * scale).rounded()))
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm,
+            width: previewWidth,
+            height: previewHeight,
+            mipmapped: false
+        )
+        descriptor.usage = [.shaderWrite]
+        descriptor.storageMode = .shared
+
+        guard let previewTexture = device.makeTexture(descriptor: descriptor) else {
+            return nil
+        }
+
+        var params = DepthThresholdPreviewParamsSwift(
+            width: UInt32(previewWidth),
+            height: UInt32(previewHeight),
+            backgroundCutoff: Float(backgroundCutoff)
+        )
+        guard let paramBuffer = device.makeBuffer(
+            bytes: &params,
+            length: MemoryLayout<DepthThresholdPreviewParamsSwift>.stride,
+            options: .storageModeShared
+        ), let commandBuffer = commandQueue.makeCommandBuffer(),
+           let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            return nil
+        }
+
+        let threadsPerThreadgroup = MTLSize(width: 8, height: 8, depth: 1)
+        let threadgroups = MTLSize(
+            width: (previewWidth + 7) / 8,
+            height: (previewHeight + 7) / 8,
+            depth: 1
+        )
+
+        encoder.setComputePipelineState(depthThresholdPreviewPipeline)
+        encoder.setTexture(sourceTexture, index: 0)
+        encoder.setTexture(depthTexture, index: 1)
+        encoder.setTexture(previewTexture, index: 2)
+        encoder.setBuffer(paramBuffer, offset: 0, index: 0)
+        encoder.dispatchThreadgroups(threadgroups, threadsPerThreadgroup: threadsPerThreadgroup)
+        encoder.endEncoding()
+
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        return uiImageFromTexture(previewTexture, width: previewWidth, height: previewHeight)
+    }
+
     /// Create a single-channel (R8Unorm) texture from a grayscale CGImage,
     /// resizing if necessary to match the target dimensions.
     private func makeGrayscaleTexture(_ cgImage: CGImage, width: Int, height: Int) -> MTLTexture? {
@@ -757,6 +800,13 @@ private struct BandAssignParamsSwift {
     var totalBands: UInt32
 }
 
+private struct BandIsolationParamsSwift {
+    var pixelCount: UInt32
+    var selectedBandCount: UInt32
+    var desaturation: Float
+    var dimming: Float
+}
+
 private struct ColorLabelParamsSwift {
     var pixelCount: UInt32
     var familyCount: UInt32
@@ -797,12 +847,6 @@ private struct ValueRemapParamsSwift {
     var totalLevels: UInt32
 }
 
-private struct KuwaharaParamsSwift {
-    var width:  UInt32
-    var height: UInt32
-    var radius: Int32
-}
-
 private struct DepthEffectParamsSwift {
     var width: UInt32
     var height: UInt32
@@ -810,6 +854,12 @@ private struct DepthEffectParamsSwift {
     var backgroundCutoff: Float
     var intensity: Float
     var backgroundMode: UInt32
+}
+
+private struct DepthThresholdPreviewParamsSwift {
+    var width: UInt32
+    var height: UInt32
+    var backgroundCutoff: Float
 }
 
 // MARK: - Errors

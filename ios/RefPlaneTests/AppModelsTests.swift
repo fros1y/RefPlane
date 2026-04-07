@@ -95,3 +95,10 @@ func quantizationBiasDisplayNamesAreQualitative() {
     #expect(QuantizationBias.displayName(for: 0) == "Even")
     #expect(QuantizationBias.displayName(for: 0.5) == "Shadow Detail")
 }
+
+@Test
+func colorConfigDefaultsPreferHueCoverage() {
+    let config = ColorConfig()
+
+    #expect(config.paletteSpread == 1)
+}

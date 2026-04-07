@@ -1,8 +1,25 @@
 import UIKit
+import Accelerate
+import os
 
 // MARK: - Grayscale conversion
 
 enum GrayscaleProcessor {
+
+    private static let logger = AppInstrumentation.logger(category: "Processing.Grayscale")
+    private static let signpostLog = AppInstrumentation.signpostLog(category: "Processing.Grayscale")
+
+    // Precomputed sRGB linearization LUT: byte value → linear float
+    private static let srgbToLinear: [Float] = (0..<256).map {
+        linearizeSRGB(Float($0) / 255.0)
+    }
+
+    // Precomputed sRGB delinearization LUT: quantized linear → byte
+    private static let delinSteps = 4096
+    private static let linearToSRGBByte: [UInt8] = (0...4096).map {
+        let v = delinearizeSRGB(Float($0) / 4096.0)
+        return UInt8(max(0, min(255, Int(v * 255 + 0.5))))
+    }
 
     /// Convert image to grayscale using the selected channel-combination method.
     /// Uses Metal GPU compute when available, CPU fallback otherwise.
@@ -10,37 +27,45 @@ enum GrayscaleProcessor {
         image: UIImage,
         conversion: GrayscaleConversion = .luminance
     ) -> UIImage? {
-        guard conversion != .none else {
-            return image
+        AppInstrumentation.measure("ProcessGrayscale", log: signpostLog) {
+            guard conversion != .none else {
+                return image
+            }
+
+            guard let (pixels, width, height) = AppInstrumentation.measure("DecodePixels", log: signpostLog, {
+                image.toPixelData()
+            }) else {
+                return nil
+            }
+
+            if conversion.usesGPUShortcut,
+               let gpu = MetalContext.shared {
+                return AppInstrumentation.measure("RunGPUKernel", log: signpostLog) {
+                    guard let out = gpu.processGrayscale(pixels: pixels, width: width, height: height) else {
+                        return nil
+                    }
+                    return AppInstrumentation.measure("EncodeImage", log: signpostLog) {
+                        UIImage.fromPixelData(out, width: width, height: height)
+                    }
+                }
+            }
+
+            if conversion.usesGPUShortcut {
+                let metalAvailable = MetalContext.shared != nil
+                logger.notice(
+                    "Falling back to CPU grayscale processing; metalAvailable=\(metalAvailable, privacy: .public)"
+                )
+            }
+
+            return AppInstrumentation.measure("RunCPUConversion", log: signpostLog) {
+                processCPU(
+                    pixels: pixels,
+                    width: width,
+                    height: height,
+                    conversion: conversion
+                )
+            }
         }
-
-        let t0 = CFAbsoluteTimeGetCurrent()
-        guard let (pixels, width, height) = image.toPixelData() else { return nil }
-        let total = width * height
-        let t1 = CFAbsoluteTimeGetCurrent()
-        print("[Grayscale] toPixelData: \(String(format: "%.1f", (t1 - t0) * 1000)) ms")
-
-        if conversion.usesGPUShortcut,
-           let gpu = MetalContext.shared,
-           let out = gpu.processGrayscale(pixels: pixels, width: width, height: height) {
-            let t2 = CFAbsoluteTimeGetCurrent()
-            print("[Grayscale] ✅ GPU path — \(total) px in \(String(format: "%.1f", (t2 - t1) * 1000)) ms")
-            let img = UIImage.fromPixelData(out, width: width, height: height)
-            let t3 = CFAbsoluteTimeGetCurrent()
-            print("[Grayscale] fromPixelData: \(String(format: "%.1f", (t3 - t2) * 1000)) ms")
-            return img
-        }
-
-        print("[Grayscale] ⚠️ CPU fallback (MetalContext.shared = \(MetalContext.shared == nil ? "nil" : "non-nil"))")
-        let result = processCPU(
-            pixels: pixels,
-            width: width,
-            height: height,
-            conversion: conversion
-        )
-        let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-        print("[Grayscale] CPU — \(total) px in \(String(format: "%.1f", ms)) ms")
-        return result
     }
 
     static func grayscaleByte(r: Float, g: Float, b: Float, conversion: GrayscaleConversion) -> UInt8 {
@@ -68,21 +93,133 @@ enum GrayscaleProcessor {
         height: Int,
         conversion: GrayscaleConversion
     ) -> UIImage? {
-        var out = [UInt8](repeating: 255, count: width * height * 4)
+        if conversion == .luminance,
+           let result = processLuminanceVImage(pixels: pixels, width: width, height: height) {
+            return result
+        }
+        return processWithLUT(pixels: pixels, width: width, height: height, conversion: conversion)
+    }
 
-        for i in 0..<(width * height) {
+    // MARK: - vImage luminance (color-managed sRGB → gray)
+
+    private static func processLuminanceVImage(
+        pixels: [UInt8],
+        width: Int,
+        height: Int
+    ) -> UIImage? {
+        let count = width * height
+
+        guard let srcCS = CGColorSpace(name: CGColorSpace.sRGB),
+              let srcFmt = vImage_CGImageFormat(
+                  bitsPerComponent: 8,
+                  bitsPerPixel: 32,
+                  colorSpace: srcCS,
+                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue)
+              ),
+              let grayFmt = vImage_CGImageFormat(
+                  bitsPerComponent: 8,
+                  bitsPerPixel: 8,
+                  colorSpace: CGColorSpace(name: CGColorSpace.genericGrayGamma2_2)!,
+                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+              ),
+              let converter = try? vImageConverter.make(
+                  sourceFormat: srcFmt,
+                  destinationFormat: grayFmt
+              ) else {
+            return nil
+        }
+
+        var grayPixels = [UInt8](repeating: 0, count: count)
+        let alphaPixels = [UInt8](repeating: 255, count: count)
+        var out = [UInt8](repeating: 0, count: count * 4)
+
+        let ok: Bool = pixels.withUnsafeBufferPointer { srcPtr in
+            grayPixels.withUnsafeMutableBufferPointer { grayPtr in
+                let src = vImage_Buffer(
+                    data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
+                    height: vImagePixelCount(height),
+                    width: vImagePixelCount(width),
+                    rowBytes: width * 4
+                )
+                var dst = vImage_Buffer(
+                    data: grayPtr.baseAddress!,
+                    height: vImagePixelCount(height),
+                    width: vImagePixelCount(width),
+                    rowBytes: width
+                )
+                return (try? converter.convert(source: src, destination: &dst)) != nil
+            }
+        }
+        guard ok else { return nil }
+
+        // Replicate gray → RGBA [gray, gray, gray, 255]
+        grayPixels.withUnsafeBufferPointer { grayPtr in
+            alphaPixels.withUnsafeBufferPointer { alphaPtr in
+                out.withUnsafeMutableBufferPointer { outPtr in
+                    var gBuf = vImage_Buffer(
+                        data: UnsafeMutableRawPointer(mutating: grayPtr.baseAddress!),
+                        height: vImagePixelCount(height),
+                        width: vImagePixelCount(width),
+                        rowBytes: width
+                    )
+                    var aBuf = vImage_Buffer(
+                        data: UnsafeMutableRawPointer(mutating: alphaPtr.baseAddress!),
+                        height: vImagePixelCount(height),
+                        width: vImagePixelCount(width),
+                        rowBytes: width
+                    )
+                    var oBuf = vImage_Buffer(
+                        data: outPtr.baseAddress!,
+                        height: vImagePixelCount(height),
+                        width: vImagePixelCount(width),
+                        rowBytes: width * 4
+                    )
+                    vImageConvert_Planar8toARGB8888(
+                        &gBuf, &gBuf, &gBuf, &aBuf,
+                        &oBuf, vImage_Flags(kvImageNoFlags)
+                    )
+                }
+            }
+        }
+
+        return UIImage.fromPixelData(out, width: width, height: height)
+    }
+
+    // MARK: - LUT-accelerated path (average / lightness / luminance fallback)
+
+    private static func processWithLUT(
+        pixels: [UInt8],
+        width: Int,
+        height: Int,
+        conversion: GrayscaleConversion
+    ) -> UIImage? {
+        let count = width * height
+        var out = [UInt8](repeating: 255, count: count * 4)
+        let linTable = srgbToLinear
+        let delinTable = linearToSRGBByte
+        let steps = delinSteps
+
+        for i in 0..<count {
             let base = i * 4
-            let r = Float(pixels[base])     / 255.0
-            let g = Float(pixels[base + 1]) / 255.0
-            let b = Float(pixels[base + 2]) / 255.0
-            let a = pixels[base + 3]
+            let rl = linTable[Int(pixels[base])]
+            let gl = linTable[Int(pixels[base + 1])]
+            let bl = linTable[Int(pixels[base + 2])]
 
-            let gray = grayscaleByte(r: r, g: g, b: b, conversion: conversion)
+            let grayLinear: Float
+            switch conversion {
+            case .none, .luminance:
+                grayLinear = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl
+            case .average:
+                grayLinear = (rl + gl + bl) / 3.0
+            case .lightness:
+                grayLinear = (max(rl, gl, bl) + min(rl, gl, bl)) / 2.0
+            }
 
-            out[base]     = gray
+            let gray = delinTable[min(steps, Int(grayLinear * Float(steps) + 0.5))]
+            out[base] = gray
             out[base + 1] = gray
             out[base + 2] = gray
-            out[base + 3] = a
+            out[base + 3] = pixels[base + 3]
         }
 
         return UIImage.fromPixelData(out, width: width, height: height)

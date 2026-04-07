@@ -1,6 +1,7 @@
 import UIKit
 import CoreML
 import CoreImage
+import os
 
 // MARK: - Abstraction errors
 
@@ -48,6 +49,8 @@ private actor AbstractionModelStore {
 
 enum ImageAbstractor {
 
+    private static let logger = AppInstrumentation.logger(category: "Processing.ImageAbstractor")
+
     private static let modelInputSize = 256
     private static let modelOutputSize = 1024  // 4× input
     private static let upscaleFactor = 4
@@ -83,7 +86,7 @@ enum ImageAbstractor {
         for name in candidates {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc"),
                let model = try? MLModel(contentsOf: url, configuration: config) {
-                print("[ImageAbstractor] Loaded compiled model: \(name).mlmodelc")
+                logger.info("Loaded compiled model \(name, privacy: .public).mlmodelc")
                 await modelStore.insert(model, for: method)
                 return model
             }
@@ -91,7 +94,7 @@ enum ImageAbstractor {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlpackage") {
                 if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    print("[ImageAbstractor] Compiled and loaded: \(name).mlpackage")
+                    logger.info("Compiled and loaded model package \(name, privacy: .public).mlpackage")
                     await modelStore.insert(model, for: method)
                     return model
                 }
@@ -100,14 +103,14 @@ enum ImageAbstractor {
             if let url = Bundle.main.url(forResource: name, withExtension: "mlmodel") {
                 if let compiledURL = try? await MLModel.compileModel(at: url),
                    let model = try? MLModel(contentsOf: compiledURL, configuration: config) {
-                    print("[ImageAbstractor] Compiled and loaded: \(name).mlmodel")
+                    logger.info("Compiled and loaded model \(name, privacy: .public).mlmodel")
                     await modelStore.insert(model, for: method)
                     return model
                 }
             }
         }
 
-        print("[ImageAbstractor] No model found for \(method.label)")
+        logger.error("No model found for abstraction method \(method.label, privacy: .public)")
         throw AbstractionError.modelUnavailable(method)
     }
 
@@ -136,18 +139,7 @@ enum ImageAbstractor {
         let origH = sourceCG.height
 
         // Load model (async) before entering the detached compute task
-        let loadedModel: MLModel?
-        switch method.processingKind {
-        case .superResolution4x, .fullImageModel:
-            loadedModel = try await loadModel(for: method)
-        case .metalShader:
-            loadedModel = nil
-        }
-
-        let metalCtx = (method.processingKind == .metalShader) ? MetalContext.shared : nil
-        if method.processingKind == .metalShader && metalCtx == nil {
-            throw AbstractionError.inferenceFailed(method)
-        }
+        let loadedModel = try await loadModel(for: method)
 
         return try await Task.detached(priority: .userInitiated) {
             let smallW = max(1, Int(round(Double(origW) / Double(downscale))))
@@ -156,28 +148,19 @@ enum ImageAbstractor {
 
             switch method.processingKind {
             case .superResolution4x:
-                guard let model = loadedModel,
-                      let smallCG = small.cgImage,
-                      let upscaled = processInTiles(smallCG, model: model, onProgress: onProgress) else {
+                guard let smallCG = small.cgImage,
+                      let upscaled = processInTiles(smallCG, model: loadedModel, onProgress: onProgress) else {
                     throw AbstractionError.inferenceFailed(method)
                 }
                 return resizeToPixels(upscaled, width: origW, height: origH)
 
             case .fullImageModel:
-                guard let model = loadedModel,
-                      let smallCG = small.cgImage,
-                      let result = runModel(model, input: smallCG) else {
+                guard let smallCG = small.cgImage,
+                      let result = runModel(loadedModel, input: smallCG) else {
                     throw AbstractionError.inferenceFailed(method)
                 }
                 return resizeToPixels(result, width: origW, height: origH)
 
-            case .metalShader:
-                guard let ctx = metalCtx,
-                      let smallCG = small.cgImage,
-                      let result = ctx.anisotropicKuwahara(smallCG) else {
-                    throw AbstractionError.inferenceFailed(method)
-                }
-                return resizeToPixels(result, width: origW, height: origH)
             }
         }.value
     }
@@ -225,7 +208,9 @@ enum ImageAbstractor {
         let outH = alignedCoreH * scale
         let paddedTileSize = tileSize + tilePad * 2
 
-        print("[ImageAbstractor] Tiling \(alignedCoreW)×\(alignedCoreH) (aligned from \(srcW)×\(srcH)) → \(tilesX)×\(tilesY) tiles, tilePad=\(tilePad)")
+        logger.debug(
+            "Tiling \(alignedCoreW, privacy: .public)x\(alignedCoreH, privacy: .public) aligned from \(srcW, privacy: .public)x\(srcH, privacy: .public) into \(tilesX, privacy: .public)x\(tilesY, privacy: .public) tiles; tilePad=\(tilePad, privacy: .public)"
+        )
 
         // Allocate output pixel buffer (RGBA)
         var outputPixels = [UInt8](repeating: 0, count: outW * outH * 4)
@@ -378,16 +363,41 @@ enum ImageAbstractor {
 
         var dstPixels = [UInt8](repeating: 0, count: newW * newH * 4)
 
-        for dy in 0..<newH {
-            let sy = reflectedCoordinate(dy - top, limit: h)
-            for dx in 0..<newW {
-                let sx = reflectedCoordinate(dx - left, limit: w)
-                let srcIdx = (sy * w + sx) * 4
-                let dstIdx = (dy * newW + dx) * 4
-                dstPixels[dstIdx] = srcPixels[srcIdx]
-                dstPixels[dstIdx + 1] = srcPixels[srcIdx + 1]
-                dstPixels[dstIdx + 2] = srcPixels[srcIdx + 2]
-                dstPixels[dstIdx + 3] = 255
+        dstPixels.withUnsafeMutableBufferPointer { dstBuf in
+            srcPixels.withUnsafeBufferPointer { srcBuf in
+                let dst = dstBuf.baseAddress!
+                let src = srcBuf.baseAddress!
+
+                for dy in 0..<newH {
+                    let sy = reflectedCoordinate(dy - top, limit: h)
+                    let srcRow = src + sy * w * 4
+                    let dstRow = dst + dy * newW * 4
+
+                    // Left padding: reflected x coordinates
+                    for dx in 0..<left {
+                        let sx = reflectedCoordinate(dx - left, limit: w)
+                        let si = sx * 4
+                        let di = dx * 4
+                        dstRow[di]     = srcRow[si]
+                        dstRow[di + 1] = srcRow[si + 1]
+                        dstRow[di + 2] = srcRow[si + 2]
+                        dstRow[di + 3] = 255
+                    }
+
+                    // Center: memcpy entire source row (bulk of pixels)
+                    memcpy(dstRow + left * 4, srcRow, w * 4)
+
+                    // Right padding: reflected x coordinates
+                    for dx in (left + w)..<newW {
+                        let sx = reflectedCoordinate(dx - left, limit: w)
+                        let si = sx * 4
+                        let di = dx * 4
+                        dstRow[di]     = srcRow[si]
+                        dstRow[di + 1] = srcRow[si + 1]
+                        dstRow[di + 2] = srcRow[si + 2]
+                        dstRow[di + 3] = 255
+                    }
+                }
             }
         }
 

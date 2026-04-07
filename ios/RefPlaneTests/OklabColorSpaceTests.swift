@@ -126,3 +126,33 @@ func oklabDistanceColorWeightedRespectsLWeight() {
     let expected = lWeight * lWeight   // (1.0 * 0.5)^2 = 0.25
     #expect(abs(dist - expected) < 1e-6)
 }
+
+// MARK: - PaletteColorNamer
+
+@Test
+func paletteColorNamerUsesNeutralNamesForNearBlackColors() {
+    let color = OklabColor(L: 0.18, a: 0.0, b: 0.0)
+
+    #expect(PaletteColorNamer.name(for: color) == "Near-Black Neutral")
+}
+
+@Test
+func paletteColorNamerOmitsTemperatureForLowChromaColors() {
+    let color = OklabColor(L: 0.70, a: 0.0346, b: 0.02)
+
+    #expect(PaletteColorNamer.name(for: color) == "Mid Dull Orange")
+}
+
+@Test
+func paletteColorNamerIncludesTemperatureForChromaticYellows() {
+    let color = OklabColor(L: 0.63, a: 0.03, b: 0.10)
+
+    #expect(PaletteColorNamer.name(for: color) == "Mid Warm Soft Yellow")
+}
+
+@Test
+func paletteColorNamerClassifiesCoolBlues() {
+    let color = OklabColor(L: 0.50, a: -0.1691, b: -0.0616)
+
+    #expect(PaletteColorNamer.name(for: color) == "Deep Cool Clear Blue")
+}

@@ -15,7 +15,7 @@ func originalModeExportPrefersFullResolutionSource() {
     state.fullResolutionOriginalImage = fullResolution
     state.originalImage = workingCopy
     state.sourceImage = workingCopy
-    state.activeMode = .original
+    state.transform.activeMode = .original
 
     let exported = state.exportCurrentImage()
 
@@ -24,8 +24,9 @@ func originalModeExportPrefersFullResolutionSource() {
 
 @MainActor
 @Test
-func exportedImagePreservesSourceMetadataAndWritesRefPlaneProvenance() throws {
+func exportedImagePayloadAlwaysUsesPNGAndRenderedImageDimensions() throws {
     let sourceImage = TestImageFactory.makeSolid(width: 120, height: 80, color: .blue)
+    let processedImage = TestImageFactory.makeSolid(width: 60, height: 30, color: .green)
     let sourceMetadata = SourceImageMetadata(
         properties: [
             kCGImagePropertyTIFFDictionary as String: [
@@ -35,76 +36,92 @@ func exportedImagePreservesSourceMetadataAndWritesRefPlaneProvenance() throws {
                 kCGImagePropertyPNGComment as String: "Camera metadata"
             ]
         ],
-        uniformTypeIdentifier: UTType.png.identifier
+        uniformTypeIdentifier: UTType.jpeg.identifier
     )
     let state = AppState()
 
     state.loadImage(ImportedImagePayload(image: sourceImage, metadata: sourceMetadata))
-    state.valueConfig.grayscaleConversion = .luminance
-    state.valueConfig.levels = 5
-    state.valueConfig.quantizationBias = -0.3
-    state.colorConfig.paletteSelectionEnabled = true
-    state.colorConfig.numShades = 8
-    state.activeMode = .value
-    state.paletteColors = [
-        Color(red: 0.2, green: 0.3, blue: 0.4),
-        Color(red: 0.8, green: 0.7, blue: 0.2)
-    ]
-    state.pigmentRecipes = [
-        PigmentRecipe(
-            components: [
-                RecipeComponent(
-                    pigmentId: "ultramarine_blue",
-                    pigmentName: "Ultramarine Blue",
-                    concentration: 1
-                )
-            ],
-            predictedColor: OklabColor(L: 0.35, a: -0.02, b: -0.12),
-            deltaE: 0.03
-        ),
-        PigmentRecipe(
-            components: [
-                RecipeComponent(
-                    pigmentId: "cadmium_yellow_light",
-                    pigmentName: "Cadmium Yellow Light",
-                    concentration: 0.75
-                ),
-                RecipeComponent(
-                    pigmentId: "titanium_white",
-                    pigmentName: "Titanium White",
-                    concentration: 0.25
-                )
-            ],
-            predictedColor: OklabColor(L: 0.84, a: 0.0, b: 0.11),
-            deltaE: 0.04
-        )
-    ]
-    state.clippedRecipeIndices = [1]
+    state.transform.activeMode = .value
+    state.processedImage = processedImage
 
     let exportPayload = try #require(state.exportCurrentImagePayload())
     let properties = try exportedMetadata(from: exportPayload.imageData)
     let tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any]
     let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any]
     let png = properties[kCGImagePropertyPNGDictionary as String] as? [String: Any]
+    let pixelSize = try exportedPixelSize(from: exportPayload.imageData)
 
     #expect(exportPayload.contentType == .png)
-    #expect(tiff?[kCGImagePropertyTIFFArtist as String] as? String == "Studio Source")
+    #expect(exportPayload.image.size == processedImage.size)
+    #expect(pixelSize.width == 60)
+    #expect(pixelSize.height == 30)
+    #expect(tiff == nil)
+    #expect(exif == nil)
+    #expect(png?[kCGImagePropertyPNGComment as String] as? String == nil)
+    #expect(png?[kCGImagePropertyPNGDescription as String] as? String == nil)
+}
 
-    let provenance = try #require(
-        png?[kCGImagePropertyPNGDescription as String] as? String
-            ?? tiff?[kCGImagePropertyTIFFImageDescription as String] as? String
-            ?? exif?[kCGImagePropertyExifUserComment as String] as? String
+@MainActor
+@Test
+func mobileShareSourcesPreferImageForPhotosAndFileForAirDropOrFiles() throws {
+    let image = TestImageFactory.makeSolid(width: 40, height: 24, color: .purple)
+    let fileURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("export-contract-share-item")
+        .appendingPathExtension("png")
+    let controller = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+
+    try Data([0x89, 0x50, 0x4E, 0x47]).write(to: fileURL, options: .atomic)
+    defer {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    let imageSource = ExportImageActivityItemSource(
+        image: image,
+        subject: "underpaint-value.png"
     )
-    #expect(provenance.contains("\"mode\":\"value\""))
-    #expect(provenance.contains("\"gitRevision\""))
-    #expect(provenance.contains("\"grayscaleConversion\":\"Luminance\""))
-    #expect(provenance.contains("\"valueLevels\":5"))
-    #expect(provenance.contains("\"paletteSelectionEnabled\":true"))
-    #expect(provenance.contains("\"generatedPalette\""))
-    #expect(provenance.contains("\"color\":\"#334C66FF\""))
-    #expect(provenance.contains("\"pigmentID\":\"cadmium_yellow_light\""))
-    #expect(provenance.contains("\"clipped\":true"))
-    #expect(provenance.contains("\"Camera metadata\""))
+    let fileSource = ExportFileActivityItemSource(
+        fileURL: fileURL,
+        subject: "underpaint-value.png"
+    )
+
+    #expect(imageSource.activityViewControllerPlaceholderItem(controller) is UIImage)
+    #expect(fileSource.activityViewControllerPlaceholderItem(controller) as? URL == fileURL)
+    #expect(
+        imageSource.activityViewController(
+            controller,
+            itemForActivityType: .saveToCameraRoll
+        ) is UIImage
+    )
+    #expect(
+        fileSource.activityViewController(
+            controller,
+            itemForActivityType: .saveToCameraRoll
+        ) == nil
+    )
+    #expect(
+        imageSource.activityViewController(
+            controller,
+            itemForActivityType: .airDrop
+        ) == nil
+    )
+    #expect(
+        fileSource.activityViewController(
+            controller,
+            itemForActivityType: .airDrop
+        ) as? URL == fileURL
+    )
+    #expect(
+        imageSource.activityViewController(
+            controller,
+            itemForActivityType: ExportShareActivityRouter.saveToFilesActivityType
+        ) == nil
+    )
+    #expect(
+        fileSource.activityViewController(
+            controller,
+            itemForActivityType: ExportShareActivityRouter.saveToFilesActivityType
+        ) as? URL == fileURL
+    )
 }
 
 @MainActor
@@ -113,24 +130,23 @@ func currentSettingsDescriptionIncludesAllPipelineSectionsAndPigments() {
     let state = AppState()
 
     state.setMode(.value)
-    state.depthConfig.enabled = true
-    state.depthConfig.backgroundMode = .blur
-    state.abstractionStrength = 0.65
-    state.kuwaharaStrength = 0.3
-    state.valueConfig.grayscaleConversion = .average
-    state.valueConfig.levels = 5
-    state.valueConfig.quantizationBias = -0.4
-    state.colorConfig.paletteSelectionEnabled = true
-    state.colorConfig.numShades = 6
-    state.colorConfig.quantizationBias = 0.5
-    state.colorConfig.maxPigmentsPerMix = 2
-    state.colorConfig.minConcentration = 0.125
-    state.colorConfig.enabledPigmentIDs = [
+    state.depth.depthConfig.enabled = true
+    state.depth.depthConfig.backgroundMode = .blur
+    state.transform.abstractionStrength = 0.65
+    state.transform.valueConfig.grayscaleConversion = .average
+    state.transform.valueConfig.levels = 5
+    state.transform.valueConfig.quantizationBias = -0.4
+    state.transform.colorConfig.paletteSelectionEnabled = true
+    state.transform.colorConfig.numShades = 6
+    state.transform.colorConfig.quantizationBias = 0.5
+    state.transform.colorConfig.maxPigmentsPerMix = 2
+    state.transform.colorConfig.minConcentration = 0.125
+    state.transform.colorConfig.enabledPigmentIDs = [
         "cadmium_yellow_light",
         "ultramarine_blue"
     ]
-    state.contourConfig.enabled = true
-    state.gridConfig.enabled = true
+    state.transform.contourConfig.enabled = true
+    state.transform.gridConfig.enabled = true
     state.paletteColors = [
         Color(red: 0.91, green: 0.82, blue: 0.61),
         Color(red: 0.05, green: 0.05, blue: 0.05)
@@ -192,4 +208,11 @@ private func exportedMetadata(from imageData: Data) throws -> [String: Any] {
     return try #require(
         CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]
     )
+}
+
+private func exportedPixelSize(from imageData: Data) throws -> CGSize {
+    let properties = try exportedMetadata(from: imageData)
+    let width = try #require(properties[kCGImagePropertyPixelWidth as String] as? Int)
+    let height = try #require(properties[kCGImagePropertyPixelHeight as String] as? Int)
+    return CGSize(width: width, height: height)
 }
