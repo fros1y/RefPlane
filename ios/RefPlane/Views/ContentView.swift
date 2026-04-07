@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -496,6 +497,7 @@ private struct StudioCanvasChrome: View {
                     accessibilityID: "chrome.compare",
                     action: toggleCompare
                 )
+                .popoverTip(CompareModeTip(), arrowEdge: .top)
 
                 chromeButton(
                     title: "Export",
@@ -504,6 +506,7 @@ private struct StudioCanvasChrome: View {
                     accessibilityID: "chrome.export",
                     action: onExport
                 )
+                .popoverTip(ExportTip(), arrowEdge: .top)
 
                 chromeButton(
                     title: isInspectorCollapsed ? "Show studio" : "Hide studio",

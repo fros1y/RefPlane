@@ -13,6 +13,7 @@
 		0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677004 /* PaletteSections.swift */; };
 		0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */; };
 		0A11B22C33D44E55F6677020 /* AppInstrumentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677021 /* AppInstrumentation.swift */; };
+		0A11B22C33D44E55F6677022 /* AppTips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677024 /* AppTips.swift */; };
 		0A11B22C33D44E55F6677010 /* BandIsolationRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */; };
 		0A11B22C33D44E55F6677012 /* ContourGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677013 /* ContourGenerator.swift */; };
 		0A11B22C33D44E55F6677014 /* ContourLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677015 /* ContourLineColorResolver.swift */; };
@@ -32,6 +33,7 @@
 		0A11B22C33D44E55F6677118 /* KMeansClustererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */; };
 		0A11B22C33D44E55F667711A /* GrayscaleProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */; };
 		0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */; };
+		0A11B22C33D44E55F6677122 /* AppTipsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677124 /* AppTipsTests.swift */; };
 		0A11B22C33D44E55F6677120 /* DepthEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677121 /* DepthEstimatorTests.swift */; };
 		0A11B22C33D44E55F6677201 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677202 /* XCTest.framework */; };
 		18900E3DD6FA4EBFB2BCC1A3 /* ImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */; };
@@ -102,6 +104,7 @@
 		0A11B22C33D44E55F6677004 /* PaletteSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaletteSections.swift; path = Support/PaletteSections.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GridLineColorResolver.swift; path = Support/GridLineColorResolver.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677021 /* AppInstrumentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppInstrumentation.swift; path = Support/AppInstrumentation.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677024 /* AppTips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppTips.swift; path = Support/AppTips.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677011 /* BandIsolationRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BandIsolationRenderer.swift; path = Support/BandIsolationRenderer.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677013 /* ContourGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourGenerator.swift; path = Support/ContourGenerator.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677015 /* ContourLineColorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContourLineColorResolver.swift; path = Support/ContourLineColorResolver.swift; sourceTree = "<group>"; };
@@ -121,6 +124,7 @@
 		0A11B22C33D44E55F6677119 /* KMeansClustererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KMeansClustererTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667711B /* GrayscaleProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrayscaleProcessorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValueStudyProcessorTests.swift; sourceTree = "<group>"; };
+		0A11B22C33D44E55F6677124 /* AppTipsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTipsTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677121 /* DepthEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthEstimatorTests.swift; sourceTree = "<group>"; };
 		0A11B22C33D44E55F6677202 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		0A11B22C33D44E55F6677401 /* RefPlaneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RefPlaneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -200,6 +204,7 @@
 			isa = PBXGroup;
 			children = (
 				0A11B22C33D44E55F6677021 /* AppInstrumentation.swift */,
+				0A11B22C33D44E55F6677024 /* AppTips.swift */,
 				0A11B22C33D44E55F6677002 /* ThresholdUtilities.swift */,
 				0A11B22C33D44E55F6677004 /* PaletteSections.swift */,
 				0A11B22C33D44E55F6677013 /* ContourGenerator.swift */,
@@ -215,6 +220,7 @@
 		0A11B22C33D44E55F667710D /* RefPlaneTests */ = {
 			isa = PBXGroup;
 			children = (
+				0A11B22C33D44E55F6677124 /* AppTipsTests.swift */,
 				0A11B22C33D44E55F6677115 /* AppModelsTests.swift */,
 				0A11B22C33D44E55F6677108 /* AppStateTests.swift */,
 				0A11B22C33D44E55F6677111 /* BandIsolationRendererTests.swift */,
@@ -455,6 +461,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A11B22C33D44E55F6677122 /* AppTipsTests.swift in Sources */,
 				0A11B22C33D44E55F6677114 /* AppModelsTests.swift in Sources */,
 				0A11B22C33D44E55F6677107 /* AppStateTests.swift in Sources */,
 				0A11B22C33D44E55F6677110 /* BandIsolationRendererTests.swift in Sources */,
@@ -513,6 +520,7 @@
 				AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */,
 				AA11BB22CC334455DD66778A /* Shaders.metal in Sources */,
 				0A11B22C33D44E55F6677020 /* AppInstrumentation.swift in Sources */,
+				0A11B22C33D44E55F6677022 /* AppTips.swift in Sources */,
 				0A11B22C33D44E55F6677001 /* ThresholdUtilities.swift in Sources */,
 				0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */,
 				0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */,

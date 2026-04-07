@@ -289,6 +289,9 @@ class AppState {
         // once preprocessing finishes so the canvas never blanks out.
         sourceImageMetadata        = payload.metadata
         fullResolutionOriginalImage   = image
+        Task {
+            await AppTips.imageLoaded.donate()
+        }
         originalImage             = image
         sourceImage               = image
         abstractedImage           = nil

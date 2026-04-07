@@ -1,5 +1,6 @@
 import StoreKit
 import SwiftUI
+import TipKit
 import UIKit
 
 struct AboutPrivacyView: View {
@@ -124,6 +125,20 @@ struct AboutPrivacyView: View {
                     .font(.body)
                     .padding(.vertical, 4)
                 }
+
+#if DEBUG
+                Section("Tips") {
+                    Button("Reset Tip Datastore") {
+                        AppTips.resetForTesting()
+                    }
+                    .accessibilityIdentifier("about.debug.reset-tips")
+
+                    Button("Show All Tips") {
+                        AppTips.showAllForTesting()
+                    }
+                    .accessibilityIdentifier("about.debug.show-all-tips")
+                }
+#endif
             }
             .navigationTitle("About")
             .navigationBarTitleDisplayMode(.inline)

@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 struct ControlPanelView: View {
     enum Presentation {
@@ -116,6 +117,8 @@ struct ControlPanelView: View {
 
     private var presetSelectorBar: some View {
         VStack(alignment: .leading, spacing: 10) {
+            TipView(PresetsTip())
+
             Text("Settings")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -205,7 +208,10 @@ struct ControlPanelView: View {
             systemImage: "cube",
             accessibilityID: "studio.card.background"
         ) {
-            DepthSettingsView()
+            VStack(alignment: .leading, spacing: 14) {
+                TipView(BackgroundDepthTip())
+                DepthSettingsView()
+            }
         }
     }
 
@@ -215,7 +221,10 @@ struct ControlPanelView: View {
             systemImage: "wand.and.stars",
             accessibilityID: "studio.card.simplify"
         ) {
-            abstractionControls
+            VStack(alignment: .leading, spacing: 14) {
+                TipView(SimplificationTip())
+                abstractionControls
+            }
         }
     }
 
@@ -274,6 +283,8 @@ struct ControlPanelView: View {
             accessibilityID: "studio.card.palette"
         ) {
             VStack(spacing: 14) {
+                TipView(PaletteSelectionTip())
+
                 Toggle("Use Pigments", isOn: Binding(
                     get: { state.colorConfig.paletteSelectionEnabled },
                     set: setPaletteSelectionEnabled
