@@ -37,24 +37,6 @@ private let sampleImages: [SampleItem] = [
         assetName: "sample-still-life",
         description: "Studio setup with fruit and cloth for color and material studies"
     ),
-    SampleItem(
-        id: "colorchecker",
-        displayName: "Color Checker",
-        assetName: "sample-colorchecker",
-        description: "Synthetic reference chart for evaluating color accuracy"
-    ),
-    SampleItem(
-        id: "portrait",
-        displayName: "Reference Board",
-        assetName: "sample-portrait",
-        description: "Mixed image board for stress-testing value grouping and color extraction"
-    ),
-    SampleItem(
-        id: "landscape",
-        displayName: "Landscape",
-        assetName: "sample-landscape",
-        description: "Wide scene for color and composition studies"
-    ),
 ]
 
 struct SampleImagePickerView: View {

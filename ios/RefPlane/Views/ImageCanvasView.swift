@@ -677,7 +677,7 @@ private struct ImageCanvasPreviewHarness: View {
 
     init(mode: RefPlaneMode, depthEnabled: Bool) {
         let previewState = AppState()
-        let previewImage = UIImage(named: "sample-landscape")
+        let previewImage = UIImage(named: "sample-still-life")
             ?? UIImage(systemName: "photo")!
 
         previewState.originalImage = previewImage
