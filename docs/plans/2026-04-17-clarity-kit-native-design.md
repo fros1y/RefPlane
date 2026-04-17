@@ -436,8 +436,8 @@ Rough T-shirt sizing. Day = one focused working day.
 
 ## Open questions
 
-1. **Is _Underpaint_ the final ship name?** Audit is cheap; renaming twice is not.
-2. **Are we willing to add PDFKit as a dependency** for prep-sheet export, or should we stick with `UIGraphicsPDFRenderer` for zero new dependencies? (The latter is adequate; the former is more flexible if we ever want multi-page prep sheets.)
-3. **Paywall hero screenshots** — do we have App Store-quality captures already, or does workstream 1.5 need a photography/rendering pass?
-4. **Session storage format** — flat JSON per session (proposed) or a single index file? Flat-per-session is more resilient to corruption.
-5. **Mac Catalyst priority** — is this a first-class target for 1.0, or "runs on Mac" as a bonus? Affects how much menu/keyboard work is in scope.
+1. **Is _Underpaint_ the final ship name?** Audit is cheap; renaming twice is not. YES
+2. **Are we willing to add PDFKit as a dependency** for prep-sheet export, or should we stick with `UIGraphicsPDFRenderer` for zero new dependencies? (The latter is adequate; the former is more flexible if we ever want multi-page prep sheets.) YES, because I think we do want multi-page eventually, and PDFKit is already part of the OS.
+3. **Paywall hero screenshots** — do we have App Store-quality captures already, or does workstream 1.5 need a photography/rendering pass? We need captures
+4. **Session storage format** — flat JSON per session (proposed) or a single index file? Flat-per-session is more resilient to corruption. Flat is fine.
+5. **Mac Catalyst priority** — is this a first-class target for 1.0, or "runs on Mac" as a bonus? Affects how much menu/keyboard work is in scope. First class.
