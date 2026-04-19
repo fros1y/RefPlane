@@ -6,17 +6,17 @@ import os
 extension AppState {
     func exportCurrentImage() -> UIImage? {
         let base: UIImage?
-        if activeMode == .original, let fullResolutionOriginalImage {
+        if transform.activeMode == .original, let fullResolutionOriginalImage {
             base = fullResolutionOriginalImage
         } else {
             base = currentDisplayImage
         }
         guard let image = base else { return nil }
         var rendered = image
-        if gridConfig.enabled {
+        if transform.gridConfig.enabled {
             rendered = renderGridOnto(rendered)
         }
-        if contourConfig.enabled && !contourSegments.isEmpty {
+        if transform.contourConfig.enabled && !depth.contourSegments.isEmpty {
             rendered = renderContoursOnto(rendered)
         }
         return rendered
@@ -26,6 +26,76 @@ extension AppState {
         guard let image = exportCurrentImage() else { return nil }
         guard let imageData = image.pngData() else { return nil }
         return ExportedImagePayload(image: image, imageData: imageData, contentType: .png)
+    }
+
+    func exportPrepSheetPayload(format: PrepSheetExportFormat) async throws -> ExportedFilePayload {
+        guard let source = displayBaseImage else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+
+        let token = processing.start(
+            for: .prepSheet(format),
+            label: "Rendering painter's kit…"
+        )
+        defer {
+            processing.finish(token: token)
+        }
+
+        let referenceImage = transform.gridConfig.enabled ? renderGridOnto(source) : source
+
+        processing.updateLabel("Generating value study…", token: token)
+        processing.updateProgress(0.12, token: token)
+        let valueResult = try await renderPrepSheetResult(
+            source: source,
+            mode: .value,
+            progressRange: 0.12...0.44,
+            token: token
+        )
+        let valueImage = renderPrepSheetPanelImage(from: valueResult.image)
+
+        processing.updateLabel("Generating color study…", token: token)
+        processing.updateProgress(0.46, token: token)
+        let colorResult = try await renderPrepSheetResult(
+            source: source,
+            mode: .color,
+            progressRange: 0.46...0.78,
+            token: token
+        )
+        let colorImage = renderPrepSheetPanelImage(from: colorResult.image)
+
+        processing.updateLabel("Composing painter's kit…", token: token)
+        processing.updateProgress(0.82, token: token)
+
+        let sheetImage = PrepSheetRenderer.renderSheetImage(
+            content: PrepSheetContent(
+                title: currentReferenceName,
+                date: Date.now.formatted(date: .abbreviated, time: .omitted),
+                referenceImage: referenceImage,
+                valueImage: valueImage,
+                colorImage: colorImage,
+                softwareDescription: makeExportSoftwareDescription(),
+                paletteEntries: makePrepSheetPaletteEntries(from: colorResult)
+            )
+        )
+
+        let data: Data
+        switch format {
+        case .png:
+            guard let pngData = sheetImage.pngData() else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            data = pngData
+        case .pdf:
+            data = PrepSheetRenderer.renderPDFData(from: sheetImage)
+        }
+
+        processing.updateProgress(1, token: token)
+
+        return ExportedFilePayload(
+            data: data,
+            contentType: format.contentType,
+            defaultFilename: prepSheetFilenameStem
+        )
     }
 
     func currentSettingsDescription() -> String {
@@ -40,7 +110,7 @@ extension AppState {
             makeExportSoftwareDescription(),
             "",
             "Mode",
-            activeMode.label,
+            transform.activeMode.label,
             "",
             "Background",
             "Enabled: \(displayDescription(for: settings.backgroundProcessingEnabled))",
@@ -98,7 +168,7 @@ extension AppState {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         let gitRevision = makeExportGitRevision()
-        return "RefPlane \(version) (\(build), git \(gitRevision))"
+        return "Underpaint \(version) (\(build), git \(gitRevision))"
     }
 
     func makeExportGitRevision() -> String {
@@ -123,34 +193,34 @@ extension AppState {
 
     func makeExportSettingsSnapshot() -> ExportSettingsMetadata {
         ExportSettingsMetadata(
-            abstractionStrength: abstractionStrength,
-            abstractionMethod: abstractionMethod.rawValue,
-            grayscaleConversion: valueConfig.grayscaleConversion.rawValue,
-            valueLevels: valueConfig.levels,
-            valueQuantizationBias: valueConfig.quantizationBias,
-            paletteSelectionEnabled: colorConfig.paletteSelectionEnabled,
-            colorLimit: colorConfig.numShades,
-            colorQuantizationBias: colorConfig.quantizationBias,
-            paletteSpread: colorConfig.paletteSpread,
-            maxPigmentsPerMix: colorConfig.maxPigmentsPerMix,
-            minConcentration: colorConfig.minConcentration,
-            enabledPigmentIDs: colorConfig.enabledPigmentIDs.sorted(),
-            backgroundProcessingEnabled: depthConfig.enabled,
-            backgroundMode: depthConfig.backgroundMode.rawValue,
-            foregroundDepthCutoff: depthConfig.foregroundCutoff,
-            backgroundDepthCutoff: depthConfig.backgroundCutoff,
-            depthEffectIntensity: depthConfig.effectIntensity,
-            gridEnabled: gridConfig.enabled,
-            gridDivisions: gridConfig.divisions,
-            gridShowDiagonals: gridConfig.showDiagonals,
-            gridLineStyle: gridConfig.lineStyle.rawValue,
-            gridCustomColor: metadataDescription(for: gridConfig.customColor),
-            gridOpacity: gridConfig.opacity,
-            contourEnabled: contourConfig.enabled,
-            contourLevels: contourConfig.levels,
-            contourLineStyle: contourConfig.lineStyle.rawValue,
-            contourCustomColor: metadataDescription(for: contourConfig.customColor),
-            contourOpacity: contourConfig.opacity
+            abstractionStrength: transform.abstractionStrength,
+            abstractionMethod: transform.abstractionMethod.rawValue,
+            grayscaleConversion: transform.valueConfig.grayscaleConversion.rawValue,
+            valueLevels: transform.valueConfig.levels,
+            valueQuantizationBias: transform.valueConfig.quantizationBias,
+            paletteSelectionEnabled: transform.colorConfig.paletteSelectionEnabled,
+            colorLimit: transform.colorConfig.numShades,
+            colorQuantizationBias: transform.colorConfig.quantizationBias,
+            paletteSpread: transform.colorConfig.paletteSpread,
+            maxPigmentsPerMix: transform.colorConfig.maxPigmentsPerMix,
+            minConcentration: transform.colorConfig.minConcentration,
+            enabledPigmentIDs: transform.colorConfig.enabledPigmentIDs.sorted(),
+            backgroundProcessingEnabled: depth.depthConfig.enabled,
+            backgroundMode: depth.depthConfig.backgroundMode.rawValue,
+            foregroundDepthCutoff: depth.depthConfig.foregroundCutoff,
+            backgroundDepthCutoff: depth.depthConfig.backgroundCutoff,
+            depthEffectIntensity: depth.depthConfig.effectIntensity,
+            gridEnabled: transform.gridConfig.enabled,
+            gridDivisions: transform.gridConfig.divisions,
+            gridShowDiagonals: transform.gridConfig.showDiagonals,
+            gridLineStyle: transform.gridConfig.lineStyle.rawValue,
+            gridCustomColor: metadataDescription(for: transform.gridConfig.customColor),
+            gridOpacity: transform.gridConfig.opacity,
+            contourEnabled: transform.contourConfig.enabled,
+            contourLevels: transform.contourConfig.levels,
+            contourLineStyle: transform.contourConfig.lineStyle.rawValue,
+            contourCustomColor: metadataDescription(for: transform.contourConfig.customColor),
+            contourOpacity: transform.contourConfig.opacity
         )
     }
 
@@ -277,7 +347,7 @@ extension AppState {
 
     func renderGridOnto(_ image: UIImage) -> UIImage {
         let size = image.size
-        let config = gridConfig
+        let config = transform.gridConfig
         let lineWidth = max(1.0, min(size.width, size.height) / 1000.0)
         let segments = GridLineColorResolver.resolvedSegments(
             config: config,
@@ -310,6 +380,77 @@ extension AppState {
                 cg.strokePath()
             }
         }
+    }
+
+    private func renderPrepSheetResult(
+        source: UIImage,
+        mode: RefPlaneMode,
+        progressRange: ClosedRange<Double>,
+        token: UUID
+    ) async throws -> ProcessingResult {
+        try await processOperation(
+            source,
+            mode,
+            transform.valueConfig,
+            transform.colorConfig
+        ) { [weak self] progress in
+            Task { @MainActor [weak self] in
+                let mapped = progressRange.lowerBound
+                    + (progressRange.upperBound - progressRange.lowerBound) * progress
+                self?.processing.updateProgress(mapped, token: token)
+            }
+        }
+    }
+
+    private func renderPrepSheetPanelImage(from processed: UIImage) -> UIImage {
+        var output = processed
+
+        if depth.depthConfig.enabled, let depthMap = depth.depthMap {
+            output = depthEffectOperation(processed, depthMap, depth.depthConfig) ?? output
+        }
+
+        if transform.contourConfig.enabled && !depth.contourSegments.isEmpty {
+            output = renderContoursOnto(output)
+        }
+
+        return output
+    }
+
+    private func makePrepSheetPaletteEntries(from result: ProcessingResult) -> [PrepSheetPaletteEntry] {
+        guard !result.palette.isEmpty else { return [] }
+
+        return result.palette.indices.map { index in
+            let color = result.palette[index]
+            let recipe = result.pigmentRecipes.flatMap { recipes in
+                recipes.indices.contains(index) ? recipes[index] : nil
+            }
+            let title = PaletteColorNamer.name(for: color) ?? "Swatch \(index + 1)"
+
+            let mixSummary = recipe.map { recipe in
+                recipe.components
+                    .map { component in
+                        "\(component.pigmentName) \(Int((component.concentration * 10).rounded()))"
+                    }
+                    .joined(separator: " · ")
+            } ?? "Simplified color area"
+
+            return PrepSheetPaletteEntry(
+                id: index,
+                title: title,
+                color: color,
+                mixSummary: mixSummary
+            )
+        }
+    }
+
+    private var prepSheetFilenameStem: String {
+        let safeName = currentReferenceName
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let name = safeName.isEmpty ? "reference" : safeName
+        let stamp = Date.now.formatted(.iso8601.year().month().day())
+        return "underpaint-kit-\(name)-\(stamp)"
     }
 
 struct ExportSettingsMetadata: Encodable {
@@ -362,4 +503,166 @@ struct ExportGeneratedRecipeComponentMetadata: Encodable {
     var pigmentName: String
     var concentration: Float
 }
+}
+
+private struct PrepSheetContent {
+    let title: String
+    let date: String
+    let referenceImage: UIImage
+    let valueImage: UIImage
+    let colorImage: UIImage
+    let softwareDescription: String
+    let paletteEntries: [PrepSheetPaletteEntry]
+}
+
+private struct PrepSheetPaletteEntry: Identifiable {
+    let id: Int
+    let title: String
+    let color: Color
+    let mixSummary: String
+}
+
+private enum PrepSheetRenderer {
+    static let pageSize = CGSize(width: 1650, height: 1275)
+
+    @MainActor
+    static func renderSheetImage(content: PrepSheetContent) -> UIImage {
+        let renderer = ImageRenderer(
+            content: PrepSheetLayoutView(content: content)
+                .frame(width: pageSize.width, height: pageSize.height)
+        )
+        renderer.proposedSize = ProposedViewSize(pageSize)
+        renderer.scale = 1
+        return renderer.uiImage ?? UIImage()
+    }
+
+    static func renderPDFData(from image: UIImage) -> Data {
+        let bounds = CGRect(origin: .zero, size: pageSize)
+        let renderer = UIGraphicsPDFRenderer(bounds: bounds)
+        return renderer.pdfData { context in
+            context.beginPage()
+            image.draw(in: bounds)
+        }
+    }
+}
+
+private struct PrepSheetLayoutView: View {
+    let content: PrepSheetContent
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.96, green: 0.95, blue: 0.92)
+
+            VStack(spacing: 24) {
+                header
+
+                HStack(alignment: .top, spacing: 20) {
+                    panel(title: "Reference", subtitle: "Grid", image: content.referenceImage)
+                    panel(title: "Value Study", subtitle: "Banded", image: content.valueImage)
+                }
+
+                HStack(alignment: .top, spacing: 20) {
+                    panel(title: "Color Study", subtitle: "Palette", image: content.colorImage)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    palettePanel
+                        .frame(width: 470)
+                }
+
+                footer
+            }
+            .padding(34)
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("UNDERPAINT")
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .tracking(1.2)
+                Text(content.title)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+            }
+
+            Spacer()
+
+            Text(content.date)
+                .font(.system(size: 18, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func panel(title: String, subtitle: String, image: UIImage) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Spacer()
+                Text(subtitle)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+                .frame(height: 420)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                }
+        }
+        .padding(18)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private var palettePanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Palette + Recipes")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(content.paletteEntries.prefix(8)) { entry in
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle()
+                            .fill(entry.color)
+                            .frame(width: 18, height: 18)
+                            .overlay {
+                                Circle().stroke(Color.black.opacity(0.08), lineWidth: 1)
+                            }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(entry.title)
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            Text(entry.mixSummary)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .frame(height: 492)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private var footer: some View {
+        HStack {
+            Text(content.softwareDescription)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Text("Painter's Kit")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+        }
+    }
 }

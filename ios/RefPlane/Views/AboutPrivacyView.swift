@@ -121,9 +121,33 @@ struct AboutPrivacyView: View {
     						Text("Underpaint collects no personal data.")
                         Text("The app uses no analytics, no tracking, and no accounts.")
                         Text("Images you choose are processed on-device.")
+                        Text("Recent sessions and saved palettes stay on this device in local app storage.")
                     }
                     .font(.body)
                     .padding(.vertical, 4)
+                }
+
+                Section("On-Device History") {
+                    HStack {
+                        Label("Recent sessions", systemImage: "clock.arrow.circlepath")
+                        Spacer()
+                        Text("\(state.sessionStore.sessions.count)")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button(role: .destructive) {
+                        state.sessionStore.clearHistory()
+                    } label: {
+                        Label("Clear Recent Sessions", systemImage: "trash")
+                    }
+                    .disabled(state.sessionStore.sessions.isEmpty)
+                    .accessibilityIdentifier("about.clear-history")
+                }
+
+                Section("Sample Library") {
+                    Text("Bundled samples are original in-house reference photos used to demonstrate value, color, simplify, and spatial workflows.")
+                        .font(.body)
+                        .padding(.vertical, 4)
                 }
 
 #if DEBUG

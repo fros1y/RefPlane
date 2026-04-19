@@ -4,7 +4,7 @@ struct ValueSettingsView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        Group {
+        VStack(spacing: 14) {
             LabeledSlider(
                 label: "Count",
                 value: Binding(
@@ -12,10 +12,7 @@ struct ValueSettingsView: View {
                     set: { newVal in
                         let level = Int(newVal.rounded())
                         state.transform.valueConfig.levels = level
-                        state.transform.valueConfig.thresholds = QuantizationBias.thresholds(
-                            for: level,
-                            bias: state.transform.valueConfig.quantizationBias
-                        )
+                        syncThresholdsForCurrentDistribution(levels: level)
                     }
                 ),
                 range: 2...16,
@@ -28,27 +25,7 @@ struct ValueSettingsView: View {
                 }
             )
 
-            QuantizationBiasSlider(
-                value: Binding(
-                    get: { state.transform.valueConfig.quantizationBias },
-                    set: { newBias in
-                        let clampedBias = QuantizationBias.clamped(newBias)
-                        state.transform.valueConfig.quantizationBias = clampedBias
-                        state.transform.valueConfig.distribution = QuantizationBias.distribution(
-                            for: clampedBias
-                        )
-                        state.transform.valueConfig.thresholds = QuantizationBias.thresholds(
-                            for: state.transform.valueConfig.levels,
-                            bias: clampedBias
-                        )
-                    }
-                ),
-                onEditingChanged: { editing in
-                    if !editing {
-                        state.scheduleProcessing()
-                    }
-                }
-            )
+            distributionMenu
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Bands")
@@ -59,11 +36,15 @@ struct ValueSettingsView: View {
                     thresholds: Binding(
                         get: { state.transform.valueConfig.thresholds },
                         set: {
-                            state.transform.valueConfig.thresholds = $0
+                            state.transform.valueConfig.thresholds = ThresholdUtilities.sanitized(
+                                $0,
+                                levels: state.transform.valueConfig.levels
+                            )
                             // Any manual adjustment switches to Custom
                             if state.transform.valueConfig.distribution != .custom {
                                 state.transform.valueConfig.distribution = .custom
                             }
+                            state.transform.valueConfig.quantizationBias = 0
                         }
                     ),
                     levels: state.transform.valueConfig.levels,
@@ -78,5 +59,77 @@ struct ValueSettingsView: View {
                 )
             }
         }
+    }
+
+    private var distributionMenu: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Distribute")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.primary)
+
+            Menu {
+                ForEach(ThresholdDistribution.allCases) { distribution in
+                    Button {
+                        applyDistribution(distribution)
+                    } label: {
+                        if distribution == state.transform.valueConfig.distribution {
+                            Label(distribution.rawValue, systemImage: "checkmark")
+                        } else {
+                            Text(distribution.rawValue)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Text(state.transform.valueConfig.distribution.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+            }
+        }
+    }
+
+    private func applyDistribution(_ distribution: ThresholdDistribution) {
+        state.transform.valueConfig.distribution = distribution
+        syncThresholdsForCurrentDistribution(levels: state.transform.valueConfig.levels)
+
+        switch distribution {
+        case .even:
+            state.transform.valueConfig.quantizationBias = 0
+        case .shadows:
+            state.transform.valueConfig.quantizationBias = 1
+        case .lights:
+            state.transform.valueConfig.quantizationBias = -1
+        case .custom:
+            break
+        }
+
+        state.scheduleProcessing()
+    }
+
+    private func syncThresholdsForCurrentDistribution(levels: Int) {
+        let distribution = state.transform.valueConfig.distribution
+        guard distribution != .custom else {
+            state.transform.valueConfig.thresholds = ThresholdUtilities.sanitized(
+                state.transform.valueConfig.thresholds,
+                levels: levels
+            )
+            return
+        }
+
+        state.transform.valueConfig.thresholds = distribution.thresholds(for: levels)
     }
 }

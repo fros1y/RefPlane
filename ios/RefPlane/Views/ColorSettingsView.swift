@@ -61,6 +61,9 @@ struct ColorQuantizationSettingsView: View {
 struct PaletteSelectionSettingsView: View {
     @Environment(AppState.self) private var state
     @State private var pigmentListExpanded: Bool = false
+    @State private var savePalettePromptPresented = false
+    @State private var paletteNameInput = ""
+    @State private var paletteErrorMessage: String? = nil
 
     var body: some View {
         VStack(spacing: 14) {
@@ -69,14 +72,67 @@ struct PaletteSelectionSettingsView: View {
                     .font(.subheadline)
                     .foregroundStyle(.primary)
 
-                Picker("Palette", selection: presetBinding) {
-                    ForEach(PigmentPreset.allCases) { preset in
-                        Text(preset.rawValue).tag(preset)
+                Menu {
+                    Section("Built-In") {
+                        ForEach(PigmentPreset.allCases) { preset in
+                            paletteOptionButton(
+                                title: preset.rawValue,
+                                pigmentIDs: preset.pigmentIDs
+                            )
+                        }
                     }
-                    Text("Custom").tag(Optional<PigmentPreset>.none as PigmentPreset?)
+
+                    if !state.customPaletteStore.examplePalettes.isEmpty {
+                        Section("Example Palettes") {
+                            ForEach(state.customPaletteStore.examplePalettes) { palette in
+                                paletteOptionButton(
+                                    title: palette.name,
+                                    pigmentIDs: palette.pigmentIDs
+                                )
+                            }
+                        }
+                    }
+
+                    if !state.customPaletteStore.savedPalettes.isEmpty {
+                        Section("My Palettes") {
+                            ForEach(state.customPaletteStore.savedPalettes) { palette in
+                                paletteOptionButton(
+                                    title: palette.name,
+                                    pigmentIDs: Set(palette.pigmentIDs)
+                                )
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    Button("Save Current as…") {
+                        paletteNameInput = suggestedPaletteName()
+                        savePalettePromptPresented = true
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Text(state.customPaletteStore.label(for: state.transform.colorConfig.enabledPigmentIDs))
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    }
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
             }
 
             DisclosureGroup(
@@ -128,57 +184,80 @@ struct PaletteSelectionSettingsView: View {
                 }
             )
         }
-    }
-
-    /// Binding that maps the current enabledPigmentIDs to a preset (or nil for custom).
-    private var presetBinding: Binding<PigmentPreset?> {
-        Binding<PigmentPreset?>(
-            get: {
-                PigmentPreset.allCases.first { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }
-            },
-            set: { newPreset in
-                if let preset = newPreset {
-                    // Switching to a named preset — save current as custom first
-                    // (only if current selection doesn't already match a preset)
-                    if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }) == nil {
-                        state.transform.colorConfig.saveCustomPigmentIDs()
-                    }
-                    state.transform.colorConfig.enabledPigmentIDs = preset.pigmentIDs
-                    state.transform.colorConfig.saveEnabledPigmentIDs()
-                    state.scheduleProcessing()
-                } else {
-                    // "Custom" selected — restore saved custom palette
-                    state.transform.colorConfig.enabledPigmentIDs = ColorConfig.loadCustomPigmentIDs()
-                    state.transform.colorConfig.saveEnabledPigmentIDs()
-                    state.scheduleProcessing()
-                }
+        .alert("Save Palette", isPresented: $savePalettePromptPresented) {
+            TextField("Palette name", text: $paletteNameInput)
+            Button("Save") {
+                saveCurrentPalette()
             }
-        )
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Save the current tube selection so you can reuse it later.")
+        }
+        .alert("Palette Error", isPresented: Binding(
+            get: { paletteErrorMessage != nil },
+            set: { if !$0 { paletteErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                paletteErrorMessage = nil
+            }
+        } message: {
+            Text(paletteErrorMessage ?? "Unknown palette error.")
+        }
     }
 
-    /// Save current selection and trigger reprocessing.
+    private func paletteOptionButton(title: String, pigmentIDs: Set<String>) -> some View {
+        Button {
+            applyPalette(pigmentIDs)
+        } label: {
+            if pigmentIDs == state.transform.colorConfig.enabledPigmentIDs {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
+
     private func pigmentDidChange() {
         state.transform.colorConfig.saveEnabledPigmentIDs()
-        // Also keep custom palette in sync when in custom mode
-        if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }) == nil {
-            state.transform.colorConfig.saveCustomPigmentIDs()
-        }
         state.scheduleProcessing()
+    }
+
+    private func applyPalette(_ pigmentIDs: Set<String>) {
+        state.transform.colorConfig.enabledPigmentIDs = pigmentIDs
+        state.transform.colorConfig.saveEnabledPigmentIDs()
+        state.scheduleProcessing()
+    }
+
+    private func suggestedPaletteName() -> String {
+        var index = 1
+        while true {
+            let candidate = "Palette \(index)"
+            let exists = state.customPaletteStore.savedPalettes.contains {
+                $0.name.localizedCaseInsensitiveCompare(candidate) == .orderedSame
+            }
+            if !exists {
+                return candidate
+            }
+            index += 1
+        }
+    }
+
+    private func saveCurrentPalette() {
+        do {
+            _ = try state.customPaletteStore.savePalette(
+                named: paletteNameInput,
+                pigmentIDs: state.transform.colorConfig.enabledPigmentIDs
+            )
+            paletteNameInput = ""
+        } catch {
+            paletteErrorMessage = error.localizedDescription
+        }
     }
 }
 
 struct ColorSettingsView: View {
-    @Environment(AppState.self) private var state
-
     var body: some View {
-        VStack(spacing: 14) {
-            ColorQuantizationSettingsView()
-
-            if state.transform.activeMode == .color {
-                Divider()
-                PaletteSelectionSettingsView()
-            }
-        }
+        ColorQuantizationSettingsView()
     }
 }
 

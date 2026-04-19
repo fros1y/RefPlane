@@ -3,6 +3,7 @@ import TipKit
 
 enum AppTips {
     static let imageLoaded = Tips.Event(id: "image-loaded")
+    static let sampleLoaded = Tips.Event(id: "sample-loaded")
 
     static func configure() {
         do {
@@ -132,6 +133,25 @@ struct PaletteSelectionTip: Tip {
 
     var rules: [Rule] {
         #Rule(AppTips.imageLoaded) { event in
+            event.donations.count >= 1
+        }
+    }
+
+    var options: [any TipOption] {
+        Tips.MaxDisplayCount(1)
+    }
+}
+
+struct ModeDockTip: Tip {
+    static let titleText = "Switch Studies From the Dock"
+    static let messageText = "Tap Color to see palette recipes, or Value to reduce the image to paintable bands."
+
+    var id: String { "mode-dock-tip" }
+    var title: Text { Text(Self.titleText) }
+    var message: Text? { Text(Self.messageText) }
+
+    var rules: [Rule] {
+        #Rule(AppTips.sampleLoaded) { event in
             event.donations.count >= 1
         }
     }

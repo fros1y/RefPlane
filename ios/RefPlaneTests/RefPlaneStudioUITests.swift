@@ -32,8 +32,7 @@ final class RefPlaneStudioUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["studio.inspector"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.otherElements["studio.card.background"].exists)
         XCTAssertTrue(app.otherElements["studio.card.simplify"].exists)
-        XCTAssertTrue(app.otherElements["studio.card.tonal"].exists)
-        XCTAssertTrue(app.otherElements["studio.card.quantize"].exists)
+        XCTAssertTrue(app.otherElements["studio.card.overlays"].exists)
     }
 
     func testModeDockContainsAllStudyModesWhenAvailable() {
@@ -50,10 +49,10 @@ final class RefPlaneStudioUITests: XCTestCase {
         try captureScreenshot("01-empty-state")
 
         app.buttons["Browse Samples"].tap()
-        XCTAssertTrue(app.buttons["sample-picker.statue"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["sample-picker.statue-tonal"].waitForExistence(timeout: 3))
         try captureScreenshot("02-sample-picker")
 
-        app.buttons["sample-picker.statue"].tap()
+        app.buttons["sample-picker.statue-tonal"].tap()
         XCTAssertTrue(app.otherElements["canvas.image"].waitForExistence(timeout: 8))
         waitForProcessingToSettle()
         try captureScreenshot("03-original-sculpture")
@@ -62,8 +61,8 @@ final class RefPlaneStudioUITests: XCTestCase {
         setBackgroundMode("Compress")
         waitForProcessingToSettle(timeout: 14)
 
-        setGrayscaleRenderingEnabled(true)
-        setQuantizationEnabled(true)
+        hideStudioIfNeeded()
+        app.buttons["mode-dock.value"].tap()
         waitForProcessingToSettle()
         hideStudioIfNeeded()
         focusCanvasBand()
@@ -96,8 +95,10 @@ final class RefPlaneStudioUITests: XCTestCase {
         try captureScreenshot("07-compare-value")
         app.buttons["chrome.compare"].tap()
 
-        setGrayscaleRenderingEnabled(false)
+        hideStudioIfNeeded()
+        app.buttons["mode-dock.color"].tap()
         waitForProcessingToSettle(timeout: 14)
+        openStudioIfNeeded()
 
         scrollInspector(to: paletteCard, direction: .down)
         XCTAssertTrue(paletteCard.waitForExistence(timeout: 3))
@@ -166,8 +167,8 @@ final class RefPlaneStudioUITests: XCTestCase {
 
     private func openSculptureSampleAndWaitForCanvas() {
         app.buttons["canvas.empty.samples"].tap()
-        XCTAssertTrue(app.buttons["sample-picker.statue"].waitForExistence(timeout: 3))
-        app.buttons["sample-picker.statue"].tap()
+        XCTAssertTrue(app.buttons["sample-picker.statue-tonal"].waitForExistence(timeout: 3))
+        app.buttons["sample-picker.statue-tonal"].tap()
         XCTAssertTrue(app.otherElements["canvas.image"].waitForExistence(timeout: 8))
         waitForProcessingToSettle()
     }
@@ -184,31 +185,6 @@ final class RefPlaneStudioUITests: XCTestCase {
             option.tap()
         }
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-    }
-
-    private func setGrayscaleRenderingEnabled(_ enabled: Bool) {
-        let picker = app.buttons["studio.grayscale-conversion-picker"]
-        scrollInspector(to: picker, direction: .up)
-        XCTAssertTrue(picker.waitForExistence(timeout: 3))
-
-        let targetOption = enabled ? "Luminance" : "None"
-        if picker.label != targetOption && picker.value as? String != targetOption {
-            picker.tap()
-            let option = app.buttons[targetOption].firstMatch
-            XCTAssertTrue(option.waitForExistence(timeout: 2))
-            option.tap()
-        }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-    }
-
-    private func setQuantizationEnabled(_ enabled: Bool) {
-        let toggle = app.switches["studio.quantize-toggle"]
-        scrollInspector(to: toggle, direction: .down)
-        XCTAssertTrue(toggle.waitForExistence(timeout: 3))
-        if toggle.value as? String != (enabled ? "1" : "0") {
-            tapSwitch(toggle)
-        }
-        waitForSwitch(toggle, enabled: enabled)
     }
 
     private func setPaletteSelectionEnabled(_ enabled: Bool) {

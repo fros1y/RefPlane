@@ -7,10 +7,10 @@ enum RefPlaneMode: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .original: return "Natural"
+        case .original: return "Original"
         case .tonal:    return "Tonal"
         case .value:    return "Value"
-        case .color:    return "Paletted"
+        case .color:    return "Color"
         }
     }
     var iconName: String {
@@ -320,15 +320,30 @@ struct ImportedImagePayload {
     var image: UIImage
     var metadata: SourceImageMetadata
     var embeddedDepthMap: UIImage?
+    var referenceName: String?
+    var sampleIdentifier: String?
+    var suggestedMode: RefPlaneMode?
+    var suggestedAbstractionStrength: Double?
+    var suggestedBackgroundMode: BackgroundMode?
 
     init(
         image: UIImage,
         metadata: SourceImageMetadata = .empty,
-        embeddedDepthMap: UIImage? = nil
+        embeddedDepthMap: UIImage? = nil,
+        referenceName: String? = nil,
+        sampleIdentifier: String? = nil,
+        suggestedMode: RefPlaneMode? = nil,
+        suggestedAbstractionStrength: Double? = nil,
+        suggestedBackgroundMode: BackgroundMode? = nil
     ) {
         self.image = image
         self.metadata = metadata
         self.embeddedDepthMap = embeddedDepthMap
+        self.referenceName = referenceName
+        self.sampleIdentifier = sampleIdentifier
+        self.suggestedMode = suggestedMode
+        self.suggestedAbstractionStrength = suggestedAbstractionStrength
+        self.suggestedBackgroundMode = suggestedBackgroundMode
     }
 }
 
@@ -336,6 +351,28 @@ struct ExportedImagePayload {
     var image: UIImage
     var imageData: Data
     var contentType: UTType
+}
+
+struct ExportedFilePayload {
+    var data: Data
+    var contentType: UTType
+    var defaultFilename: String
+}
+
+enum PrepSheetExportFormat: String, CaseIterable, Identifiable {
+    case pdf
+    case png
+
+    var id: String { rawValue }
+
+    var contentType: UTType {
+        switch self {
+        case .pdf:
+            return .pdf
+        case .png:
+            return .png
+        }
+    }
 }
 import Foundation
 import Observation
@@ -677,6 +714,358 @@ class TransformPresetManager {
     }
 }
 
+// MARK: - Custom palettes
+
+struct SavedCustomPalette: Identifiable, Codable, Equatable {
+    var id: UUID
+    var name: String
+    var pigmentIDs: [String]
+    var createdAt: Date
+    var updatedAt: Date
+}
+
+private struct CustomPaletteStoreFile: Codable {
+    var schemaVersion: Int
+    var palettes: [SavedCustomPalette]
+}
+
+@Observable
+@MainActor
+final class CustomPaletteStore {
+    struct PaletteOption: Identifiable, Equatable {
+        enum Source: Equatable {
+            case preset(PigmentPreset)
+            case example(String)
+            case saved(UUID)
+        }
+
+        let id: String
+        let source: Source
+        let name: String
+        let pigmentIDs: Set<String>
+    }
+
+    enum PaletteError: LocalizedError {
+        case emptyName
+        case duplicateName
+
+        var errorDescription: String? {
+            switch self {
+            case .emptyName:
+                return "Palette name cannot be empty."
+            case .duplicateName:
+                return "A palette with that name already exists."
+            }
+        }
+    }
+
+    var savedPalettes: [SavedCustomPalette] = []
+
+    private let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+        load()
+    }
+
+    var examplePalettes: [PaletteOption] {
+        [
+            PaletteOption(
+                id: "example-studio-12",
+                source: .example("studio-12"),
+                name: "Studio (12)",
+                pigmentIDs: [
+                    "titanium_white", "carbon_black", "yellow_ochre", "raw_sienna",
+                    "burnt_sienna", "burnt_umber", "cad_yellow_medium",
+                    "cad_red_medium", "quin_crimson", "ultramarine_blue",
+                    "phthalo_blue_gs", "chromium_oxide"
+                ]
+            ),
+            PaletteOption(
+                id: "example-plein-air-6",
+                source: .example("plein-air-6"),
+                name: "Plein Air (6)",
+                pigmentIDs: [
+                    "titanium_white", "yellow_ochre", "cad_red_medium",
+                    "ultramarine_blue", "phthalo_blue_gs", "burnt_sienna"
+                ]
+            ),
+            PaletteOption(
+                id: "example-watercolor-classic-8",
+                source: .example("watercolor-classic-8"),
+                name: "Watercolor Classic (8)",
+                pigmentIDs: [
+                    "quin_crimson", "cadmium_yellow_light", "yellow_ochre",
+                    "ultramarine_blue", "cerulean_blue_chromium", "phthalo_blue_gs",
+                    "burnt_umber", "paynes_gray"
+                ]
+            ),
+        ]
+    }
+
+    var allPaletteOptions: [PaletteOption] {
+        let presetOptions = PigmentPreset.allCases.map { preset in
+            PaletteOption(
+                id: "preset-\(preset.rawValue.lowercased())",
+                source: .preset(preset),
+                name: preset.rawValue,
+                pigmentIDs: preset.pigmentIDs
+            )
+        }
+        let savedOptions = savedPalettes.map { palette in
+            PaletteOption(
+                id: "saved-\(palette.id.uuidString)",
+                source: .saved(palette.id),
+                name: palette.name,
+                pigmentIDs: Set(palette.pigmentIDs)
+            )
+        }
+
+        return presetOptions + examplePalettes + savedOptions
+    }
+
+    func label(for pigmentIDs: Set<String>) -> String {
+        allPaletteOptions.first(where: { $0.pigmentIDs == pigmentIDs })?.name ?? "Custom"
+    }
+
+    func savePalette(named rawName: String, pigmentIDs: Set<String>) throws -> UUID {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            throw PaletteError.emptyName
+        }
+
+        let normalized = normalizedName(name)
+        guard !savedPalettes.contains(where: { normalizedName($0.name) == normalized }) else {
+            throw PaletteError.duplicateName
+        }
+
+        let now = Date()
+        let palette = SavedCustomPalette(
+            id: UUID(),
+            name: name,
+            pigmentIDs: pigmentIDs.sorted(),
+            createdAt: now,
+            updatedAt: now
+        )
+        savedPalettes.append(palette)
+        savedPalettes.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        persist()
+        return palette.id
+    }
+
+    func deletePalette(id: UUID) {
+        savedPalettes.removeAll { $0.id == id }
+        persist()
+    }
+
+    private func normalizedName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func load() {
+        guard let data = try? Data(contentsOf: storeURL) else { return }
+        do {
+            let store = try JSONDecoder().decode(CustomPaletteStoreFile.self, from: data)
+            guard store.schemaVersion == 1 else { return }
+            savedPalettes = store.palettes.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        } catch {
+            print("Failed to decode custom palette store: \(error)")
+        }
+    }
+
+    private func persist() {
+        let store = CustomPaletteStoreFile(schemaVersion: 1, palettes: savedPalettes)
+        do {
+            try ensureParentDirectoryExists(for: storeURL)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(store)
+            try data.write(to: storeURL, options: .atomic)
+        } catch {
+            print("Failed to encode custom palette store: \(error)")
+        }
+    }
+
+    private var storeURL: URL {
+        applicationSupportDirectory
+            .appendingPathComponent("Underpaint", isDirectory: true)
+            .appendingPathComponent("custom-palettes.json")
+    }
+
+    private var applicationSupportDirectory: URL {
+        fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    }
+}
+
+// MARK: - Session history
+
+struct StoredSession: Identifiable, Codable, Equatable {
+    var id: UUID
+    var referenceName: String
+    var createdAt: Date
+    var updatedAt: Date
+    var imageFilename: String
+    var snapshot: TransformationSnapshot
+    var sampleIdentifier: String?
+}
+
+private struct SessionStoreFile: Codable {
+    var schemaVersion: Int
+    var sessions: [StoredSession]
+}
+
+@Observable
+@MainActor
+final class SessionStore {
+    var sessions: [StoredSession] = []
+
+    private let fileManager: FileManager
+    private let maxSessions = 10
+    private let maxDiskUsageBytes = 500 * 1024 * 1024
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+        load()
+    }
+
+    func saveSession(
+        id existingID: UUID?,
+        referenceName: String,
+        image: UIImage,
+        snapshot: TransformationSnapshot,
+        sampleIdentifier: String?
+    ) -> UUID {
+        let id = existingID ?? UUID()
+        let filename = "\(id.uuidString).jpg"
+        let now = Date()
+
+        if let data = image.jpegData(compressionQuality: 0.92) {
+            do {
+                try ensureParentDirectoryExists(for: sessionsDirectory)
+                try data.write(to: sessionsDirectory.appendingPathComponent(filename), options: .atomic)
+            } catch {
+                print("Failed to write session image: \(error)")
+            }
+        }
+
+        if let index = sessions.firstIndex(where: { $0.id == id }) {
+            sessions[index].referenceName = referenceName
+            sessions[index].updatedAt = now
+            sessions[index].snapshot = snapshot
+            sessions[index].sampleIdentifier = sampleIdentifier
+        } else {
+            sessions.append(
+                StoredSession(
+                    id: id,
+                    referenceName: referenceName,
+                    createdAt: now,
+                    updatedAt: now,
+                    imageFilename: filename,
+                    snapshot: snapshot,
+                    sampleIdentifier: sampleIdentifier
+                )
+            )
+        }
+
+        sessions.sort { $0.updatedAt > $1.updatedAt }
+        enforceLimits()
+        persist()
+        return id
+    }
+
+    func image(for session: StoredSession) -> UIImage? {
+        let url = sessionsDirectory.appendingPathComponent(session.imageFilename)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }
+
+    func deleteSession(id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        let imageURL = sessionsDirectory.appendingPathComponent(session.imageFilename)
+        try? fileManager.removeItem(at: imageURL)
+        sessions.removeAll { $0.id == id }
+        persist()
+    }
+
+    func clearHistory() {
+        for session in sessions {
+            let imageURL = sessionsDirectory.appendingPathComponent(session.imageFilename)
+            try? fileManager.removeItem(at: imageURL)
+        }
+        sessions = []
+        persist()
+    }
+
+    private func load() {
+        guard let data = try? Data(contentsOf: storeURL) else { return }
+        do {
+            let store = try JSONDecoder().decode(SessionStoreFile.self, from: data)
+            guard store.schemaVersion == 1 else { return }
+            sessions = store.sessions.sorted { $0.updatedAt > $1.updatedAt }
+        } catch {
+            print("Failed to decode session store: \(error)")
+        }
+    }
+
+    private func persist() {
+        let store = SessionStoreFile(schemaVersion: 1, sessions: sessions)
+        do {
+            try ensureParentDirectoryExists(for: storeURL)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(store)
+            try data.write(to: storeURL, options: .atomic)
+        } catch {
+            print("Failed to encode session store: \(error)")
+        }
+    }
+
+    private func enforceLimits() {
+        sessions.sort { $0.updatedAt > $1.updatedAt }
+        while sessions.count > maxSessions {
+            guard let removed = sessions.popLast() else { break }
+            try? fileManager.removeItem(at: sessionsDirectory.appendingPathComponent(removed.imageFilename))
+        }
+
+        while currentDiskUsage > maxDiskUsageBytes, let removed = sessions.popLast() {
+            try? fileManager.removeItem(at: sessionsDirectory.appendingPathComponent(removed.imageFilename))
+        }
+    }
+
+    private var currentDiskUsage: Int {
+        sessions.reduce(0) { partialResult, session in
+            let url = sessionsDirectory.appendingPathComponent(session.imageFilename)
+            let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return partialResult + fileSize
+        }
+    }
+
+    private var storeURL: URL {
+        applicationSupportDirectory
+            .appendingPathComponent("Underpaint", isDirectory: true)
+            .appendingPathComponent("sessions.json")
+    }
+
+    private var sessionsDirectory: URL {
+        applicationSupportDirectory
+            .appendingPathComponent("Underpaint", isDirectory: true)
+            .appendingPathComponent("Sessions", isDirectory: true)
+    }
+
+    private var applicationSupportDirectory: URL {
+        fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    }
+}
+
+private func ensureParentDirectoryExists(for url: URL) throws {
+    try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+}
+
 // MARK: - AppState child state
 
 @Observable
@@ -738,12 +1127,6 @@ final class DepthState {
 @Observable
 @MainActor
 final class PipelineState {
-    var isProcessing: Bool = false
-    var isSimplifying: Bool = false
-    var processingProgress: Double = 0
-    var processingLabel: String = "Processing…"
-    var processingIsIndeterminate: Bool = false
-
     var compareMode: Bool = false
     var focusedBands: Set<Int> = []
     var errorMessage: String? = nil

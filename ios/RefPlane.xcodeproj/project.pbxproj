@@ -56,6 +56,7 @@
 		AA11BB2233D44E55F6670002 /* AppState+Export.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB2233D44E55F6670012 /* AppState+Export.swift */; };
 		AA11BB2233D44E55F6670003 /* AppState+FocusIsolation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB2233D44E55F6670013 /* AppState+FocusIsolation.swift */; };
 		AA11BB2233D44E55F6670004 /* AppState+TransformPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB2233D44E55F6670014 /* AppState+TransformPresets.swift */; };
+		AB12CD34EF56AB78CD90EF12 /* ProcessingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12CD34EF56AB78CD90EF13 /* ProcessingCoordinator.swift */; };
 		AA11BB22CC334455DD667788 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD667789 /* MetalContext.swift */; };
 		AA11BB22CC334455DD66778A /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC334455DD66778B /* Shaders.metal */; };
 		B060BBCBD6FF473F83A23CEA /* KMeansClusterer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C649C9D17B5463C9B8B0D37 /* KMeansClusterer.swift */; };
@@ -156,6 +157,7 @@
 		AA11BB2233D44E55F6670012 /* AppState+Export.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState+Export.swift"; path = "Models/AppState+Export.swift"; sourceTree = "<group>"; };
 		AA11BB2233D44E55F6670013 /* AppState+FocusIsolation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState+FocusIsolation.swift"; path = "Models/AppState+FocusIsolation.swift"; sourceTree = "<group>"; };
 		AA11BB2233D44E55F6670014 /* AppState+TransformPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState+TransformPresets.swift"; path = "Models/AppState+TransformPresets.swift"; sourceTree = "<group>"; };
+		AB12CD34EF56AB78CD90EF13 /* ProcessingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProcessingCoordinator.swift; path = Processing/ProcessingCoordinator.swift; sourceTree = "<group>"; };
 		AA11BB22CC334455DD667789 /* MetalContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetalContext.swift; path = Processing/MetalContext.swift; sourceTree = "<group>"; };
 		AA11BB22CC334455DD66778B /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; name = Shaders.metal; path = Processing/Shaders.metal; sourceTree = "<group>"; };
 		AA8F46FC114F41C5BDDA822F /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareSheet.swift; path = Views/ShareSheet.swift; sourceTree = "<group>"; };
@@ -311,6 +313,7 @@
 				0340E78F278D45F5B04ACA95 /* ColorRegionsProcessor.swift */,
 				F5C95ED152AB4658AA629DF5 /* ImageAbstractor.swift */,
 				3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */,
+				AB12CD34EF56AB78CD90EF13 /* ProcessingCoordinator.swift */,
 				D2DBF7DDB2A24B4FA0E4D493 /* UIImageExtensions.swift */,
 				AA11BB22CC334455DD667789 /* MetalContext.swift */,
 				AA11BB22CC334455DD66778B /* Shaders.metal */,
@@ -522,6 +525,7 @@
 				AA11BB2233D44E55F6670002 /* AppState+Export.swift in Sources */,
 				AA11BB2233D44E55F6670003 /* AppState+FocusIsolation.swift in Sources */,
 				AA11BB2233D44E55F6670004 /* AppState+TransformPresets.swift in Sources */,
+				AB12CD34EF56AB78CD90EF12 /* ProcessingCoordinator.swift in Sources */,
 				E788E13BEB0D4D0FA8C6C2FF /* OklabColorSpace.swift in Sources */,
 				B060BBCBD6FF473F83A23CEA /* KMeansClusterer.swift in Sources */,
 				BF40722118FF4AE6A73E5141 /* RegionCleaner.swift in Sources */,

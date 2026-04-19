@@ -11,7 +11,7 @@ struct ControlPanelView: View {
     @Environment(AppState.self) private var state
 
     let presentation: Presentation
-    let onExport: () -> Void
+    let onExport: (StudioExportAction) -> Void
     var onClose: (() -> Void)? = nil
 
     @State private var abstractionStrengthAtDragStart: Double? = nil
@@ -42,11 +42,18 @@ struct ControlPanelView: View {
                         presetSelectorBar
                         Divider().opacity(0.18)
                     }
-                    backgroundSection
                     simplificationSection
-                    tonalSection
-                    quantizationSection
-                    paletteSection
+                    if state.transform.activeMode == .tonal {
+                        tonalSection
+                    }
+                    if state.transform.activeMode == .value {
+                        valueSection
+                    }
+                    if state.transform.activeMode == .color {
+                        colorSection
+                        paletteSection
+                    }
+                    backgroundSection
                     overlaysSection
                     if !isCompact {
                         Divider().opacity(0.18)
@@ -230,55 +237,56 @@ struct ControlPanelView: View {
 
     private var tonalSection: some View {
         StudioPanelCard(
-            title: "Grayscale Conversion",
+            title: "Grayscale Method",
             systemImage: "circle.lefthalf.filled",
             accessibilityID: "studio.card.tonal"
         ) {
-            Picker("Method", selection: Binding(
-                get: { grayscaleConversionSelection },
-                set: selectGrayscaleConversion
-            )) {
-                ForEach(GrayscaleConversion.allCases) { conversion in
-                    Text(conversion.rawValue).tag(conversion)
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Method", selection: Binding(
+                    get: { state.transform.valueConfig.grayscaleConversion == .none ? .luminance : state.transform.valueConfig.grayscaleConversion },
+                    set: { conversion in
+                        state.transform.valueConfig.grayscaleConversion = conversion
+                        state.scheduleProcessing()
+                    }
+                )) {
+                    ForEach(GrayscaleConversion.allCases.filter { $0 != .none }) { conversion in
+                        Text(conversion.rawValue).tag(conversion)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("studio.grayscale-conversion-picker")
+
+                Text("Choose how the tonal study maps color into grayscale.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .pickerStyle(.menu)
-            .accessibilityIdentifier("studio.grayscale-conversion-picker")
         }
     }
 
-    private var quantizationSection: some View {
+    private var valueSection: some View {
         StudioPanelCard(
-            title: "Quantize",
+            title: "Value Settings",
             systemImage: "square.stack.3d.up",
-            accessibilityID: "studio.card.quantize"
+            accessibilityID: "studio.card.value"
         ) {
-            VStack(spacing: 14) {
-                Toggle(usesTonalRendering ? "Limit Values" : "Limit Colors", isOn: Binding(
-                    get: { usesQuantization },
-                    set: { setUsesQuantization($0) }
-                ))
-                .accessibilityIdentifier("studio.quantize-toggle")
+            ValueSettingsView()
+        }
+    }
 
-                if usesQuantization {
-                    if usesTonalRendering {
-                        ValueSettingsView()
-                    } else {
-                        ColorQuantizationSettingsView()
-                    }
-                } else {
-                    Text(usesTonalRendering ? "Continuous grayscale." : "Full color.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+    private var colorSection: some View {
+        StudioPanelCard(
+            title: "Color Settings",
+            systemImage: "paintpalette",
+            accessibilityID: "studio.card.color"
+        ) {
+            ColorQuantizationSettingsView()
         }
     }
 
     private var paletteSection: some View {
         StudioPanelCard(
-            title: "Palette Selection",
+            title: "Palette",
             systemImage: "paintpalette",
             accessibilityID: "studio.card.palette"
         ) {
@@ -289,21 +297,14 @@ struct ControlPanelView: View {
                     get: { state.transform.colorConfig.paletteSelectionEnabled },
                     set: setPaletteSelectionEnabled
                 ))
-                .disabled(!usesQuantization)
                 .accessibilityIdentifier("studio.palette-selection-toggle")
 
-                if usesQuantization {
-                    if state.transform.colorConfig.paletteSelectionEnabled {
-                        PaletteSelectionSettingsView()
-                        Divider().opacity(0.18)
-                    }
-                    PaletteView()
-                } else {
-                    Text("Turn on Limit Colors or Limit Values.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                if state.transform.colorConfig.paletteSelectionEnabled {
+                    PaletteSelectionSettingsView()
+                    Divider().opacity(0.18)
                 }
+
+                PaletteView()
             }
         }
     }
@@ -328,18 +329,6 @@ struct ControlPanelView: View {
                 GridSettingsView()
             }
         }
-    }
-
-    private var usesTonalRendering: Bool {
-        state.transform.activeMode == .tonal || state.transform.activeMode == .value
-    }
-
-    private var usesQuantization: Bool {
-        state.transform.activeMode == .value || state.transform.activeMode == .color
-    }
-
-    private var grayscaleConversionSelection: GrayscaleConversion {
-        usesTonalRendering ? state.transform.valueConfig.grayscaleConversion : .none
     }
 
     private var abstractionControls: some View {
@@ -385,7 +374,19 @@ struct ControlPanelView: View {
             .buttonStyle(.bordered)
             .accessibilityIdentifier("studio.save-settings")
 
-            Button(action: onExport) {
+            Menu {
+                Button("Current View") {
+                    onExport(.currentView)
+                }
+
+                Button("Painter's Kit (PDF)") {
+                    onExport(.prepSheet(.pdf))
+                }
+
+                Button("Painter's Kit (PNG)") {
+                    onExport(.prepSheet(.png))
+                }
+            } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 52)
@@ -455,42 +456,10 @@ struct ControlPanelView: View {
         }
     }
 
-    private func setUsesQuantization(_ newValue: Bool) {
-        if !newValue {
-            state.transform.colorConfig.paletteSelectionEnabled = false
-        }
-
-        let targetMode: RefPlaneMode
-        if newValue {
-            targetMode = usesTonalRendering ? .value : .color
-        } else {
-            targetMode = usesTonalRendering ? .tonal : .original
-        }
-        state.setMode(targetMode)
-    }
-
     private func setPaletteSelectionEnabled(_ enabled: Bool) {
         guard state.transform.colorConfig.paletteSelectionEnabled != enabled else { return }
         state.transform.colorConfig.paletteSelectionEnabled = enabled
         state.scheduleProcessing()
-    }
-
-    private func selectGrayscaleConversion(_ conversion: GrayscaleConversion) {
-        guard conversion != grayscaleConversionSelection else { return }
-        state.transform.valueConfig.grayscaleConversion = conversion
-
-        let targetMode: RefPlaneMode
-        if conversion == .none {
-            targetMode = usesQuantization ? .color : .original
-        } else {
-            targetMode = usesQuantization ? .value : .tonal
-        }
-
-        if targetMode == state.transform.activeMode {
-            state.scheduleProcessing()
-        } else {
-            state.setMode(targetMode)
-        }
     }
 }
 
@@ -561,7 +530,7 @@ private struct ControlPanelPreviewHarness: View {
     var body: some View {
         ControlPanelView(
             presentation: .sidebar,
-            onExport: {}
+            onExport: { _ in }
         )
         .environment(state)
         .frame(width: 392, height: 860)

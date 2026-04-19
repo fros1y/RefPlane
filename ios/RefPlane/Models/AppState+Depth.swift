@@ -7,28 +7,28 @@ extension AppState {
     // MARK: - Depth processing
 
     func computeDepthMap() {
-        depthTask?.cancel()
-        depthTask = nil
+        processing.depthTask?.cancel()
+        processing.depthTask = nil
 
         guard let source = displayBaseImage else {
-            depthProcessedImage = nil
+            depth.depthProcessedImage = nil
             return
         }
 
-        guard depthConfig.enabled else {
-            depthProcessedImage = nil
+        guard depth.depthConfig.enabled else {
+            depth.depthProcessedImage = nil
             return
         }
 
 
-        if let embedded = embeddedDepthMap {
+        if let embedded = depth.embeddedDepthMap {
             let resized = DepthEstimator.resize(embedded, toMatch: source)
             let range = DepthEstimator.depthRange(from: resized)
             if shouldUseEmbeddedDepth(resized, range: range) {
-                let isFirstCompute = depthMap == nil
-                depthMap = resized
-                depthRange = range
-                depthSource = .embedded
+                let isFirstCompute = depth.depthMap == nil
+                depth.depthMap = resized
+                depth.depthRange = range
+                depth.depthSource = .embedded
                 syncDepthCutoffs(to: range, resetToDefaults: isFirstCompute)
                 logDepthDiagnostics(event: "embedded-depth-selected", depth: resized)
                 applyDepthEffects()
@@ -39,137 +39,135 @@ extension AppState {
             AppState.depthLogger.warning(
                 "Embedded depth rejected as sparse/flat (rangeSpan=\((range.upperBound - range.lowerBound), format: .fixed(precision: 6))); falling back to estimated depth"
             )
-            embeddedDepthMap = nil
+            depth.embeddedDepthMap = nil
         }
 
-        isProcessing = true
-        processingLabel = "Estimating depth…"
-        processingIsIndeterminate = true
+        let token = processing.start(
+            for: .depthEstimation,
+            label: "Estimating depth…",
+            indeterminate: true
+        )
 
-        depthTask = Task { @MainActor [weak self] in
+        processing.depthTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let result = try await self.depthMapOperation(source)
                 try Task.checkCancellation()
+                guard self.processing.isCurrent(token) else { return }
 
                 let range = DepthEstimator.depthRange(from: result)
 
-                let isFirstCompute = self.depthMap == nil
-                self.depthMap = result
-                self.depthRange = range
-                self.depthSource = .estimated
+                let isFirstCompute = self.depth.depthMap == nil
+                self.depth.depthMap = result
+                self.depth.depthRange = range
+                self.depth.depthSource = .estimated
                 // Keep cutoffs aligned with the latest measured range.
                 self.syncDepthCutoffs(to: range, resetToDefaults: isFirstCompute)
                 self.logDepthDiagnostics(event: "estimated-depth-selected", depth: result)
-                self.processingIsIndeterminate = false
-                self.processingLabel = "Processing…"
-                self.isProcessing = false
                 self.applyDepthEffects()
                 self.recomputeContours()
             } catch is CancellationError {
                 // superseded
             } catch {
-                self.isProcessing = false
-                self.processingIsIndeterminate = false
-                self.processingLabel = "Processing…"
-                self.errorMessage = error.localizedDescription
+                self.pipeline.errorMessage = error.localizedDescription
+                self.processing.finish(token: token)
             }
         }
     }
 
     func applyDepthEffects() {
-        depthEffectTask?.cancel()
+        processing.depthEffectTask?.cancel()
 
-        guard depthConfig.enabled, let depth = depthMap else {
-            depthProcessedImage = nil
+        guard depth.depthConfig.enabled, let depthMap = depth.depthMap else {
+            depth.depthProcessedImage = nil
             return
         }
 
         guard let sourceImage = depthEffectSourceImage() else {
-            depthProcessedImage = nil
+            depth.depthProcessedImage = nil
             return
         }
 
-        let config = depthConfig
+        let config = depth.depthConfig
+        let token = processing.start(
+            for: .depthEffects,
+            label: "Applying depth…",
+            indeterminate: true
+        )
 
-
-        isProcessing = true
-        processingLabel = "Applying depth…"
-        processingIsIndeterminate = true
-
-        depthEffectTask = Task { @MainActor [weak self] in
+        processing.depthEffectTask = Task { @MainActor [weak self] in
             guard let self else { return }
             // Let the synchronous operation run on a background thread
             let result = await Task.detached(priority: .userInitiated) {
-                self.depthEffectOperation(sourceImage, depth, config)
+                self.depthEffectOperation(sourceImage, depthMap, config)
             }.value
             
             try? Task.checkCancellation()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, self.processing.isCurrent(token) else { return }
             
-            self.isProcessing = false
-            self.depthProcessedImage = result
-            self.processingIsIndeterminate = false
-            self.processingLabel = "Processing…"
+            self.depth.depthProcessedImage = result
+            self.processing.finish(token: token)
         }
     }
 
     func depthEffectSourceImage() -> UIImage? {
-        if activeMode == .original {
+        if transform.activeMode == .original {
             return displayBaseImage
         }
 
-        return isolatedProcessedImage ?? processedImage ?? displayBaseImage
+        return pipeline.isolatedProcessedImage ?? processedImage ?? displayBaseImage
     }
 
     func resetDepthProcessing() {
-        depthTask?.cancel()
-        depthEffectTask?.cancel()
+        processing.depthTask?.cancel()
+        processing.depthTask = nil
+        processing.depthEffectTask?.cancel()
+        processing.depthEffectTask = nil
         depthPreviewDismissTask?.cancel()
         contourTask?.cancel()
-        depthMap = nil
-        depthProcessedImage = nil
-        isEditingDepthThreshold = false
-        depthSliderActive = false
-        depthThresholdPreview = nil
-        cachedDepthTexture = nil
-        cachedSourceTexture = nil
-        depthRange = 0...1
-        contourSegments = []
+        depth.depthMap = nil
+        depth.depthProcessedImage = nil
+        depth.isEditingDepthThreshold = false
+        depth.depthSliderActive = false
+        depth.depthThresholdPreview = nil
+        depth.cachedDepthTexture = nil
+        depth.cachedSourceTexture = nil
+        depth.depthRange = 0...1
+        depth.contourSegments = []
     }
 
     func updateBackgroundDepthCutoff(_ newValue: Double) {
-        guard newValue != depthConfig.backgroundCutoff else {
+        guard newValue != depth.depthConfig.backgroundCutoff else {
             return
         }
-        depthConfig.backgroundCutoff = newValue
-        depthConfig.foregroundCutoff = min(depthConfig.foregroundCutoff, newValue)
+        depth.depthConfig.backgroundCutoff = newValue
+        depth.depthConfig.foregroundCutoff = min(depth.depthConfig.foregroundCutoff, newValue)
         refreshDepthThresholdOutput()
     }
 
     /// Regenerate the depth-threshold preview image showing which pixels
     /// fall into the background zone. Called while the user drags a cutoff slider.
     func updateDepthThresholdPreview() {
-        guard let depth = depthMap, let source = depthEffectSourceImage() else {
-            isEditingDepthThreshold = false
-            depthThresholdPreview = nil
-            cachedDepthTexture = nil
-            cachedSourceTexture = nil
+        guard let depthMap = depth.depthMap, let source = depthEffectSourceImage() else {
+            depth.isEditingDepthThreshold = false
+            depth.depthThresholdPreview = nil
+            depth.cachedDepthTexture = nil
+            depth.cachedSourceTexture = nil
             return
         }
-        let bg = depthConfig.backgroundCutoff
+        let bg = depth.depthConfig.backgroundCutoff
         let result = DepthProcessor.thresholdPreview(
             sourceImage: source,
-            depthMap: depth,
+            depthMap: depthMap,
             backgroundCutoff: bg,
-            cachedDepthTexture: cachedDepthTexture,
-            cachedSourceTexture: cachedSourceTexture
+            cachedDepthTexture: depth.cachedDepthTexture,
+            cachedSourceTexture: depth.cachedSourceTexture
         )
-        isEditingDepthThreshold = true
-        depthThresholdPreview = result.image
-        cachedDepthTexture = result.cachedDepthTexture
-        cachedSourceTexture = result.cachedSourceTexture
-        if let coverage = backgroundCoverage(in: depth, cutoff: bg) {
+        depth.isEditingDepthThreshold = true
+        depth.depthThresholdPreview = result.image
+        depth.cachedDepthTexture = result.cachedDepthTexture
+        depth.cachedSourceTexture = result.cachedSourceTexture
+        if let coverage = backgroundCoverage(in: depthMap, cutoff: bg) {
             AppState.depthLogger.debug(
                 "Depth slider preview cutoff=\(bg, format: .fixed(precision: 4)) backgroundCoveragePct=\((coverage * 100.0), format: .fixed(precision: 2))"
             )
@@ -183,7 +181,7 @@ extension AppState {
         depthPreviewDismissTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s safety net
             guard !Task.isCancelled, let self else { return }
-            guard !self.depthSliderActive else { return }
+            guard !self.depth.depthSliderActive else { return }
             self.dismissDepthThresholdPreview()
         }
     }
@@ -191,22 +189,22 @@ extension AppState {
     /// Dismiss the depth threshold preview and apply the current depth effects.
     func dismissDepthThresholdPreview() {
         depthPreviewDismissTask?.cancel()
-        depthSliderActive = false
-        guard isEditingDepthThreshold else {
+        depth.depthSliderActive = false
+        guard depth.isEditingDepthThreshold else {
             return
         }
-        isEditingDepthThreshold = false
-        depthThresholdPreview = nil
-        cachedDepthTexture = nil
-        cachedSourceTexture = nil
+        depth.isEditingDepthThreshold = false
+        depth.depthThresholdPreview = nil
+        depth.cachedDepthTexture = nil
+        depth.cachedSourceTexture = nil
         applyDepthEffects()
         recomputeContours()
     }
 
     func refreshDepthThresholdOutput() {
-        if depthSliderActive {
+        if depth.depthSliderActive {
             updateDepthThresholdPreview()
-        } else if isEditingDepthThreshold || depthThresholdPreview != nil {
+        } else if depth.isEditingDepthThreshold || depth.depthThresholdPreview != nil {
             dismissDepthThresholdPreview()
         } else {
             applyDepthEffects()
@@ -215,18 +213,18 @@ extension AppState {
     }
 
     func logDepthDiagnostics(event: String, depth: UIImage) {
-        let range = depthRange
+        let range = self.depth.depthRange
         let sourceSize = displayBaseImage?.size ?? .zero
         let depthSize = depth.size
-        let coverage = backgroundCoverage(in: depth, cutoff: depthConfig.backgroundCutoff)
+        let coverage = backgroundCoverage(in: depth, cutoff: self.depth.depthConfig.backgroundCutoff)
         let pixels = grayscalePixels(from: depth)
         let globalHistogram = depthHistogramSummary(from: pixels, bins: 16, domain: 0.0...1.0)
         let localHistogram = depthHistogramSummary(from: pixels, bins: 24, domain: range)
         let percentiles = depthPercentileSummary(from: pixels)
         let nonZeroSummary = nonZeroDepthSummary(from: pixels)
         let tailSummary = tailOccupancySummary(from: pixels)
-        let foregroundCutoff = depthConfig.foregroundCutoff
-        let backgroundCutoff = depthConfig.backgroundCutoff
+        let foregroundCutoff = self.depth.depthConfig.foregroundCutoff
+        let backgroundCutoff = self.depth.depthConfig.backgroundCutoff
         AppState.depthLogger.info(
             "\(event, privacy: .public) source=\(Int(sourceSize.width))x\(Int(sourceSize.height)) depth=\(Int(depthSize.width))x\(Int(depthSize.height)) depthRange=[\(range.lowerBound, format: .fixed(precision: 6)), \(range.upperBound, format: .fixed(precision: 6))] fg=\(foregroundCutoff, format: .fixed(precision: 6)) bg=\(backgroundCutoff, format: .fixed(precision: 6)) bgCoverage=\(coverage ?? -1, format: .fixed(precision: 4)) nonZero=\(nonZeroSummary, privacy: .public) tail=\(tailSummary, privacy: .public) histGlobal=\(globalHistogram, privacy: .public) histLocal=\(localHistogram, privacy: .public) pct=\(percentiles, privacy: .public)"
         )
@@ -238,15 +236,15 @@ extension AppState {
         let span = max(upper - lower, 1.0 / 255.0)
 
         if resetToDefaults {
-            depthConfig.foregroundCutoff = lower + span / 3.0
-            depthConfig.backgroundCutoff = lower + span * 2.0 / 3.0
+            depth.depthConfig.foregroundCutoff = lower + span / 3.0
+            depth.depthConfig.backgroundCutoff = lower + span * 2.0 / 3.0
             return
         }
 
-        let clampedForeground = min(upper, max(lower, depthConfig.foregroundCutoff))
-        let clampedBackground = min(upper, max(lower, depthConfig.backgroundCutoff))
-        depthConfig.foregroundCutoff = min(clampedForeground, clampedBackground)
-        depthConfig.backgroundCutoff = max(clampedForeground, clampedBackground)
+        let clampedForeground = min(upper, max(lower, depth.depthConfig.foregroundCutoff))
+        let clampedBackground = min(upper, max(lower, depth.depthConfig.backgroundCutoff))
+        depth.depthConfig.foregroundCutoff = min(clampedForeground, clampedBackground)
+        depth.depthConfig.backgroundCutoff = max(clampedForeground, clampedBackground)
     }
 
     func backgroundCoverage(in depthImage: UIImage, cutoff: Double) -> Double? {
@@ -468,18 +466,18 @@ extension AppState {
 
     func recomputeContours() {
         contourTask?.cancel()
-        guard contourConfig.enabled, let depth = depthMap else {
-            contourSegments = []
+        guard transform.contourConfig.enabled, let depthMap = depth.depthMap else {
+            depth.contourSegments = []
             return
         }
-        let cfg = contourConfig
-        let depthCfg = depthConfig
-        let range = depthRange
+        let cfg = transform.contourConfig
+        let depthCfg = depth.depthConfig
+        let range = depth.depthRange
         contourTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let segs = await Task.detached(priority: .userInitiated) {
                 ContourGenerator.generateSegments(
-                    depthMap: depth,
+                    depthMap: depthMap,
                     levels: cfg.levels,
                     depthRange: range,
                     backgroundCutoff: depthCfg.backgroundCutoff
@@ -488,14 +486,14 @@ extension AppState {
             
             try? Task.checkCancellation()
             guard !Task.isCancelled else { return }
-            self.contourSegments = segs
+            self.depth.contourSegments = segs
         }
     }
 
     func renderContoursOnto(_ image: UIImage) -> UIImage {
         let size = image.size
-        let config = contourConfig
-        let segments = contourSegments
+        let config = transform.contourConfig
+        let segments = depth.contourSegments
         let lineWidth = max(1.0, min(size.width, size.height) / 1000.0)
 
         let resolved = ContourLineColorResolver.resolvedSegments(

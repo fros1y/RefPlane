@@ -7,8 +7,9 @@ struct ContentView: View {
     @State private var state = AppState()
     @State private var presentedSheet: StudioSheet?
     @State private var exportItem: ExportItem?
-    @State private var exportDocument: ExportImageDocument?
+    @State private var exportDocument: ExportFileDocument?
     @State private var exportContentType: UTType = .png
+    @State private var exportDefaultFilename = "underpaint"
     @State private var showExportFileExporter = false
     @State private var isInspectorCollapsed = true
     @State private var didSetInitialInspectorState = false
@@ -32,6 +33,26 @@ struct ContentView: View {
                 .onChange(of: proxy.size, initial: true) { _, newSize in
                     synchronizeInspectorState(for: newSize)
                 }
+                .inspector(
+                    isPresented: Binding(
+                        get: { currentWorkspaceLayout == .sidebar && !isInspectorCollapsed },
+                        set: { isPresented in
+                            if currentWorkspaceLayout == .sidebar {
+                                isInspectorCollapsed = !isPresented
+                            }
+                        }
+                    )
+                ) {
+                    if currentWorkspaceLayout == .sidebar {
+                        ControlPanelView(
+                            presentation: .sidebar,
+                            onExport: requestExport,
+                            onClose: collapseInspector
+                        )
+                        .environment(state)
+                        .inspectorColumnWidth(392)
+                    }
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
@@ -40,6 +61,10 @@ struct ContentView: View {
             PaywallView()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .studioCommand)) { notification in
+            guard let command = notification.object as? StudioCommand else { return }
+            handleStudioCommand(command)
         }
         .sheet(item: $presentedSheet, content: presentedSheetView)
         .sheet(item: $exportItem) { item in
@@ -55,7 +80,7 @@ struct ContentView: View {
             isPresented: $showExportFileExporter,
             document: exportDocument,
             contentType: exportContentType,
-            defaultFilename: exportFilename,
+            defaultFilename: exportDefaultFilename,
             onCompletion: handleExportCompletion
         )
         .alert(
@@ -78,34 +103,15 @@ struct ContentView: View {
     }
 
     private func workspaceCanvas(layout: StudioWorkspaceLayout) -> some View {
-        HStack(spacing: 0) {
-            StudioCanvasStage(
-                layout: layout,
-                isInspectorCollapsed: isInspectorCollapsed,
-                onOpenPhoto: openPhotoLibrary,
-                onOpenSamples: openSampleLibrary,
-                onShowAbout: showAbout,
-                onExport: exportImage,
-                onToggleInspector: toggleInspector
-            )
-
-            if layout == .sidebar {
-                if !isInspectorCollapsed {
-                    Divider()
-                        .overlay(Color.white.opacity(0.08))
-
-                    ControlPanelView(
-                        presentation: .sidebar,
-                        onExport: exportImage,
-                        onClose: collapseInspector
-                    )
-                    .frame(width: 392)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                } else {
-                    sidebarRevealHandle
-                }
-            }
-        }
+        StudioCanvasStage(
+            layout: layout,
+            isInspectorCollapsed: isInspectorCollapsed,
+            onOpenPhoto: openPhotoLibrary,
+            onOpenSamples: openSampleLibrary,
+            onShowAbout: showAbout,
+            onExport: requestExport,
+            onToggleInspector: toggleInspector
+        )
         .animation(workspaceAnimation, value: isInspectorCollapsed)
     }
 
@@ -118,7 +124,7 @@ struct ContentView: View {
             } else {
                 ControlPanelView(
                     presentation: .bottomPanel,
-                    onExport: exportImage,
+                    onExport: requestExport,
                     onClose: collapseInspector
                 )
                 .frame(maxWidth: .infinity)
@@ -201,6 +207,7 @@ struct ContentView: View {
             ImagePickerView(onImageSelected: loadImage)
         case .sampleLibrary:
             SampleImagePickerView(onImageSelected: loadImage)
+                .environment(state)
         case .about:
             AboutPrivacyView()
                 .environment(state)
@@ -285,48 +292,96 @@ struct ContentView: View {
         }
     }
 
-    private func exportImage() {
+    private func requestExport(_ action: StudioExportAction) {
+        switch action {
+        case .currentView:
+            exportCurrentView()
+        case .prepSheet(let format):
+            exportPrepSheet(format: format)
+        }
+    }
+
+    private func exportCurrentView() {
         guard let exportPayload = state.exportCurrentImagePayload() else { return }
         exportContentType = exportPayload.contentType
+        exportDefaultFilename = currentViewExportFilename
 
         if prefersDesktopFileExport {
-            exportDocument = ExportImageDocument(imageData: exportPayload.imageData)
+            exportDocument = ExportFileDocument(fileData: exportPayload.imageData)
             showExportFileExporter = true
         } else {
             do {
-                exportItem = try makeShareExportItem(from: exportPayload)
+                exportItem = try makeShareExportItem(
+                    data: exportPayload.imageData,
+                    contentType: exportPayload.contentType,
+                    defaultFilename: currentViewExportFilename
+                )
             } catch {
                 state.pipeline.errorMessage = error.localizedDescription
             }
         }
     }
 
-    private func makeShareExportItem(from payload: ExportedImagePayload) throws -> ExportItem {
-        let fileURL = try writeTemporaryExport(payload)
+    private func exportPrepSheet(format: PrepSheetExportFormat) {
+        Task {
+            do {
+                let payload = try await state.exportPrepSheetPayload(format: format)
+                exportContentType = payload.contentType
+                exportDefaultFilename = payload.defaultFilename
+
+                if prefersDesktopFileExport {
+                    exportDocument = ExportFileDocument(fileData: payload.data)
+                    showExportFileExporter = true
+                } else {
+                    exportItem = try makeShareExportItem(
+                        data: payload.data,
+                        contentType: payload.contentType,
+                        defaultFilename: payload.defaultFilename
+                    )
+                }
+            } catch {
+                state.pipeline.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func makeShareExportItem(
+        data: Data,
+        contentType: UTType,
+        defaultFilename: String
+    ) throws -> ExportItem {
+        let fileURL = try writeTemporaryExport(
+            data: data,
+            contentType: contentType,
+            defaultFilename: defaultFilename
+        )
         let subject = fileURL.lastPathComponent
 
         return ExportItem(
             activityItems: [
-                ExportImageActivityItemSource(image: payload.image, subject: subject),
                 ExportFileActivityItemSource(fileURL: fileURL, subject: subject)
             ],
             temporaryFileURL: fileURL
         )
     }
 
-    private func writeTemporaryExport(_ payload: ExportedImagePayload) throws -> URL {
-        let fileExtension = payload.contentType.preferredFilenameExtension ?? "png"
+    private func writeTemporaryExport(
+        data: Data,
+        contentType: UTType,
+        defaultFilename: String
+    ) throws -> URL {
+        let fileExtension = contentType.preferredFilenameExtension ?? "png"
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RefPlaneExports", isDirectory: true)
+            .appendingPathComponent("UnderpaintExports", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true
         )
 
         let fileURL = directory
-            .appendingPathComponent("\(exportFilename)-\(UUID().uuidString)")
+            .appendingPathComponent("\(defaultFilename)-\(UUID().uuidString)")
             .appendingPathExtension(fileExtension)
-        try payload.imageData.write(to: fileURL, options: .atomic)
+        try data.write(to: fileURL, options: .atomic)
         return fileURL
     }
 
@@ -343,13 +398,14 @@ struct ContentView: View {
         }
         exportDocument = nil
         exportContentType = .png
+        exportDefaultFilename = "underpaint"
     }
 
-    private var exportFilename: String {
+    private var currentViewExportFilename: String {
         let modeName = state.transform.activeMode.label
             .replacingOccurrences(of: " ", with: "-")
             .lowercased()
-		return "underpaint-\(modeName)"
+        return "underpaint-\(modeName)"
     }
 
     private var prefersDesktopFileExport: Bool {
@@ -359,11 +415,39 @@ struct ContentView: View {
         ProcessInfo.processInfo.isiOSAppOnMac
 #endif
     }
+
+    private func handleStudioCommand(_ command: StudioCommand) {
+        switch command {
+        case .openLibrary:
+            openPhotoLibrary()
+        case .openSamples:
+            openSampleLibrary()
+        case .exportCurrentView:
+            requestExport(.currentView)
+        case .exportPrepSheetPDF:
+            requestExport(.prepSheet(.pdf))
+        case .exportPrepSheetPNG:
+            requestExport(.prepSheet(.png))
+        case .toggleCompare:
+            state.pipeline.compareMode.toggle()
+        case .toggleInspector:
+            toggleInspector()
+        case .selectMode(let mode):
+            state.selectMode(mode)
+        case .zoomIn, .zoomOut, .resetZoom:
+            break
+        }
+    }
 }
 
 private enum StudioWorkspaceLayout: Equatable {
     case sidebar
     case drawer
+}
+
+enum StudioExportAction: Equatable {
+    case currentView
+    case prepSheet(PrepSheetExportFormat)
 }
 
 private enum StudioSheet: String, Identifiable {
@@ -382,7 +466,7 @@ private struct StudioCanvasStage: View {
     let onOpenPhoto: () -> Void
     let onOpenSamples: () -> Void
     let onShowAbout: () -> Void
-    let onExport: () -> Void
+    let onExport: (StudioExportAction) -> Void
     let onToggleInspector: () -> Void
 
     @State private var showImagePicker = false
@@ -482,7 +566,7 @@ private struct StudioCanvasChrome: View {
     let onOpenPhoto: () -> Void
     let onOpenSamples: () -> Void
     let onShowAbout: () -> Void
-    let onExport: () -> Void
+    let onExport: (StudioExportAction) -> Void
     let onToggleInspector: () -> Void
 
     var body: some View {
@@ -493,6 +577,7 @@ private struct StudioCanvasChrome: View {
                     systemImage: "photo.on.rectangle",
                     accessibilityID: "chrome.library",
                     showsLockBadge: !unlockManager.isUnlocked,
+                    shortcut: KeyboardShortcut("n", modifiers: [.command]),
                     action: onOpenPhoto
                 )
 
@@ -512,17 +597,12 @@ private struct StudioCanvasChrome: View {
                     systemImage: state.pipeline.compareMode ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
                     isEnabled: state.displayBaseImage != nil,
                     accessibilityID: "chrome.compare",
+                    shortcut: KeyboardShortcut("c", modifiers: [.command]),
                     action: toggleCompare
                 )
                 .popoverTip(CompareModeTip(), arrowEdge: .top)
 
-                chromeButton(
-                    title: "Export",
-                    systemImage: "square.and.arrow.up",
-                    isEnabled: state.currentDisplayImage != nil,
-                    accessibilityID: "chrome.export",
-                    action: onExport
-                )
+                exportMenuButton
                 .popoverTip(ExportTip(), arrowEdge: .top)
 
                 chromeButton(
@@ -552,12 +632,41 @@ private struct StudioCanvasChrome: View {
         state.pipeline.compareMode.toggle()
     }
 
+    private var exportMenuButton: some View {
+        Menu {
+            Button("Current View") {
+                onExport(.currentView)
+            }
+            .keyboardShortcut("e", modifiers: [.command])
+
+            Button("Painter's Kit (PDF)") {
+                onExport(.prepSheet(.pdf))
+            }
+            .keyboardShortcut("E", modifiers: [.command, .shift])
+
+            Button("Painter's Kit (PNG)") {
+                onExport(.prepSheet(.png))
+            }
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(state.currentDisplayImage != nil ? .white : .white.opacity(0.25))
+        .disabled(state.currentDisplayImage == nil)
+        .accessibilityLabel("Export")
+        .accessibilityIdentifier("chrome.export")
+    }
+
     private func chromeButton(
         title: String,
         systemImage: String,
         isEnabled: Bool = true,
         accessibilityID: String,
         showsLockBadge: Bool = false,
+        shortcut: KeyboardShortcut? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -581,6 +690,7 @@ private struct StudioCanvasChrome: View {
         .disabled(!isEnabled)
         .accessibilityLabel(title)
         .accessibilityIdentifier(accessibilityID)
+        .modifier(ConditionalKeyboardShortcut(shortcut: shortcut))
     }
 }
 
@@ -591,7 +701,7 @@ private struct StudioModeDock: View {
         HStack(spacing: 8) {
             ForEach(RefPlaneMode.allCases) { mode in
                 Button {
-                    state.setMode(mode)
+                    state.selectMode(mode)
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: mode.iconName)
@@ -608,6 +718,7 @@ private struct StudioModeDock: View {
                     .background(modeBackground(isSelected: state.transform.activeMode == mode))
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(shortcut(for: mode), modifiers: [.command])
                 .accessibilityLabel("\(mode.label) study")
                 .accessibilityAddTraits(state.transform.activeMode == mode ? .isSelected : [])
                 .accessibilityIdentifier("mode-dock.\(mode.rawValue)")
@@ -619,6 +730,7 @@ private struct StudioModeDock: View {
             Capsule()
                 .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
         }
+        .popoverTip(ModeDockTip(), arrowEdge: .bottom)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("studio.mode-dock")
     }
@@ -626,6 +738,19 @@ private struct StudioModeDock: View {
     private func modeBackground(isSelected: Bool) -> some View {
         Capsule()
             .fill(isSelected ? Color.white : Color.white.opacity(0.08))
+    }
+
+    private func shortcut(for mode: RefPlaneMode) -> KeyEquivalent {
+        switch mode {
+        case .original:
+            return "1"
+        case .tonal:
+            return "2"
+        case .value:
+            return "3"
+        case .color:
+            return "4"
+        }
     }
 }
 
@@ -635,24 +760,36 @@ private struct ExportItem: Identifiable {
     let temporaryFileURL: URL?
 }
 
-private struct ExportImageDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.png, .jpeg, .heic, .heif, .tiff] }
+private struct ConditionalKeyboardShortcut: ViewModifier {
+    let shortcut: KeyboardShortcut?
 
-    let imageData: Data
+    func body(content: Content) -> some View {
+        if let shortcut {
+            content.keyboardShortcut(shortcut)
+        } else {
+            content
+        }
+    }
+}
 
-    init(imageData: Data) {
-        self.imageData = imageData
+private struct ExportFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.png, .jpeg, .heic, .heif, .tiff, .pdf] }
+
+    let fileData: Data
+
+    init(fileData: Data) {
+        self.fileData = fileData
     }
 
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        self.imageData = data
+        self.fileData = data
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: imageData)
+        FileWrapper(regularFileWithContents: fileData)
     }
 }
 

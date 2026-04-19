@@ -1,4 +1,6 @@
+import ImageIO
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum CanvasBandTapAction: Equatable {
     case inspect(Int?)
@@ -60,6 +62,7 @@ struct ImageCanvasView: View {
     @State private var inspectedBand: Int? = nil
     @State private var longPressLocation: CGPoint? = nil
     @State private var bandTapTracker = CanvasBandTapTracker()
+    @State private var isDropTargeted = false
 
     private var displayImage: UIImage? {
         state.currentDisplayImage
@@ -114,7 +117,7 @@ struct ImageCanvasView: View {
                     }
                 }
 
-                if state.pipeline.isProcessing {
+                if state.processing.isProcessing {
                     processingOverlay
                 }
 
@@ -133,7 +136,25 @@ struct ImageCanvasView: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .onChange(of: state.pipeline.isProcessing) { _, isProcessing in
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.white.opacity(0.75), style: StrokeStyle(lineWidth: 2, dash: [8, 10]))
+                    .padding(18)
+                    .allowsHitTesting(false)
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            handleDroppedURLs(urls)
+        } isTargeted: { isTargeted in
+            isDropTargeted = isTargeted
+        }
+        .dropDestination(for: Data.self) { items, _ in
+            handleDroppedData(items)
+        } isTargeted: { isTargeted in
+            isDropTargeted = isTargeted
+        }
+        .onChange(of: state.processing.isProcessing) { _, isProcessing in
             if isProcessing {
                 inspectedBand = nil
                 bandTapTracker.reset()
@@ -143,10 +164,14 @@ struct ImageCanvasView: View {
             inspectedBand = nil
             bandTapTracker.reset()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .studioCommand)) { notification in
+            guard let command = notification.object as? StudioCommand else { return }
+            handleStudioCommand(command)
+        }
     }
 
     private var shouldDimCanvas: Bool {
-        state.pipeline.isProcessing && !state.pipeline.isSimplifying
+        state.processing.isProcessing && !state.processing.isSimplifying
     }
 
     private func zoomableCanvas(image: UIImage, containerSize: CGSize) -> some View {
@@ -288,12 +313,12 @@ struct ImageCanvasView: View {
             Color.black.opacity(0.28)
 
             VStack(spacing: 12) {
-                if state.pipeline.processingIsIndeterminate {
+                if state.processing.isIndeterminate {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.1)
                 } else {
-                    ProgressView(value: state.pipeline.processingProgress)
+                    ProgressView(value: state.processing.progress)
                         .tint(.white)
                         .frame(width: 188)
                 }
@@ -317,11 +342,17 @@ struct ImageCanvasView: View {
     }
 
     private var processingDisplayLabel: String {
-        switch state.pipeline.processingLabel {
+        switch state.processing.label {
         case "Loading…":
             return "Preparing image"
         case "Abstracting…":
             return "Abstracting image"
+        case "Estimating depth…":
+            return "Estimating depth"
+        case "Applying depth…":
+            return "Applying depth"
+        case "Rendering painter's kit…":
+            return "Rendering painter's kit"
         case "Processing…":
             switch state.transform.activeMode {
             case .original:
@@ -334,7 +365,7 @@ struct ImageCanvasView: View {
                 return "Generating color study"
             }
         default:
-            return state.pipeline.processingLabel
+            return state.processing.label
         }
     }
 
@@ -499,6 +530,77 @@ struct ImageCanvasView: View {
 
     private func openSamplePicker() {
         showSamplePicker = true
+    }
+
+    private func handleStudioCommand(_ command: StudioCommand) {
+        switch command {
+        case .zoomIn:
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                currentScale = min(8.0, currentScale * 1.2)
+            }
+        case .zoomOut:
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                currentScale = max(1.0, currentScale / 1.2)
+                if currentScale == 1.0 {
+                    currentOffset = .zero
+                }
+            }
+        case .resetZoom:
+            resetViewport()
+        default:
+            break
+        }
+    }
+
+    private func handleDroppedURLs(_ urls: [URL]) -> Bool {
+        for url in urls {
+            guard let type = UTType(filenameExtension: url.pathExtension),
+                  type.conforms(to: .image),
+                  let data = try? Data(contentsOf: url),
+                  let payload = makeImportedPayload(from: data, fallbackTypeIdentifier: type.identifier)
+            else {
+                continue
+            }
+
+            state.loadImage(payload)
+            return true
+        }
+
+        return false
+    }
+
+    private func handleDroppedData(_ items: [Data]) -> Bool {
+        for data in items {
+            if let payload = makeImportedPayload(from: data, fallbackTypeIdentifier: UTType.image.identifier) {
+                state.loadImage(payload)
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func makeImportedPayload(
+        from data: Data,
+        fallbackTypeIdentifier: String
+    ) -> ImportedImagePayload? {
+        guard let image = UIImage(data: data) else { return nil }
+        let source = CGImageSourceCreateWithData(data as CFData, nil)
+        let properties = source.flatMap {
+            CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [String: Any]
+        } ?? [:]
+        let typeIdentifier = source
+            .flatMap { CGImageSourceGetType($0) as String? }
+            ?? fallbackTypeIdentifier
+
+        return ImportedImagePayload(
+            image: image,
+            metadata: SourceImageMetadata(
+                properties: properties,
+                uniformTypeIdentifier: typeIdentifier
+            ),
+            embeddedDepthMap: DepthEstimator.extractEmbeddedDepth(from: data)
+        )
     }
 }
 
@@ -682,11 +784,11 @@ private struct ImageCanvasPreviewHarness: View {
 
         previewState.originalImage = previewImage
         previewState.sourceImage = previewImage
-        previewState.activeMode = mode
-        previewState.depthConfig.enabled = depthEnabled
+        previewState.transform.activeMode = mode
+        previewState.depth.depthConfig.enabled = depthEnabled
 
         if depthEnabled {
-            previewState.contourConfig.enabled = true
+            previewState.transform.contourConfig.enabled = true
         }
 
         _state = State(initialValue: previewState)

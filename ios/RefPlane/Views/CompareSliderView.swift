@@ -35,7 +35,7 @@ struct CompareSliderView: View {
 
                 compareLabels
 
-                if state.pipeline.isProcessing {
+                if state.processing.isProcessing {
                     compareProcessingOverlay
                 }
             }
@@ -47,7 +47,7 @@ struct CompareSliderView: View {
 
     private var processedTitle: String {
         if state.transform.activeMode == .original {
-            return state.transform.abstractionStrength > 0 ? "Abstracted" : "Natural"
+            return state.transform.abstractionStrength > 0 ? "Abstracted" : "Original"
         }
         return state.transform.activeMode.label
     }
@@ -62,7 +62,7 @@ struct CompareSliderView: View {
     private var compareLabels: some View {
         VStack {
             HStack {
-                CompareTag(title: "Natural", icon: "photo")
+                CompareTag(title: "Original", icon: "photo")
                     .accessibilityIdentifier("compare.label.original")
                 Spacer()
                 CompareTag(title: processedTitle, icon: processedIcon)
@@ -80,12 +80,12 @@ struct CompareSliderView: View {
             Color.black.opacity(0.28)
 
             VStack(spacing: 12) {
-                if state.pipeline.processingIsIndeterminate {
+                if state.processing.isIndeterminate {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.1)
                 } else {
-                    ProgressView(value: state.pipeline.processingProgress)
+                    ProgressView(value: state.processing.progress)
                         .tint(.white)
                         .frame(width: 188)
                 }
@@ -109,11 +109,17 @@ struct CompareSliderView: View {
     }
 
     private var processingDisplayLabel: String {
-        switch state.pipeline.processingLabel {
+        switch state.processing.label {
         case "Loading…":
             return "Preparing image"
         case "Abstracting…":
             return "Abstracting image"
+        case "Estimating depth…":
+            return "Estimating depth"
+        case "Applying depth…":
+            return "Applying depth"
+        case "Rendering painter's kit…":
+            return "Rendering painter's kit"
         case "Processing…":
             switch state.transform.activeMode {
             case .original:
@@ -126,7 +132,7 @@ struct CompareSliderView: View {
                 return "Generating color study"
             }
         default:
-            return state.pipeline.processingLabel
+            return state.processing.label
         }
     }
 }

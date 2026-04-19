@@ -5,11 +5,13 @@ import os
 
 extension AppState {
     var hasPreviousTransformSnapshot: Bool {
-        previousTransformSnapshot != nil
+        transform.previousTransformSnapshot != nil
     }
 
     var shouldShowPreviousSettingsOption: Bool {
-        guard let previousTransformSnapshot else { return true }
+        guard let previousTransformSnapshot = transform.previousTransformSnapshot else {
+            return true
+        }
         return matchingSavedPresetID(for: previousTransformSnapshot) == nil
     }
 
@@ -19,12 +21,12 @@ extension AppState {
             options.append(.previous)
         }
         options.append(.appDefault)
-        options.append(contentsOf: savedTransformPresets.map { .saved($0.id) })
+        options.append(contentsOf: transform.savedTransformPresets.map { .saved($0.id) })
         return options
     }
 
     var selectedTransformPresetLabel: String {
-        label(for: selectedTransformPresetSelection)
+        label(for: transform.selectedTransformPresetSelection)
     }
 
     func label(for selection: TransformPresetSelection) -> String {
@@ -34,38 +36,40 @@ extension AppState {
         case .appDefault:
             return "Default"
         case .saved(let presetID):
-            return savedTransformPresets.first(where: { $0.id == presetID })?.name ?? "Saved Settings"
+            return transform.savedTransformPresets.first(where: { $0.id == presetID })?.name ?? "Saved Settings"
         }
     }
 
     func saveCurrentTransformPreset(named rawName: String) throws {
         let snapshot = makeTransformationSnapshot()
-        let id = try presetManager.savePreset(named: rawName, snapshot: snapshot)
-        selectedTransformPresetSelection = .saved(id)
+        let id = try transform.presetManager.savePreset(named: rawName, snapshot: snapshot)
+        transform.selectedTransformPresetSelection = .saved(id)
     }
 
     func renameTransformPreset(id: UUID, to rawName: String) throws {
-        try presetManager.renamePreset(id: id, to: rawName)
+        try transform.presetManager.renamePreset(id: id, to: rawName)
     }
 
     func deleteTransformPreset(id: UUID) {
-        presetManager.deletePreset(id: id)
+        transform.presetManager.deletePreset(id: id)
     }
 
     func selectTransformPreset(_ selection: TransformPresetSelection) {
         switch selection {
         case .previous:
-            if let previousTransformSnapshot {
+            if let previousTransformSnapshot = transform.previousTransformSnapshot {
                 applyTransformationSnapshot(previousTransformSnapshot)
             }
         case .appDefault:
             applyTransformationSnapshot(Self.defaultTransformationSnapshot())
         case .saved(let presetID):
-            guard let preset = savedTransformPresets.first(where: { $0.id == presetID }) else { return }
+            guard let preset = transform.savedTransformPresets.first(where: { $0.id == presetID }) else {
+                return
+            }
             applyTransformationSnapshot(preset.snapshot)
         }
 
-        selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
+        transform.selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
     }
 
     func suggestedTransformPresetName() -> String {
@@ -73,7 +77,7 @@ extension AppState {
         while true {
             let candidate = "Preset \(index)"
             let normalized = normalizedPresetName(candidate)
-            if !savedTransformPresets.contains(where: { normalizedPresetName($0.name) == normalized }) {
+            if !transform.savedTransformPresets.contains(where: { normalizedPresetName($0.name) == normalized }) {
                 return candidate
             }
             index += 1
@@ -86,46 +90,61 @@ extension AppState {
 
     func makeTransformationSnapshot() -> TransformationSnapshot {
         TransformationSnapshot(
-            activeMode: activeMode,
-            abstractionStrength: abstractionStrength,
-            abstractionMethod: abstractionMethod,
-            gridEnabled: gridConfig.enabled,
-            gridDivisions: gridConfig.divisions,
-            gridShowDiagonals: gridConfig.showDiagonals,
-            gridLineStyle: gridConfig.lineStyle,
-            gridCustomColor: CodableColor(gridConfig.customColor),
-            gridOpacity: gridConfig.opacity,
-            grayscaleConversion: valueConfig.grayscaleConversion,
-            valueLevels: valueConfig.levels,
-            valueThresholds: valueConfig.thresholds,
-            valueDistribution: valueConfig.distribution,
-            valueQuantizationBias: valueConfig.quantizationBias,
-            paletteSelectionEnabled: colorConfig.paletteSelectionEnabled,
-            colorLimit: colorConfig.numShades,
-            enabledPigmentIDs: colorConfig.enabledPigmentIDs.sorted(),
-            paletteSpread: colorConfig.paletteSpread,
-            colorQuantizationBias: colorConfig.quantizationBias,
-            maxPigmentsPerMix: colorConfig.maxPigmentsPerMix,
-            minConcentration: colorConfig.minConcentration,
-            depthEnabled: depthConfig.enabled,
-            foregroundCutoff: depthConfig.foregroundCutoff,
-            backgroundCutoff: depthConfig.backgroundCutoff,
-            depthEffectIntensity: depthConfig.effectIntensity,
-            backgroundMode: depthConfig.backgroundMode,
-            contourEnabled: contourConfig.enabled,
-            contourLevels: contourConfig.levels,
-            contourLineStyle: contourConfig.lineStyle,
-            contourCustomColor: CodableColor(contourConfig.customColor),
-            contourOpacity: contourConfig.opacity
+            activeMode: transform.activeMode,
+            abstractionStrength: transform.abstractionStrength,
+            abstractionMethod: transform.abstractionMethod,
+            gridEnabled: transform.gridConfig.enabled,
+            gridDivisions: transform.gridConfig.divisions,
+            gridShowDiagonals: transform.gridConfig.showDiagonals,
+            gridLineStyle: transform.gridConfig.lineStyle,
+            gridCustomColor: CodableColor(transform.gridConfig.customColor),
+            gridOpacity: transform.gridConfig.opacity,
+            grayscaleConversion: transform.valueConfig.grayscaleConversion,
+            valueLevels: transform.valueConfig.levels,
+            valueThresholds: transform.valueConfig.thresholds,
+            valueDistribution: transform.valueConfig.distribution,
+            valueQuantizationBias: transform.valueConfig.quantizationBias,
+            paletteSelectionEnabled: transform.colorConfig.paletteSelectionEnabled,
+            colorLimit: transform.colorConfig.numShades,
+            enabledPigmentIDs: transform.colorConfig.enabledPigmentIDs.sorted(),
+            paletteSpread: transform.colorConfig.paletteSpread,
+            colorQuantizationBias: transform.colorConfig.quantizationBias,
+            maxPigmentsPerMix: transform.colorConfig.maxPigmentsPerMix,
+            minConcentration: transform.colorConfig.minConcentration,
+            depthEnabled: depth.depthConfig.enabled,
+            foregroundCutoff: depth.depthConfig.foregroundCutoff,
+            backgroundCutoff: depth.depthConfig.backgroundCutoff,
+            depthEffectIntensity: depth.depthConfig.effectIntensity,
+            backgroundMode: depth.depthConfig.backgroundMode,
+            contourEnabled: transform.contourConfig.enabled,
+            contourLevels: transform.contourConfig.levels,
+            contourLineStyle: transform.contourConfig.lineStyle,
+            contourCustomColor: CodableColor(transform.contourConfig.customColor),
+            contourOpacity: transform.contourConfig.opacity
         )
     }
 
     func applyTransformationSnapshot(_ snapshot: TransformationSnapshot) {
-        activeMode = snapshot.activeMode
-        abstractionStrength = snapshot.abstractionStrength
-        abstractionMethod = snapshot.abstractionMethod
+        loadTransformationSnapshot(snapshot)
+        invalidateFocusIsolation(clearSelection: true)
+        updatePreviousTransformSnapshot()
 
-        gridConfig = GridConfig(
+        if transform.abstractionIsEnabled {
+            applyAbstraction()
+        } else {
+            if depth.depthConfig.enabled {
+                computeDepthMap()
+            }
+            triggerProcessing()
+        }
+    }
+
+    func loadTransformationSnapshot(_ snapshot: TransformationSnapshot) {
+        transform.activeMode = snapshot.activeMode
+        transform.abstractionStrength = snapshot.abstractionStrength
+        transform.abstractionMethod = snapshot.abstractionMethod
+
+        transform.gridConfig = GridConfig(
             enabled: snapshot.gridEnabled,
             divisions: snapshot.gridDivisions,
             showDiagonals: snapshot.gridShowDiagonals,
@@ -134,7 +153,7 @@ extension AppState {
             opacity: snapshot.gridOpacity
         )
 
-        valueConfig = ValueConfig(
+        transform.valueConfig = ValueConfig(
             grayscaleConversion: snapshot.grayscaleConversion,
             levels: snapshot.valueLevels,
             thresholds: snapshot.valueThresholds,
@@ -142,7 +161,7 @@ extension AppState {
             quantizationBias: snapshot.valueQuantizationBias
         )
 
-        colorConfig = ColorConfig(
+        transform.colorConfig = ColorConfig(
             paletteSelectionEnabled: snapshot.paletteSelectionEnabled,
             numShades: snapshot.colorLimit,
             enabledPigmentIDs: Set(snapshot.enabledPigmentIDs),
@@ -152,7 +171,7 @@ extension AppState {
             minConcentration: snapshot.minConcentration
         )
 
-        depthConfig = DepthConfig(
+        depth.depthConfig = DepthConfig(
             enabled: snapshot.depthEnabled,
             foregroundCutoff: snapshot.foregroundCutoff,
             backgroundCutoff: snapshot.backgroundCutoff,
@@ -160,26 +179,13 @@ extension AppState {
             backgroundMode: snapshot.backgroundMode
         )
 
-        contourConfig = ContourConfig(
+        transform.contourConfig = ContourConfig(
             enabled: snapshot.contourEnabled,
             levels: snapshot.contourLevels,
             lineStyle: snapshot.contourLineStyle,
             customColor: snapshot.contourCustomColor.color,
             opacity: snapshot.contourOpacity
         )
-
-        invalidateFocusIsolation(clearSelection: true)
-
-        updatePreviousTransformSnapshot()
-
-        if abstractionIsEnabled {
-            applyAbstraction()
-        } else {
-            if depthConfig.enabled {
-                computeDepthMap()
-            }
-            triggerProcessing()
-        }
     }
 
     func canonicalSelectionForCurrentSettings() -> TransformPresetSelection {
@@ -201,33 +207,31 @@ extension AppState {
     }
 
     func matchingSavedPresetID(for snapshot: TransformationSnapshot) -> UUID? {
-        savedTransformPresets.first(where: { $0.snapshot == snapshot })?.id
+        transform.savedTransformPresets.first(where: { $0.snapshot == snapshot })?.id
     }
 
     func updatePreviousTransformSnapshot() {
-        selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
+        transform.selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
 
         presetPersistenceTask?.cancel()
         presetPersistenceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(220))
             guard let self, !Task.isCancelled else { return }
-            self.presetManager.savePreviousSnapshot(self.makeTransformationSnapshot())
+            self.transform.presetManager.savePreviousSnapshot(self.makeTransformationSnapshot())
+            self.persistCurrentSession()
         }
     }
 
-
-
-
-
     func restoreInitialTransformSnapshotSelection() {
-        guard let prev = presetManager.previousSnapshot else {
-            selectedTransformPresetSelection = .appDefault
+        guard let previousSnapshot = transform.presetManager.previousSnapshot else {
+            transform.selectedTransformPresetSelection = .appDefault
             return
         }
-        if let matchingPresetID = matchingSavedPresetID(for: prev) {
-            selectedTransformPresetSelection = .saved(matchingPresetID)
+
+        if let matchingPresetID = matchingSavedPresetID(for: previousSnapshot) {
+            transform.selectedTransformPresetSelection = .saved(matchingPresetID)
         } else {
-            selectedTransformPresetSelection = .previous
+            transform.selectedTransformPresetSelection = .previous
         }
     }
 

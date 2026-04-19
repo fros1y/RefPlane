@@ -94,7 +94,7 @@ func resetAbstractionCancelsInflightAbstractionTask() async throws {
     await Task.yield()
 
     #expect(state.abstractedImage == nil)
-    #expect(state.pipeline.processingLabel == "Processing…")
+    #expect(state.processing.label == "Processing…")
 }
 
 @MainActor
@@ -126,7 +126,7 @@ func selectingFocusedBandChangesDisplayedImage() async throws {
     state.sourceImage = processedImage
     state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.processing.isProcessing { await Task.yield() }
 
     state.toggleFocusedBand(1)
 
@@ -172,7 +172,7 @@ func selectingMultipleFocusedBandsSubduesOnlyUnfocusedPixels() async throws {
     state.sourceImage = processedImage
     state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.processing.isProcessing { await Task.yield() }
 
     state.toggleFocusedBand(0)
     state.toggleFocusedBand(2)
@@ -241,14 +241,14 @@ func processingResultsClearFocusedBands() async throws {
     state.sourceImage = firstImage
     state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.processing.isProcessing { await Task.yield() }
 
     state.toggleFocusedBand(1)
     #expect(state.pipeline.focusedBands == Set([1]))
 
     state.sourceImage = secondImage
     state.triggerProcessing()
-    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.processing.isProcessing { await Task.yield() }
 
     #expect(state.pipeline.focusedBands.isEmpty)
     let pixels = state.currentDisplayImage?.toPixelData()?.data
@@ -403,7 +403,7 @@ func compareAfterImageUsesCurrentDisplayImageInProcessedModes() async throws {
     state.sourceImage = processedImage
     state.transform.activeMode = .color
     state.triggerProcessing()
-    for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
+    for _ in 0..<50 where state.processing.isProcessing { await Task.yield() }
 
     #expect(state.compareAfterImage === state.currentDisplayImage)
 
@@ -438,7 +438,7 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     state.applyAbstraction()
 
     // isSimplifying should be true while the abstraction task is running
-    #expect(state.pipeline.isSimplifying == true)
+    #expect(state.processing.isSimplifying == true)
 
     let result = TestImageFactory.makeSolid(width: 20, height: 20, color: .blue)
     // Yield to let the Task start and reach the continuation
@@ -448,10 +448,10 @@ func isSimplifyingIsTrueDuringAbstractionAndFalseAfter() async throws {
     }
     await abstractor.resume(with: result)
     // Allow the MainActor continuation to run
-    for _ in 0..<50 where state.pipeline.isSimplifying { await Task.yield() }
+    for _ in 0..<50 where state.processing.isSimplifying { await Task.yield() }
 
     // isSimplifying should be cleared once abstraction completes
-    #expect(state.pipeline.isSimplifying == false)
+    #expect(state.processing.isSimplifying == false)
 }
 
 @MainActor
@@ -483,19 +483,27 @@ func isSimplifyingIsFalseAfterResetAbstraction() {
     state.sourceImage = TestImageFactory.makeSolid(width: 40, height: 40, color: .red)
     state.transform.abstractionStrength = 0.5
     state.applyAbstraction()
-    #expect(state.pipeline.isSimplifying == true)
+    #expect(state.processing.isSimplifying == true)
 
     state.resetAbstraction()
 
-    #expect(state.pipeline.isSimplifying == false)
+    #expect(state.processing.isSimplifying == false)
 }
 
 @MainActor
 @Test
 func computeDepthMapUsesEmbeddedDepthAndSkipsML() async throws {
-    var mlWasCalled = false
+    actor MLCallTracker {
+        private(set) var wasCalled = false
+
+        func markCalled() {
+            wasCalled = true
+        }
+    }
+
+    let mlCallTracker = MLCallTracker()
     let state = AppState(depthMapOperation: { _ in
-        mlWasCalled = true
+        await mlCallTracker.markCalled()
         throw DepthEstimatorError.modelUnavailable
     })
 
@@ -508,7 +516,7 @@ func computeDepthMapUsesEmbeddedDepthAndSkipsML() async throws {
 
     try await Task.sleep(for: .milliseconds(200))
 
-    #expect(mlWasCalled == false)
+    #expect(await mlCallTracker.wasCalled == false)
     #expect(state.depth.depthSource == .embedded)
     #expect(state.depth.depthMap != nil)
     #expect(state.depth.depthMap?.cgImage?.width == 100)

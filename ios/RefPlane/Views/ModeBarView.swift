@@ -6,7 +6,7 @@ struct ModeBarView: View {
     var body: some View {
         Picker("Mode", selection: Binding(
             get: { state.transform.activeMode },
-            set: { state.setMode($0) }
+            set: { state.selectMode($0) }
         )) {
             ForEach(RefPlaneMode.allCases) { mode in
                 Text(mode.label)
