@@ -28,3 +28,6 @@ ios/scripts/.venv/
 
 # Generated UX review screenshots
 artifacts/ux-screenshots/
+
+# Claude Code worktrees must never be tracked
+.claude/worktrees/
