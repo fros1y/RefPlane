@@ -129,6 +129,10 @@ func selectingFocusedBandChangesDisplayedImage() async throws {
     for _ in 0..<50 where state.pipeline.isProcessing { await Task.yield() }
 
     state.toggleFocusedBand(1)
+    // Band isolation renders asynchronously; wait for the isolated image.
+    for _ in 0..<200 where state.pipeline.isolatedProcessedImage == nil {
+        try? await Task.sleep(for: .milliseconds(5))
+    }
 
     let pixels = state.currentDisplayImage?.toPixelData()?.data
     #expect(pixels != nil)
@@ -178,6 +182,10 @@ func selectingMultipleFocusedBandsSubduesOnlyUnfocusedPixels() async throws {
     state.toggleFocusedBand(2)
 
     #expect(state.pipeline.focusedBands == Set([0, 2]))
+    // Band isolation renders asynchronously; wait for the isolated image.
+    for _ in 0..<200 where state.pipeline.isolatedProcessedImage == nil {
+        try? await Task.sleep(for: .milliseconds(5))
+    }
 
     let pixels = state.currentDisplayImage?.toPixelData()?.data
     #expect(pixels != nil)

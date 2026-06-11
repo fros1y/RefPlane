@@ -5,12 +5,14 @@ import TipKit
 @Test
 func appTipsShareImageLoadedGate() {
     #expect(AppTips.imageLoaded.id == "image-loaded")
+    #expect(AppTips.sampleLoaded.id == "sample-loaded")
     #expect(SimplificationTip().rules.count == 1)
     #expect(BackgroundDepthTip().rules.count == 1)
     #expect(CompareModeTip().rules.count == 1)
     #expect(PresetsTip().rules.count == 1)
     #expect(ExportTip().rules.count == 1)
     #expect(PaletteSelectionTip().rules.count == 1)
+    #expect(SampleModeDockTip().rules.count == 1)
 }
 
 @Test
@@ -21,6 +23,7 @@ func appTipsAreSingleDisplayInformationalTips() {
     #expect(hasSingleDisplayLimit(PresetsTip()))
     #expect(hasSingleDisplayLimit(ExportTip()))
     #expect(hasSingleDisplayLimit(PaletteSelectionTip()))
+    #expect(hasSingleDisplayLimit(SampleModeDockTip()))
 
     #expect(SimplificationTip().actions.isEmpty)
     #expect(BackgroundDepthTip().actions.isEmpty)
@@ -28,6 +31,7 @@ func appTipsAreSingleDisplayInformationalTips() {
     #expect(PresetsTip().actions.isEmpty)
     #expect(ExportTip().actions.isEmpty)
     #expect(PaletteSelectionTip().actions.isEmpty)
+    #expect(SampleModeDockTip().actions.isEmpty)
 }
 
 @Test
@@ -45,10 +49,13 @@ func appTipCopyMatchesDesignPlan() {
     #expect(PresetsTip.messageText == "Save the current mode and settings as a preset you can reapply to any image.")
 
     #expect(ExportTip.titleText == "Export Your Study")
-    #expect(ExportTip.messageText == "Export the processed image with overlays baked in.")
+    #expect(ExportTip.messageText == "Export the current view, or a complete Prep Sheet with reference, values, colors, and mixing recipes.")
 
     #expect(PaletteSelectionTip.titleText == "Match to Real Pigments")
     #expect(PaletteSelectionTip.messageText == "Enable palette selection to decompose colors into paintable pigment recipes.")
+
+    #expect(SampleModeDockTip.titleText == "Explore the Studies")
+    #expect(SampleModeDockTip.messageText == "Tap Color to see the palette recipes for this image, or Value to squint-check the value planes.")
 }
 
 private func hasSingleDisplayLimit<T: Tip>(_ tip: T) -> Bool {

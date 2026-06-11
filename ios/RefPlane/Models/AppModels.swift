@@ -285,6 +285,14 @@ enum BackgroundMode: String, CaseIterable, Identifiable, Codable {
     case blur = "Blur"
     case remove = "Remove"
     var id: String { rawValue }
+
+    // Tolerant decoding: legacy stores used other raw values (e.g. "No").
+    // An unknown mode must not invalidate the user's whole preset store.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = Self(rawValue: rawValue) ?? .none
+    }
 }
 
 struct DepthConfig {

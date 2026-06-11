@@ -55,8 +55,15 @@ func exportedImagePayloadAlwaysUsesPNGAndRenderedImageDimensions() throws {
     #expect(exportPayload.image.size == processedImage.size)
     #expect(pixelSize.width == 60)
     #expect(pixelSize.height == 30)
-    #expect(tiff == nil)
-    #expect(exif == nil)
+    // The PNG encoder may add benign technical fields (resolution, color
+    // space, pixel dimensions). The contract is that nothing from the
+    // *source* photo survives: no artist, comments, camera, or location.
+    #expect(tiff?[kCGImagePropertyTIFFArtist as String] == nil)
+    #expect(tiff?[kCGImagePropertyTIFFMake as String] == nil)
+    #expect(tiff?[kCGImagePropertyTIFFModel as String] == nil)
+    #expect(exif?[kCGImagePropertyExifDateTimeOriginal as String] == nil)
+    #expect(exif?[kCGImagePropertyExifLensModel as String] == nil)
+    #expect(properties[kCGImagePropertyGPSDictionary as String] == nil)
     #expect(png?[kCGImagePropertyPNGComment as String] as? String == nil)
     #expect(png?[kCGImagePropertyPNGDescription as String] as? String == nil)
 }

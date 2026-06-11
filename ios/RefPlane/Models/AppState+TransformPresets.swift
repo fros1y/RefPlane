@@ -205,6 +205,7 @@ extension AppState {
     }
 
     func updatePreviousTransformSnapshot() {
+        transform.previousTransformSnapshot = makeTransformationSnapshot()
         transform.selectedTransformPresetSelection = canonicalSelectionForCurrentSettings()
 
         presetPersistenceTask?.cancel()
@@ -224,6 +225,9 @@ extension AppState {
             transform.selectedTransformPresetSelection = .appDefault
             return
         }
+        // Hydrate the in-memory snapshot so "Previous Settings" can re-apply
+        // the last session's setup. (Lost in the preset-manager extraction.)
+        transform.previousTransformSnapshot = prev
         if let matchingPresetID = matchingSavedPresetID(for: prev) {
             transform.selectedTransformPresetSelection = .saved(matchingPresetID)
         } else {
