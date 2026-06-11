@@ -197,6 +197,11 @@ class AppState {
         depthPreviewDismissTask?.cancel()
         contourTask?.cancel()
 
+        if let suggestedMode = payload.suggestedMode, suggestedMode != transform.activeMode {
+            transform.activeMode = suggestedMode
+            normalizeGrayscaleConversion(for: suggestedMode)
+        }
+
         // Invalidate stale completions in case any task ignores cancellation.
 
         // Show the picked image immediately, then swap in the scaled version
@@ -347,14 +352,7 @@ class AppState {
     func setMode(_ mode: RefPlaneMode) {
         guard mode != transform.activeMode else { return }
         transform.activeMode = mode
-        switch mode {
-        case .original, .color:
-            transform.valueConfig.grayscaleConversion = .none
-        case .tonal, .value:
-            if transform.valueConfig.grayscaleConversion == .none {
-                transform.valueConfig.grayscaleConversion = .luminance
-            }
-        }
+        normalizeGrayscaleConversion(for: mode)
         processedImage = nil
         invalidateFocusIsolation(clearSelection: true)
         processedPixelBands = []
@@ -367,7 +365,18 @@ class AppState {
         triggerProcessing()
     }
 
-
+    /// Keep the grayscale conversion consistent with the mode: color-bearing
+    /// modes use none; tonal modes need a concrete conversion.
+    private func normalizeGrayscaleConversion(for mode: RefPlaneMode) {
+        switch mode {
+        case .original, .color:
+            transform.valueConfig.grayscaleConversion = .none
+        case .tonal, .value:
+            if transform.valueConfig.grayscaleConversion == .none {
+                transform.valueConfig.grayscaleConversion = .luminance
+            }
+        }
+    }
 
     func applyAbstraction() {
         guard let source = sourceImage else { return }

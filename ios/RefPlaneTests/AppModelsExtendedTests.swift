@@ -11,10 +11,10 @@ func refPlaneModeHasFourCases() {
 
 @Test
 func refPlaneModeLabelsDefined() {
-    #expect(RefPlaneMode.original.label == "Natural")
+    #expect(RefPlaneMode.original.label == "Original")
     #expect(RefPlaneMode.tonal.label == "Tonal")
     #expect(RefPlaneMode.value.label == "Value")
-    #expect(RefPlaneMode.color.label == "Paletted")
+    #expect(RefPlaneMode.color.label == "Color")
 }
 
 @Test

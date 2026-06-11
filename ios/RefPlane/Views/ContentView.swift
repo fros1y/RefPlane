@@ -317,7 +317,7 @@ struct ContentView: View {
     private func writeTemporaryExport(_ payload: ExportedImagePayload) throws -> URL {
         let fileExtension = payload.contentType.preferredFilenameExtension ?? "png"
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("RefPlaneExports", isDirectory: true)
+            .appendingPathComponent("UnderpaintExports", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true
@@ -619,6 +619,7 @@ private struct StudioModeDock: View {
             Capsule()
                 .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
         }
+        .popoverTip(SampleModeDockTip(), arrowEdge: .bottom)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("studio.mode-dock")
     }

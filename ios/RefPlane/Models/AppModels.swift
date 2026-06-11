@@ -7,10 +7,10 @@ enum RefPlaneMode: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .original: return "Natural"
+        case .original: return "Original"
         case .tonal:    return "Tonal"
         case .value:    return "Value"
-        case .color:    return "Paletted"
+        case .color:    return "Color"
         }
     }
     var iconName: String {
@@ -320,15 +320,20 @@ struct ImportedImagePayload {
     var image: UIImage
     var metadata: SourceImageMetadata
     var embeddedDepthMap: UIImage?
+    /// Mode to switch to when this image loads (e.g. curated samples drop
+    /// the user straight into the most relevant study).
+    var suggestedMode: RefPlaneMode?
 
     init(
         image: UIImage,
         metadata: SourceImageMetadata = .empty,
-        embeddedDepthMap: UIImage? = nil
+        embeddedDepthMap: UIImage? = nil,
+        suggestedMode: RefPlaneMode? = nil
     ) {
         self.image = image
         self.metadata = metadata
         self.embeddedDepthMap = embeddedDepthMap
+        self.suggestedMode = suggestedMode
     }
 }
 

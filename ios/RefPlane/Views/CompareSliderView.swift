@@ -47,7 +47,7 @@ struct CompareSliderView: View {
 
     private var processedTitle: String {
         if state.transform.activeMode == .original {
-            return state.transform.abstractionStrength > 0 ? "Abstracted" : "Natural"
+            return state.transform.abstractionStrength > 0 ? "Simplified" : "Original"
         }
         return state.transform.activeMode.label
     }
@@ -62,7 +62,7 @@ struct CompareSliderView: View {
     private var compareLabels: some View {
         VStack {
             HStack {
-                CompareTag(title: "Natural", icon: "photo")
+                CompareTag(title: "Original", icon: "photo")
                     .accessibilityIdentifier("compare.label.original")
                 Spacer()
                 CompareTag(title: processedTitle, icon: processedIcon)

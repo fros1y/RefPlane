@@ -6,6 +6,9 @@ private struct SampleItem: Identifiable {
     let displayName: String
     let assetName: String
     let description: String
+    /// The study mode this sample is curated to demonstrate. Selecting the
+    /// sample drops the user straight into this mode — samples are the tutorial.
+    var suggestedMode: RefPlaneMode? = nil
     var bundledFilename: String? = nil
     var bundledTypeIdentifier: String? = nil
 }
@@ -15,7 +18,8 @@ private let sampleImages: [SampleItem] = [
         id: "chair-spatial",
         displayName: "Chair Spatial",
         assetName: "sample-statue",
-        description: "Spatial HEIC sample with embedded depth/disparity for depth-aware workflows",
+        description: "Spatial photo with embedded depth — try Adjust Background to isolate the subject",
+        suggestedMode: .value,
         bundledFilename: "chair-spatial",
         bundledTypeIdentifier: "public.heic"
     ),
@@ -23,19 +27,22 @@ private let sampleImages: [SampleItem] = [
         id: "statue",
         displayName: "Sculpture",
         assetName: "sample-statue",
-        description: "Classical bust study for planes, edges, and form shadows"
+        description: "Classical bust study for planes, edges, and form shadows",
+        suggestedMode: .value
     ),
     SampleItem(
         id: "eye",
         displayName: "Eye Close-Up",
         assetName: "sample-eye",
-        description: "Macro reference for iris texture and subtle skin values"
+        description: "Macro reference for iris texture and subtle skin values",
+        suggestedMode: .tonal
     ),
     SampleItem(
         id: "still-life",
         displayName: "Still Life",
         assetName: "sample-still-life",
-        description: "Studio setup with fruit and cloth for color and material studies"
+        description: "Studio setup with fruit and cloth — see the palette recipes in Color",
+        suggestedMode: .color
     ),
 ]
 
@@ -56,6 +63,9 @@ struct SampleImagePickerView: View {
                     ForEach(sampleImages) { sample in
                         SampleThumbnailButton(sample: sample) {
                             if let payload = payloadForSample(sample) {
+                                Task {
+                                    await AppTips.sampleLoaded.donate()
+                                }
                                 onImageSelected(payload)
                                 dismiss()
                             } else {
@@ -107,12 +117,13 @@ struct SampleImagePickerView: View {
             return ImportedImagePayload(
                 image: image,
                 metadata: metadata,
-                embeddedDepthMap: embeddedDepth
+                embeddedDepthMap: embeddedDepth,
+                suggestedMode: sample.suggestedMode
             )
         }
 
         guard let image = UIImage(named: sample.assetName) else { return nil }
-        return ImportedImagePayload(image: image)
+        return ImportedImagePayload(image: image, suggestedMode: sample.suggestedMode)
     }
 
     private func readMetadata(

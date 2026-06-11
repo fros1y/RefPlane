@@ -98,7 +98,7 @@ extension AppState {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         let gitRevision = makeExportGitRevision()
-        return "RefPlane \(version) (\(build), git \(gitRevision))"
+        return "Underpaint \(version) (\(build), git \(gitRevision))"
     }
 
     func makeExportGitRevision() -> String {

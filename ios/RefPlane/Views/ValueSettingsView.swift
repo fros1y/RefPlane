@@ -28,32 +28,30 @@ struct ValueSettingsView: View {
                 }
             )
 
-            QuantizationBiasSlider(
-                value: Binding(
-                    get: { state.transform.valueConfig.quantizationBias },
-                    set: { newBias in
-                        let clampedBias = QuantizationBias.clamped(newBias)
-                        state.transform.valueConfig.quantizationBias = clampedBias
-                        state.transform.valueConfig.distribution = QuantizationBias.distribution(
-                            for: clampedBias
-                        )
-                        state.transform.valueConfig.thresholds = QuantizationBias.thresholds(
-                            for: state.transform.valueConfig.levels,
-                            bias: clampedBias
-                        )
-                    }
-                ),
-                onEditingChanged: { editing in
-                    if !editing {
-                        state.scheduleProcessing()
-                    }
-                }
-            )
-
             VStack(alignment: .leading, spacing: 8) {
-                Text("Bands")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.primary)
+                HStack {
+                    Text("Bands")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    Menu {
+                        ForEach(distributePresets, id: \.self) { preset in
+                            Button(preset.rawValue) {
+                                applyDistribution(preset)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Distribute")
+                            Image(systemName: "chevron.up.chevron.down")
+                                .imageScale(.small)
+                        }
+                        .font(.footnote.weight(.medium))
+                    }
+                    .accessibilityIdentifier("studio.distribute-menu")
+                }
 
                 ThresholdSliderView(
                     thresholds: Binding(
@@ -78,5 +76,25 @@ struct ValueSettingsView: View {
                 )
             }
         }
+    }
+
+    private var distributePresets: [ThresholdDistribution] {
+        [.even, .shadows, .lights]
+    }
+
+    /// One-shot apply a distribution preset to the threshold handles.
+    private func applyDistribution(_ distribution: ThresholdDistribution) {
+        let bias: Double
+        switch distribution {
+        case .even, .custom: bias = 0
+        case .shadows:       bias = 1
+        case .lights:        bias = -1
+        }
+        state.transform.valueConfig.quantizationBias = bias
+        state.transform.valueConfig.distribution = distribution
+        state.transform.valueConfig.thresholds = distribution.thresholds(
+            for: state.transform.valueConfig.levels
+        )
+        state.scheduleProcessing()
     }
 }
