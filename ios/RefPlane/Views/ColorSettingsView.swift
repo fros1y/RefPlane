@@ -61,6 +61,11 @@ struct ColorQuantizationSettingsView: View {
 struct PaletteSelectionSettingsView: View {
     @Environment(AppState.self) private var state
     @State private var pigmentListExpanded: Bool = false
+    @State private var savePalettePromptPresented = false
+    @State private var paletteNameInput = ""
+    @State private var paletteErrorMessage: String? = nil
+
+    private var paletteStore: CustomPaletteStore { .shared }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -69,14 +74,7 @@ struct PaletteSelectionSettingsView: View {
                     .font(.subheadline)
                     .foregroundStyle(.primary)
 
-                Picker("Palette", selection: presetBinding) {
-                    ForEach(PigmentPreset.allCases) { preset in
-                        Text(preset.rawValue).tag(preset)
-                    }
-                    Text("Custom").tag(Optional<PigmentPreset>.none as PigmentPreset?)
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
+                paletteMenu
             }
 
             DisclosureGroup(
@@ -130,30 +128,105 @@ struct PaletteSelectionSettingsView: View {
         }
     }
 
-    /// Binding that maps the current enabledPigmentIDs to a preset (or nil for custom).
-    private var presetBinding: Binding<PigmentPreset?> {
-        Binding<PigmentPreset?>(
-            get: {
-                PigmentPreset.allCases.first { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }
-            },
-            set: { newPreset in
-                if let preset = newPreset {
-                    // Switching to a named preset — save current as custom first
-                    // (only if current selection doesn't already match a preset)
-                    if PigmentPreset.allCases.first(where: { $0.pigmentIDs == state.transform.colorConfig.enabledPigmentIDs }) == nil {
-                        state.transform.colorConfig.saveCustomPigmentIDs()
+    private var paletteMenu: some View {
+        Menu {
+            Section("Presets") {
+                ForEach(PigmentPreset.allCases) { preset in
+                    Button(preset.rawValue) {
+                        applyPigmentSelection(preset.pigmentIDs)
                     }
-                    state.transform.colorConfig.enabledPigmentIDs = preset.pigmentIDs
-                    state.transform.colorConfig.saveEnabledPigmentIDs()
-                    state.scheduleProcessing()
-                } else {
-                    // "Custom" selected — restore saved custom palette
-                    state.transform.colorConfig.enabledPigmentIDs = ColorConfig.loadCustomPigmentIDs()
-                    state.transform.colorConfig.saveEnabledPigmentIDs()
-                    state.scheduleProcessing()
                 }
             }
-        )
+
+            if !paletteStore.palettes.isEmpty {
+                Section("My Palettes") {
+                    ForEach(paletteStore.palettes) { palette in
+                        Menu(palette.name) {
+                            Button("Apply") {
+                                applyPigmentSelection(palette.pigmentIDs)
+                            }
+                            Button("Delete", role: .destructive) {
+                                paletteStore.delete(id: palette.id)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Button {
+                paletteNameInput = ""
+                savePalettePromptPresented = true
+            } label: {
+                Label("Save Current As…", systemImage: "square.and.arrow.down")
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(currentPaletteLabel)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("studio.palette-menu")
+        .alert("Save Palette", isPresented: $savePalettePromptPresented) {
+            TextField("Palette name", text: $paletteNameInput)
+            Button("Save") {
+                saveCurrentPalette()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Save the \(state.transform.colorConfig.enabledPigmentIDs.count) selected tubes as a reusable palette.")
+        }
+        .alert("Palette Error", isPresented: Binding(
+            get: { paletteErrorMessage != nil },
+            set: { if !$0 { paletteErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                paletteErrorMessage = nil
+            }
+        } message: {
+            Text(paletteErrorMessage ?? "Unknown palette error.")
+        }
+    }
+
+    private var currentPaletteLabel: String {
+        let selection = state.transform.colorConfig.enabledPigmentIDs
+        if let preset = PigmentPreset.allCases.first(where: { $0.pigmentIDs == selection }) {
+            return preset.rawValue
+        }
+        if let saved = paletteStore.palette(matching: selection) {
+            return saved.name
+        }
+        return "Custom"
+    }
+
+    private func applyPigmentSelection(_ pigmentIDs: Set<String>) {
+        let valid = pigmentIDs.intersection(Set(SpectralDataStore.essentialPigments.map(\.id)))
+        guard !valid.isEmpty else {
+            paletteErrorMessage = "None of this palette's pigments are available."
+            return
+        }
+        state.transform.colorConfig.enabledPigmentIDs = valid
+        state.transform.colorConfig.saveEnabledPigmentIDs()
+        state.scheduleProcessing()
+    }
+
+    private func saveCurrentPalette() {
+        do {
+            try paletteStore.save(
+                name: paletteNameInput,
+                pigmentIDs: state.transform.colorConfig.enabledPigmentIDs
+            )
+            paletteNameInput = ""
+        } catch {
+            paletteErrorMessage = error.localizedDescription
+        }
     }
 
     /// Save current selection and trigger reprocessing.
