@@ -5,13 +5,13 @@ import os
 
 extension AppState {
     func toggleFocusedBand(_ band: Int) {
-        var updatedBands = focusedBands
+        var updatedBands = pipeline.focusedBands
         if updatedBands.contains(band) {
             updatedBands.remove(band)
         } else {
             updatedBands.insert(band)
         }
-        focusedBands = updatedBands
+        pipeline.focusedBands = updatedBands
         refreshIsolatedProcessedImage()
     }
 
@@ -29,8 +29,8 @@ extension AppState {
     }
 
     func clearFocusedBands() {
-        guard !focusedBands.isEmpty else { return }
-        focusedBands = []
+        guard !pipeline.focusedBands.isEmpty else { return }
+        pipeline.focusedBands = []
         refreshIsolatedProcessedImage()
     }
 
@@ -41,14 +41,14 @@ extension AppState {
     func refreshIsolatedProcessedImage() {
         invalidateFocusIsolation(clearSelection: false)
 
-        guard activeMode == .value || activeMode == .color,
-              !focusedBands.isEmpty,
+        guard transform.activeMode == .value || transform.activeMode == .color,
+              !pipeline.focusedBands.isEmpty,
               let processedImage else {
             return
         }
 
         let pixelBands = processedPixelBands
-        let selectedBands = focusedBands
+        let selectedBands = pipeline.focusedBands
 
         focusIsolationTask = Task { @MainActor [weak self] in
             let isolated = await BandIsolationRenderer.isolateAsync(
@@ -59,16 +59,16 @@ extension AppState {
             try? Task.checkCancellation()
             guard !Task.isCancelled, let self else { return }
 
-            self.isolatedProcessedImage = isolated
+            self.pipeline.isolatedProcessedImage = isolated
         }
     }
 
     func invalidateFocusIsolation(clearSelection: Bool) {
         focusIsolationTask?.cancel()
         focusIsolationTask = nil
-        isolatedProcessedImage = nil
+        pipeline.isolatedProcessedImage = nil
         if clearSelection {
-            focusedBands = []
+            pipeline.focusedBands = []
         }
     }
 }

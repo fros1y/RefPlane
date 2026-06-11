@@ -74,199 +74,6 @@ class AppState {
     @ObservationIgnored private var memoryWarningObserver: NSObjectProtocol? = nil
     @ObservationIgnored var presetPersistenceTask: Task<Void, Never>? = nil
 
-    // MARK: - TransformState forwarding
-
-    var activeMode: RefPlaneMode {
-        get { transform.activeMode }
-        set { transform.activeMode = newValue }
-    }
-
-    var gridConfig: GridConfig {
-        get { transform.gridConfig }
-        set { transform.gridConfig = newValue }
-    }
-
-    var valueConfig: ValueConfig {
-        get { transform.valueConfig }
-        set { transform.valueConfig = newValue }
-    }
-
-    var colorConfig: ColorConfig {
-        get { transform.colorConfig }
-        set { transform.colorConfig = newValue }
-    }
-
-    var contourConfig: ContourConfig {
-        get { transform.contourConfig }
-        set { transform.contourConfig = newValue }
-    }
-
-    var abstractionStrength: Double {
-        get { transform.abstractionStrength }
-        set { transform.abstractionStrength = newValue }
-    }
-
-    var abstractionMethod: AbstractionMethod {
-        get { transform.abstractionMethod }
-        set { transform.abstractionMethod = newValue }
-    }
-
-    var previousTransformSnapshot: TransformationSnapshot? {
-        get { transform.previousTransformSnapshot }
-        set { transform.previousTransformSnapshot = newValue }
-    }
-
-    var selectedTransformPresetSelection: TransformPresetSelection {
-        get { transform.selectedTransformPresetSelection }
-        set { transform.selectedTransformPresetSelection = newValue }
-    }
-
-    var presetManager: TransformPresetManager {
-        get { transform.presetManager }
-        set { transform.presetManager = newValue }
-    }
-
-    var savedTransformPresets: [SavedTransformPreset] {
-        transform.savedTransformPresets
-    }
-
-    var abstractionIsEnabled: Bool {
-        transform.abstractionIsEnabled
-    }
-
-    var availableAbstractionMethods: [AbstractionMethod] {
-        transform.availableAbstractionMethods
-    }
-
-    // MARK: - DepthState forwarding
-
-    var depthConfig: DepthConfig {
-        get { depth.depthConfig }
-        set { depth.depthConfig = newValue }
-    }
-
-    var depthMap: UIImage? {
-        get { depth.depthMap }
-        set { depth.depthMap = newValue }
-    }
-
-    var embeddedDepthMap: UIImage? {
-        get { depth.embeddedDepthMap }
-        set { depth.embeddedDepthMap = newValue }
-    }
-
-    var depthSource: DepthSource? {
-        get { depth.depthSource }
-        set { depth.depthSource = newValue }
-    }
-
-    var depthProcessedImage: UIImage? {
-        get { depth.depthProcessedImage }
-        set { depth.depthProcessedImage = newValue }
-    }
-
-    var depthRange: ClosedRange<Double> {
-        get { depth.depthRange }
-        set { depth.depthRange = newValue }
-    }
-
-    var isEditingDepthThreshold: Bool {
-        get { depth.isEditingDepthThreshold }
-        set { depth.isEditingDepthThreshold = newValue }
-    }
-
-    var depthThresholdPreview: UIImage? {
-        get { depth.depthThresholdPreview }
-        set { depth.depthThresholdPreview = newValue }
-    }
-
-    var contourSegments: [GridLineSegment] {
-        get { depth.contourSegments }
-        set { depth.contourSegments = newValue }
-    }
-
-    var cachedDepthTexture: AnyObject? {
-        get { depth.cachedDepthTexture }
-        set { depth.cachedDepthTexture = newValue }
-    }
-
-    var cachedSourceTexture: AnyObject? {
-        get { depth.cachedSourceTexture }
-        set { depth.cachedSourceTexture = newValue }
-    }
-
-    var depthSliderActive: Bool {
-        get { depth.depthSliderActive }
-        set { depth.depthSliderActive = newValue }
-    }
-
-    // MARK: - PipelineState forwarding
-
-    var isProcessing: Bool {
-        get { pipeline.isProcessing }
-        set { pipeline.isProcessing = newValue }
-    }
-
-    var isSimplifying: Bool {
-        get { pipeline.isSimplifying }
-        set { pipeline.isSimplifying = newValue }
-    }
-
-    var processingProgress: Double {
-        get { pipeline.processingProgress }
-        set { pipeline.processingProgress = newValue }
-    }
-
-    var processingLabel: String {
-        get { pipeline.processingLabel }
-        set { pipeline.processingLabel = newValue }
-    }
-
-    var processingIsIndeterminate: Bool {
-        get { pipeline.processingIsIndeterminate }
-        set { pipeline.processingIsIndeterminate = newValue }
-    }
-
-    var compareMode: Bool {
-        get { pipeline.compareMode }
-        set { pipeline.compareMode = newValue }
-    }
-
-    var focusedBands: Set<Int> {
-        get { pipeline.focusedBands }
-        set { pipeline.focusedBands = newValue }
-    }
-
-    var errorMessage: String? {
-        get { pipeline.errorMessage }
-        set { pipeline.errorMessage = newValue }
-    }
-
-    var panelCollapsed: Bool {
-        get { pipeline.panelCollapsed }
-        set { pipeline.panelCollapsed = newValue }
-    }
-
-    var isolatedProcessedImage: UIImage? {
-        get { pipeline.isolatedProcessedImage }
-        set { pipeline.isolatedProcessedImage = newValue }
-    }
-
-    var activeSliderCount: Int {
-        get { pipeline.activeSliderCount }
-        set { pipeline.activeSliderCount = newValue }
-    }
-
-    var isAnySliderActive: Bool {
-        get { pipeline.isAnySliderActive }
-        set { pipeline.isAnySliderActive = newValue }
-    }
-
-    func sliderEditingChanged(_ editing: Bool) {
-        pipeline.sliderEditingChanged(editing)
-    }
-
-
     init(
         processOperation: ProcessOperation? = nil,
         abstractionOperation: AbstractionOperation? = nil,
@@ -330,13 +137,13 @@ class AppState {
 
     var currentDisplayImage: UIImage? {
         // While adjusting depth thresholds, show the threshold preview
-        if isEditingDepthThreshold, let preview = depthThresholdPreview {
+        if depth.isEditingDepthThreshold, let preview = depth.depthThresholdPreview {
             return preview
         }
-        let modeResult = activeMode == .original
+        let modeResult = transform.activeMode == .original
             ? displayBaseImage
-            : (isolatedProcessedImage ?? processedImage ?? displayBaseImage)
-        if depthConfig.enabled, let depthResult = depthProcessedImage {
+            : (pipeline.isolatedProcessedImage ?? processedImage ?? displayBaseImage)
+        if depth.depthConfig.enabled, let depthResult = depth.depthProcessedImage {
             return depthResult
         }
         return modeResult
@@ -347,11 +154,11 @@ class AppState {
     }
 
     var compareAfterImage: UIImage? {
-        activeMode == .original ? displayBaseImage : currentDisplayImage
+        transform.activeMode == .original ? displayBaseImage : currentDisplayImage
     }
 
     func band(atNormalizedPoint point: CGPoint) -> Int? {
-        guard activeMode == .value || activeMode == .color,
+        guard transform.activeMode == .value || transform.activeMode == .color,
               let processedImage,
               let cgImage = processedImage.cgImage,
               !processedPixelBands.isEmpty
@@ -399,50 +206,50 @@ class AppState {
         Task {
             await AppTips.imageLoaded.donate()
         }
-        originalImage             = image
-        sourceImage               = image
-        abstractedImage           = nil
-        processedImage            = nil
-        isolatedProcessedImage    = nil
-        depthMap                  = nil
-        embeddedDepthMap          = payload.embeddedDepthMap
-        depthSource               = nil
-        depthProcessedImage       = nil
-        depthThresholdPreview     = nil
-        cachedDepthTexture        = nil
-        cachedSourceTexture       = nil
-        depthRange                = 0...1
-        contourSegments           = []
-        processedPixelBands       = []
-        paletteColors             = []
-        paletteBands              = []
-        pigmentRecipes            = nil
-        selectedTubes             = []
-        clippedRecipeIndices      = []
-        focusedBands              = []
-        errorMessage              = nil
-        isProcessing              = true
-        isSimplifying             = true
-        processingProgress        = 0
-        processingLabel           = "Loading…"
-        processingIsIndeterminate = true
+        originalImage                      = image
+        sourceImage                        = image
+        abstractedImage                    = nil
+        processedImage                     = nil
+        pipeline.isolatedProcessedImage    = nil
+        depth.depthMap                     = nil
+        depth.embeddedDepthMap             = payload.embeddedDepthMap
+        depth.depthSource                  = nil
+        depth.depthProcessedImage          = nil
+        depth.depthThresholdPreview        = nil
+        depth.cachedDepthTexture           = nil
+        depth.cachedSourceTexture          = nil
+        depth.depthRange                   = 0...1
+        depth.contourSegments              = []
+        processedPixelBands                = []
+        paletteColors                      = []
+        paletteBands                       = []
+        pigmentRecipes                     = nil
+        selectedTubes                      = []
+        clippedRecipeIndices               = []
+        pipeline.focusedBands              = []
+        pipeline.errorMessage              = nil
+        pipeline.isProcessing              = true
+        pipeline.isSimplifying             = true
+        pipeline.processingProgress        = 0
+        pipeline.processingLabel           = "Loading…"
+        pipeline.processingIsIndeterminate = true
 
         loadingTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let maxSize: CGFloat = 1600
             let scaled = await image.scaledDownAsync(toMaxDimension: maxSize)
-            
+
             try? Task.checkCancellation()
             guard !Task.isCancelled else { return }
-            
+
             self.originalImage             = scaled
             self.sourceImage               = scaled
-            if self.abstractionIsEnabled {
+            if self.transform.abstractionIsEnabled {
                 self.applyAbstraction()
             } else {
-                self.isSimplifying             = false
-                self.processingLabel           = "Processing…"
-                self.processingIsIndeterminate = false
+                self.pipeline.isSimplifying             = false
+                self.pipeline.processingLabel           = "Processing…"
+                self.pipeline.processingIsIndeterminate = false
                 self.triggerProcessing()
             }
         }
@@ -451,21 +258,21 @@ class AppState {
     func triggerProcessing() {
         processingDebounceTask?.cancel()
         processingTask?.cancel()
-        processingIsIndeterminate = false
-        errorMessage = nil
+        pipeline.processingIsIndeterminate = false
+        pipeline.errorMessage = nil
         updatePreviousTransformSnapshot()
         guard let source = displayBaseImage else {
-            isProcessing = false
-            processingProgress = 0
+            pipeline.isProcessing = false
+            pipeline.processingProgress = 0
             return
         }
-        guard activeMode != .original else {
+        guard transform.activeMode != .original else {
             processedImage = nil
             processedPixelBands = []
             invalidateFocusIsolation(clearSelection: true)
-            isProcessing = false
-            processingProgress = 0
-            if depthConfig.enabled && depthMap != nil {
+            pipeline.isProcessing = false
+            pipeline.processingProgress = 0
+            if depth.depthConfig.enabled && depth.depthMap != nil {
                 applyDepthEffects()
             }
             return
@@ -473,11 +280,11 @@ class AppState {
 
         // Set processing state synchronously so the UI shows the spinner
         // on the very first SwiftUI render after the mode change.
-    invalidateFocusIsolation(clearSelection: true)
-        isProcessing = true
-        processingProgress = 0
+        invalidateFocusIsolation(clearSelection: true)
+        pipeline.isProcessing = true
+        pipeline.processingProgress = 0
 
-        let mode = activeMode
+        let mode = transform.activeMode
 
         processingTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -485,10 +292,10 @@ class AppState {
                 let result = try await self.processOperation(
                     source,
                     mode,
-                    self.valueConfig,
-                    self.colorConfig,
+                    self.transform.valueConfig,
+                    self.transform.colorConfig,
                     { [weak self] p in
-                        Task { @MainActor [weak self] in self?.processingProgress = p }
+                        Task { @MainActor [weak self] in self?.pipeline.processingProgress = p }
                     }
                 )
                 try Task.checkCancellation()
@@ -500,21 +307,21 @@ class AppState {
                 self.pigmentRecipes      = result.pigmentRecipes
                 self.selectedTubes       = result.selectedTubes
                 self.clippedRecipeIndices = result.clippedRecipeIndices
-                self.processingProgress  = 1
-                if self.depthConfig.enabled && self.depthMap != nil {
+                self.pipeline.processingProgress  = 1
+                if self.depth.depthConfig.enabled && self.depth.depthMap != nil {
                     self.applyDepthEffects()
                 }
             } catch is CancellationError {
                 // Mode switched or new image loaded — new task will update state
             } catch {
                 if !Task.isCancelled {
-                    self.errorMessage = error.localizedDescription
+                    self.pipeline.errorMessage = error.localizedDescription
                 }
             }
-            
+
             // Only clear the flag if depth-effect rendering hasn't taken ownership of the indicator.
-            if !Task.isCancelled && !(self.depthConfig.enabled && self.depthMap != nil) {
-                self.isProcessing = false
+            if !Task.isCancelled && !(self.depth.depthConfig.enabled && self.depth.depthMap != nil) {
+                self.pipeline.isProcessing = false
             }
         }
     }
@@ -538,14 +345,14 @@ class AppState {
     }
 
     func setMode(_ mode: RefPlaneMode) {
-        guard mode != activeMode else { return }
-        activeMode = mode
+        guard mode != transform.activeMode else { return }
+        transform.activeMode = mode
         switch mode {
         case .original, .color:
-            valueConfig.grayscaleConversion = .none
+            transform.valueConfig.grayscaleConversion = .none
         case .tonal, .value:
-            if valueConfig.grayscaleConversion == .none {
-                valueConfig.grayscaleConversion = .luminance
+            if transform.valueConfig.grayscaleConversion == .none {
+                transform.valueConfig.grayscaleConversion = .luminance
             }
         }
         processedImage = nil
@@ -564,7 +371,7 @@ class AppState {
 
     func applyAbstraction() {
         guard let source = sourceImage else { return }
-        guard abstractionIsEnabled else {
+        guard transform.abstractionIsEnabled else {
             resetAbstraction()
             return
         }
@@ -580,16 +387,16 @@ class AppState {
         let referenceResolution: CGFloat = 1600.0
         let maxDimension = max(source.size.width, source.size.height)
         let resolutionScale = maxDimension / referenceResolution
-        let rawDownscale = 2.0 + abstractionStrength * 10.0
+        let rawDownscale = 2.0 + transform.abstractionStrength * 10.0
         let downscale = max(1.0, CGFloat(rawDownscale) * resolutionScale)
-        let method = abstractionMethod
+        let method = transform.abstractionMethod
 
-        isProcessing = true
-        isSimplifying = true
-        processingProgress = 0
-        processingLabel = "Abstracting…"
-        processingIsIndeterminate = false
-        errorMessage = nil
+        pipeline.isProcessing = true
+        pipeline.isSimplifying = true
+        pipeline.processingProgress = 0
+        pipeline.processingLabel = "Abstracting…"
+        pipeline.processingIsIndeterminate = false
+        pipeline.errorMessage = nil
 
         abstractionTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -599,38 +406,38 @@ class AppState {
                     downscale,
                     method,
                     { [weak self] p in
-                        Task { @MainActor [weak self] in self?.processingProgress = p }
+                        Task { @MainActor [weak self] in self?.pipeline.processingProgress = p }
                     }
                 )
                 try Task.checkCancellation()
 
                 self.abstractedImage = abstracted
-                self.isSimplifying   = false
-                self.isProcessing    = false
-                self.processingLabel = "Processing…"
-                if self.depthConfig.enabled {
+                self.pipeline.isSimplifying   = false
+                self.pipeline.isProcessing    = false
+                self.pipeline.processingLabel = "Processing…"
+                if self.depth.depthConfig.enabled {
                     self.computeDepthMap()
                 }
                 self.triggerProcessing()
             } catch is CancellationError {
                 // superseded by a newer request
             } catch {
-                self.isSimplifying = false
-                self.isProcessing = false
-                self.processingLabel = "Processing…"
-                self.errorMessage = error.localizedDescription
+                self.pipeline.isSimplifying = false
+                self.pipeline.isProcessing = false
+                self.pipeline.processingLabel = "Processing…"
+                self.pipeline.errorMessage = error.localizedDescription
             }
         }
     }
 
     func resetAbstraction() {
         abstractionTask?.cancel()
-        isSimplifying = false
+        pipeline.isSimplifying = false
         abstractedImage = nil
         processedPixelBands = []
         invalidateFocusIsolation(clearSelection: true)
-        processingLabel = "Processing…"
-        processingIsIndeterminate = false
+        pipeline.processingLabel = "Processing…"
+        pipeline.processingIsIndeterminate = false
         triggerProcessing()
     }
 

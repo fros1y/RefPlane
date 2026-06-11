@@ -6,17 +6,17 @@ import os
 extension AppState {
     func exportCurrentImage() -> UIImage? {
         let base: UIImage?
-        if activeMode == .original, let fullResolutionOriginalImage {
+        if transform.activeMode == .original, let fullResolutionOriginalImage {
             base = fullResolutionOriginalImage
         } else {
             base = currentDisplayImage
         }
         guard let image = base else { return nil }
         var rendered = image
-        if gridConfig.enabled {
+        if transform.gridConfig.enabled {
             rendered = renderGridOnto(rendered)
         }
-        if contourConfig.enabled && !contourSegments.isEmpty {
+        if transform.contourConfig.enabled && !depth.contourSegments.isEmpty {
             rendered = renderContoursOnto(rendered)
         }
         return rendered
@@ -40,7 +40,7 @@ extension AppState {
             makeExportSoftwareDescription(),
             "",
             "Mode",
-            activeMode.label,
+            transform.activeMode.label,
             "",
             "Background",
             "Enabled: \(displayDescription(for: settings.backgroundProcessingEnabled))",
@@ -123,34 +123,34 @@ extension AppState {
 
     func makeExportSettingsSnapshot() -> ExportSettingsMetadata {
         ExportSettingsMetadata(
-            abstractionStrength: abstractionStrength,
-            abstractionMethod: abstractionMethod.rawValue,
-            grayscaleConversion: valueConfig.grayscaleConversion.rawValue,
-            valueLevels: valueConfig.levels,
-            valueQuantizationBias: valueConfig.quantizationBias,
-            paletteSelectionEnabled: colorConfig.paletteSelectionEnabled,
-            colorLimit: colorConfig.numShades,
-            colorQuantizationBias: colorConfig.quantizationBias,
-            paletteSpread: colorConfig.paletteSpread,
-            maxPigmentsPerMix: colorConfig.maxPigmentsPerMix,
-            minConcentration: colorConfig.minConcentration,
-            enabledPigmentIDs: colorConfig.enabledPigmentIDs.sorted(),
-            backgroundProcessingEnabled: depthConfig.enabled,
-            backgroundMode: depthConfig.backgroundMode.rawValue,
-            foregroundDepthCutoff: depthConfig.foregroundCutoff,
-            backgroundDepthCutoff: depthConfig.backgroundCutoff,
-            depthEffectIntensity: depthConfig.effectIntensity,
-            gridEnabled: gridConfig.enabled,
-            gridDivisions: gridConfig.divisions,
-            gridShowDiagonals: gridConfig.showDiagonals,
-            gridLineStyle: gridConfig.lineStyle.rawValue,
-            gridCustomColor: metadataDescription(for: gridConfig.customColor),
-            gridOpacity: gridConfig.opacity,
-            contourEnabled: contourConfig.enabled,
-            contourLevels: contourConfig.levels,
-            contourLineStyle: contourConfig.lineStyle.rawValue,
-            contourCustomColor: metadataDescription(for: contourConfig.customColor),
-            contourOpacity: contourConfig.opacity
+            abstractionStrength: transform.abstractionStrength,
+            abstractionMethod: transform.abstractionMethod.rawValue,
+            grayscaleConversion: transform.valueConfig.grayscaleConversion.rawValue,
+            valueLevels: transform.valueConfig.levels,
+            valueQuantizationBias: transform.valueConfig.quantizationBias,
+            paletteSelectionEnabled: transform.colorConfig.paletteSelectionEnabled,
+            colorLimit: transform.colorConfig.numShades,
+            colorQuantizationBias: transform.colorConfig.quantizationBias,
+            paletteSpread: transform.colorConfig.paletteSpread,
+            maxPigmentsPerMix: transform.colorConfig.maxPigmentsPerMix,
+            minConcentration: transform.colorConfig.minConcentration,
+            enabledPigmentIDs: transform.colorConfig.enabledPigmentIDs.sorted(),
+            backgroundProcessingEnabled: depth.depthConfig.enabled,
+            backgroundMode: depth.depthConfig.backgroundMode.rawValue,
+            foregroundDepthCutoff: depth.depthConfig.foregroundCutoff,
+            backgroundDepthCutoff: depth.depthConfig.backgroundCutoff,
+            depthEffectIntensity: depth.depthConfig.effectIntensity,
+            gridEnabled: transform.gridConfig.enabled,
+            gridDivisions: transform.gridConfig.divisions,
+            gridShowDiagonals: transform.gridConfig.showDiagonals,
+            gridLineStyle: transform.gridConfig.lineStyle.rawValue,
+            gridCustomColor: metadataDescription(for: transform.gridConfig.customColor),
+            gridOpacity: transform.gridConfig.opacity,
+            contourEnabled: transform.contourConfig.enabled,
+            contourLevels: transform.contourConfig.levels,
+            contourLineStyle: transform.contourConfig.lineStyle.rawValue,
+            contourCustomColor: metadataDescription(for: transform.contourConfig.customColor),
+            contourOpacity: transform.contourConfig.opacity
         )
     }
 
@@ -277,7 +277,7 @@ extension AppState {
 
     func renderGridOnto(_ image: UIImage) -> UIImage {
         let size = image.size
-        let config = gridConfig
+        let config = transform.gridConfig
         let lineWidth = max(1.0, min(size.width, size.height) / 1000.0)
         let segments = GridLineColorResolver.resolvedSegments(
             config: config,

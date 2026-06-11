@@ -682,11 +682,11 @@ private struct ImageCanvasPreviewHarness: View {
 
         previewState.originalImage = previewImage
         previewState.sourceImage = previewImage
-        previewState.activeMode = mode
-        previewState.depthConfig.enabled = depthEnabled
+        previewState.transform.activeMode = mode
+        previewState.depth.depthConfig.enabled = depthEnabled
 
         if depthEnabled {
-            previewState.contourConfig.enabled = true
+            previewState.transform.contourConfig.enabled = true
         }
 
         _state = State(initialValue: previewState)

@@ -189,7 +189,7 @@ private struct PalettePreviewHarness: View {
 
     init() {
         let previewState = AppState()
-        previewState.activeMode = .color
+        previewState.transform.activeMode = .color
         previewState.paletteColors = [
             Color(red: 0.74, green: 0.23, blue: 0.17),
             Color(red: 0.93, green: 0.80, blue: 0.53),
@@ -231,7 +231,7 @@ private struct PalettePreviewHarness: View {
                 deltaE: 0.5
             ),
         ]
-        previewState.focusedBands = [0]
+        previewState.pipeline.focusedBands = [0]
         _state = State(initialValue: previewState)
     }
 
