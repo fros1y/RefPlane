@@ -35,6 +35,11 @@ struct ContentView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .dropDestination(for: Data.self) { items, _ in
+                guard let data = items.first else { return false }
+                return handleDroppedImageData(data)
+            }
+            .background(keyboardShortcutActions)
         }
         .environment(state)
         .sheet(isPresented: $showPaywall) {
@@ -275,6 +280,58 @@ struct ContentView: View {
 
     private func showAbout() {
         presentedSheet = .about
+    }
+
+    /// Drag-and-drop import (Finder, Photos, other apps). Honors the same
+    /// unlock gate as the photo library.
+    private func handleDroppedImageData(_ data: Data) -> Bool {
+        guard unlockManager.isUnlocked else {
+            showPaywall = true
+            return false
+        }
+        guard let payload = ImportedImagePayload.make(from: data) else {
+            return false
+        }
+        loadImage(payload)
+        return true
+    }
+
+    /// Hardware-keyboard shortcuts (iPad with keyboard, Mac):
+    /// ⌘1–4 modes · ⌘E export · ⇧⌘E prep sheet · ⇧⌘C compare · ⌘N library.
+    private var keyboardShortcutActions: some View {
+        Group {
+            ForEach(Array(RefPlaneMode.allCases.enumerated()), id: \.offset) { index, mode in
+                Button("") {
+                    state.setMode(mode)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            }
+
+            Button("") {
+                exportImage()
+            }
+            .keyboardShortcut("e", modifiers: .command)
+
+            Button("") {
+                guard state.displayBaseImage != nil else { return }
+                exportPrepSheet(.pdf)
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+
+            Button("") {
+                guard state.displayBaseImage != nil else { return }
+                state.pipeline.compareMode.toggle()
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+
+            Button("") {
+                openPhotoLibrary()
+            }
+            .keyboardShortcut("n", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 
     private func loadImage(_ image: UIImage) {

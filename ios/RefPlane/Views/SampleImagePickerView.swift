@@ -108,41 +108,16 @@ struct SampleImagePickerView: View {
         if let filename = sample.bundledFilename,
            let url = Bundle.main.url(forResource: filename, withExtension: "heic"),
            let data = try? Data(contentsOf: url),
-           let image = UIImage(data: data) {
-            let metadata = readMetadata(
-                from: data,
-                fallbackTypeIdentifier: sample.bundledTypeIdentifier ?? "public.heic"
-            )
-            let embeddedDepth = DepthEstimator.extractEmbeddedDepth(from: data)
-            return ImportedImagePayload(
-                image: image,
-                metadata: metadata,
-                embeddedDepthMap: embeddedDepth,
-                suggestedMode: sample.suggestedMode
-            )
+           let payload = ImportedImagePayload.make(
+               from: data,
+               fallbackTypeIdentifier: sample.bundledTypeIdentifier ?? "public.heic",
+               suggestedMode: sample.suggestedMode
+           ) {
+            return payload
         }
 
         guard let image = UIImage(named: sample.assetName) else { return nil }
         return ImportedImagePayload(image: image, suggestedMode: sample.suggestedMode)
-    }
-
-    private func readMetadata(
-        from data: Data,
-        fallbackTypeIdentifier: String
-    ) -> SourceImageMetadata {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-            return SourceImageMetadata(
-                properties: [:],
-                uniformTypeIdentifier: fallbackTypeIdentifier
-            )
-        }
-
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] ?? [:]
-        let typeIdentifier = (CGImageSourceGetType(source) as String?) ?? fallbackTypeIdentifier
-        return SourceImageMetadata(
-            properties: properties,
-            uniformTypeIdentifier: typeIdentifier
-        )
     }
 }
 

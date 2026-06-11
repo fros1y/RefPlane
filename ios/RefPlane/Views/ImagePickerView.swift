@@ -47,16 +47,8 @@ struct ImagePickerView: UIViewControllerRepresentable {
                 guard let self else { return }
 
                 if let data,
-                   let image = UIImage(data: data) {
-                    let metadata = Self.readMetadata(from: data, fallbackTypeIdentifier: typeIdentifier)
-                    let embeddedDepth = DepthEstimator.extractEmbeddedDepth(from: data)
-                    self.deliverSelection(
-                        ImportedImagePayload(
-                            image: image,
-                            metadata: metadata,
-                            embeddedDepthMap: embeddedDepth
-                        )
-                    )
+                   let payload = ImportedImagePayload.make(from: data, fallbackTypeIdentifier: typeIdentifier) {
+                    self.deliverSelection(payload)
                 } else {
                     self.loadFallbackImage(from: provider)
                 }
@@ -74,25 +66,6 @@ struct ImagePickerView: UIViewControllerRepresentable {
             DispatchQueue.main.async { [weak self] in
                 self?.parent.onImageSelected(payload)
             }
-        }
-
-        private static func readMetadata(
-            from data: Data,
-            fallbackTypeIdentifier: String
-        ) -> SourceImageMetadata {
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-                return SourceImageMetadata(
-                    properties: [:],
-                    uniformTypeIdentifier: fallbackTypeIdentifier
-                )
-            }
-
-            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] ?? [:]
-            let typeIdentifier = (CGImageSourceGetType(source) as String?) ?? fallbackTypeIdentifier
-            return SourceImageMetadata(
-                properties: properties,
-                uniformTypeIdentifier: typeIdentifier
-            )
         }
     }
 }

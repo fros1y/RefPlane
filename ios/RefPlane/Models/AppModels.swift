@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -314,6 +315,23 @@ struct SourceImageMetadata {
     var uniformTypeIdentifier: String? = nil
 
     static let empty = SourceImageMetadata()
+
+    /// Read image properties and the concrete type identifier from raw data.
+    static func read(from data: Data, fallbackTypeIdentifier: String) -> SourceImageMetadata {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return SourceImageMetadata(
+                properties: [:],
+                uniformTypeIdentifier: fallbackTypeIdentifier
+            )
+        }
+
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] ?? [:]
+        let typeIdentifier = (CGImageSourceGetType(source) as String?) ?? fallbackTypeIdentifier
+        return SourceImageMetadata(
+            properties: properties,
+            uniformTypeIdentifier: typeIdentifier
+        )
+    }
 }
 
 struct ImportedImagePayload {
@@ -334,6 +352,23 @@ struct ImportedImagePayload {
         self.metadata = metadata
         self.embeddedDepthMap = embeddedDepthMap
         self.suggestedMode = suggestedMode
+    }
+
+    /// Build a payload from raw image data, extracting source metadata and
+    /// any embedded depth map. Shared by the photo picker, sample picker,
+    /// and drag-and-drop import paths.
+    static func make(
+        from data: Data,
+        fallbackTypeIdentifier: String = "public.image",
+        suggestedMode: RefPlaneMode? = nil
+    ) -> ImportedImagePayload? {
+        guard let image = UIImage(data: data) else { return nil }
+        return ImportedImagePayload(
+            image: image,
+            metadata: .read(from: data, fallbackTypeIdentifier: fallbackTypeIdentifier),
+            embeddedDepthMap: DepthEstimator.extractEmbeddedDepth(from: data),
+            suggestedMode: suggestedMode
+        )
     }
 }
 

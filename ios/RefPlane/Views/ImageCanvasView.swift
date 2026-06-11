@@ -648,6 +648,10 @@ private struct CanvasEmptyStateCard: View {
                 .buttonStyle(.bordered)
                 .tint(.white)
                 .accessibilityIdentifier("canvas.empty.samples")
+
+                Text("…or drag a photo onto the canvas")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.55))
             }
         }
         .frame(maxWidth: 390)
