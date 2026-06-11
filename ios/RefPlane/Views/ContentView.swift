@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var exportItem: ExportItem?
     @State private var exportDocument: ExportImageDocument?
     @State private var exportContentType: UTType = .png
+    @State private var exportDocumentFilename: String?
     @State private var showExportFileExporter = false
     @State private var isInspectorCollapsed = true
     @State private var didSetInitialInspectorState = false
@@ -55,7 +56,7 @@ struct ContentView: View {
             isPresented: $showExportFileExporter,
             document: exportDocument,
             contentType: exportContentType,
-            defaultFilename: exportFilename,
+            defaultFilename: exportDocumentFilename ?? exportFilename,
             onCompletion: handleExportCompletion
         )
         .alert(
@@ -86,6 +87,7 @@ struct ContentView: View {
                 onOpenSamples: openSampleLibrary,
                 onShowAbout: showAbout,
                 onExport: exportImage,
+                onExportPrepSheet: exportPrepSheet,
                 onToggleInspector: toggleInspector
             )
 
@@ -97,6 +99,7 @@ struct ContentView: View {
                     ControlPanelView(
                         presentation: .sidebar,
                         onExport: exportImage,
+                        onExportPrepSheet: exportPrepSheet,
                         onClose: collapseInspector
                     )
                     .frame(width: 392)
@@ -119,6 +122,7 @@ struct ContentView: View {
                 ControlPanelView(
                     presentation: .bottomPanel,
                     onExport: exportImage,
+                    onExportPrepSheet: exportPrepSheet,
                     onClose: collapseInspector
                 )
                 .frame(maxWidth: .infinity)
@@ -301,6 +305,47 @@ struct ContentView: View {
         }
     }
 
+    private func exportPrepSheet(_ format: PrepSheetFormat) {
+        guard !state.pipeline.isProcessing else { return }
+        Task {
+            do {
+                let payload = try await state.exportPrepSheet(format: format)
+                deliverDocumentExport(payload)
+            } catch is CancellationError {
+                // superseded by a new image load or mode change
+            } catch {
+                state.pipeline.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func deliverDocumentExport(_ payload: ExportedDocumentPayload) {
+        exportContentType = payload.contentType
+
+        if prefersDesktopFileExport {
+            exportDocumentFilename = (payload.filename as NSString).deletingPathExtension
+            exportDocument = ExportImageDocument(imageData: payload.data)
+            showExportFileExporter = true
+        } else {
+            do {
+                let directory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("UnderpaintExports", isDirectory: true)
+                try FileManager.default.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true
+                )
+                let fileURL = directory.appendingPathComponent(payload.filename)
+                try payload.data.write(to: fileURL, options: .atomic)
+                exportItem = ExportItem(
+                    activityItems: [fileURL],
+                    temporaryFileURL: fileURL
+                )
+            } catch {
+                state.pipeline.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private func makeShareExportItem(from payload: ExportedImagePayload) throws -> ExportItem {
         let fileURL = try writeTemporaryExport(payload)
         let subject = fileURL.lastPathComponent
@@ -342,6 +387,7 @@ struct ContentView: View {
             state.pipeline.errorMessage = error.localizedDescription
         }
         exportDocument = nil
+        exportDocumentFilename = nil
         exportContentType = .png
     }
 
@@ -383,6 +429,7 @@ private struct StudioCanvasStage: View {
     let onOpenSamples: () -> Void
     let onShowAbout: () -> Void
     let onExport: () -> Void
+    let onExportPrepSheet: (PrepSheetFormat) -> Void
     let onToggleInspector: () -> Void
 
     @State private var showImagePicker = false
@@ -403,6 +450,7 @@ private struct StudioCanvasStage: View {
                     onOpenSamples: onOpenSamples,
                     onShowAbout: onShowAbout,
                     onExport: onExport,
+                    onExportPrepSheet: onExportPrepSheet,
                     onToggleInspector: onToggleInspector
                 )
 
@@ -483,6 +531,7 @@ private struct StudioCanvasChrome: View {
     let onOpenSamples: () -> Void
     let onShowAbout: () -> Void
     let onExport: () -> Void
+    let onExportPrepSheet: (PrepSheetFormat) -> Void
     let onToggleInspector: () -> Void
 
     var body: some View {
@@ -516,14 +565,8 @@ private struct StudioCanvasChrome: View {
                 )
                 .popoverTip(CompareModeTip(), arrowEdge: .top)
 
-                chromeButton(
-                    title: "Export",
-                    systemImage: "square.and.arrow.up",
-                    isEnabled: state.currentDisplayImage != nil,
-                    accessibilityID: "chrome.export",
-                    action: onExport
-                )
-                .popoverTip(ExportTip(), arrowEdge: .top)
+                exportMenu
+                    .popoverTip(ExportTip(), arrowEdge: .top)
 
                 chromeButton(
                     title: isInspectorCollapsed ? "Show studio" : "Hide studio",
@@ -546,6 +589,41 @@ private struct StudioCanvasChrome: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
         }
+    }
+
+    private var exportMenu: some View {
+        Menu {
+            Button(action: onExport) {
+                Label("Current View", systemImage: "photo")
+            }
+            .accessibilityIdentifier("chrome.export.current-view")
+
+            Section("Painter's Kit") {
+                Button {
+                    onExportPrepSheet(.pdf)
+                } label: {
+                    Label("Prep Sheet (PDF)", systemImage: "doc.richtext")
+                }
+                .accessibilityIdentifier("chrome.export.prep-sheet-pdf")
+
+                Button {
+                    onExportPrepSheet(.png)
+                } label: {
+                    Label("Prep Sheet (PNG)", systemImage: "photo.on.rectangle.angled")
+                }
+                .accessibilityIdentifier("chrome.export.prep-sheet-png")
+            }
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(state.currentDisplayImage != nil ? .white : .white.opacity(0.25))
+        .disabled(state.currentDisplayImage == nil)
+        .accessibilityLabel("Export")
+        .accessibilityIdentifier("chrome.export")
     }
 
     private func toggleCompare() {
@@ -637,7 +715,7 @@ private struct ExportItem: Identifiable {
 }
 
 private struct ExportImageDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.png, .jpeg, .heic, .heif, .tiff] }
+    static var readableContentTypes: [UTType] { [.png, .jpeg, .heic, .heif, .tiff, .pdf] }
 
     let imageData: Data
 

@@ -55,7 +55,7 @@ class AppState {
 
     @ObservationIgnored private var processingTask: Task<Void, Never>? = nil
     @ObservationIgnored private var processingDebounceTask: Task<Void, Never>? = nil
-    @ObservationIgnored private let processOperation: ProcessOperation
+    @ObservationIgnored let processOperation: ProcessOperation
     @ObservationIgnored private let abstractionOperation: AbstractionOperation
     @ObservationIgnored private var abstractionTask: Task<Void, Never>? = nil
     @ObservationIgnored var focusIsolationTask: Task<Void, Never>? = nil

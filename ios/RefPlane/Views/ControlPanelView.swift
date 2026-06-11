@@ -12,6 +12,7 @@ struct ControlPanelView: View {
 
     let presentation: Presentation
     let onExport: () -> Void
+    var onExportPrepSheet: ((PrepSheetFormat) -> Void)? = nil
     var onClose: (() -> Void)? = nil
 
     @State private var abstractionStrengthAtDragStart: Double? = nil
@@ -371,7 +372,30 @@ struct ControlPanelView: View {
             .buttonStyle(.bordered)
             .accessibilityIdentifier("studio.save-settings")
 
-            Button(action: onExport) {
+            Menu {
+                Button(action: onExport) {
+                    Label("Current View", systemImage: "photo")
+                }
+                .accessibilityIdentifier("studio.export.current-view")
+
+                if let onExportPrepSheet {
+                    Section("Painter's Kit") {
+                        Button {
+                            onExportPrepSheet(.pdf)
+                        } label: {
+                            Label("Prep Sheet (PDF)", systemImage: "doc.richtext")
+                        }
+                        .accessibilityIdentifier("studio.export.prep-sheet-pdf")
+
+                        Button {
+                            onExportPrepSheet(.png)
+                        } label: {
+                            Label("Prep Sheet (PNG)", systemImage: "photo.on.rectangle.angled")
+                        }
+                        .accessibilityIdentifier("studio.export.prep-sheet-png")
+                    }
+                }
+            } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 52)

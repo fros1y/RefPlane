@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		05A536F79A9974610A3BEB13 /* PaintPaletteBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3687599C8226E76F13B60871 /* PaintPaletteBuilderTests.swift */; };
 		097184F56F1D4B69A34C551B /* ValueSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */; };
+		AB12CD34EF56AB78CD90EF12 /* PrepSheetRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12CD34EF56AB78CD90EF13 /* PrepSheetRenderer.swift */; };
+		AB12CD34EF56AB78CD90EF14 /* PrepSheetLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12CD34EF56AB78CD90EF15 /* PrepSheetLayoutView.swift */; };
+		AB12CD34EF56AB78CD90EF16 /* PrepSheetRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12CD34EF56AB78CD90EF17 /* PrepSheetRendererTests.swift */; };
 		0A11B22C33D44E55F6677001 /* ThresholdUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677002 /* ThresholdUtilities.swift */; };
 		0A11B22C33D44E55F6677003 /* PaletteSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677004 /* PaletteSections.swift */; };
 		0A11B22C33D44E55F6677005 /* GridLineColorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A11B22C33D44E55F6677006 /* GridLineColorResolver.swift */; };
@@ -138,6 +141,9 @@
 		3BD4968AA7154D2FAC3796C3 /* ImageCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageCanvasView.swift; path = Views/ImageCanvasView.swift; sourceTree = "<group>"; };
 		3E32B1F767E54D0FAADD7901 /* ImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageProcessor.swift; path = Processing/ImageProcessor.swift; sourceTree = "<group>"; };
 		3E87F1E24BDD4E57812EDC0E /* ValueSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ValueSettingsView.swift; path = Views/ValueSettingsView.swift; sourceTree = "<group>"; };
+		AB12CD34EF56AB78CD90EF13 /* PrepSheetRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PrepSheetRenderer.swift; path = Processing/PrepSheetRenderer.swift; sourceTree = "<group>"; };
+		AB12CD34EF56AB78CD90EF15 /* PrepSheetLayoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PrepSheetLayoutView.swift; path = Views/PrepSheetLayoutView.swift; sourceTree = "<group>"; };
+		AB12CD34EF56AB78CD90EF17 /* PrepSheetRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrepSheetRendererTests.swift; sourceTree = "<group>"; };
 		523EB845BCBA42B4BBDC7E12 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppState.swift; path = Models/AppState.swift; sourceTree = "<group>"; };
 		632255DE24DC47B99F2567C2 /* RegionCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegionCleaner.swift; path = Processing/RegionCleaner.swift; sourceTree = "<group>"; };
 		6A0D66479A3D486AA65C28D1 /* AboutPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AboutPrivacyView.swift; path = Views/AboutPrivacyView.swift; sourceTree = "<group>"; };
@@ -245,6 +251,7 @@
 				0A11B22C33D44E55F667710C /* TestImageFactory.swift */,
 				0A11B22C33D44E55F6677102 /* ThresholdUtilitiesTests.swift */,
 				0A11B22C33D44E55F667711D /* ValueStudyProcessorTests.swift */,
+				AB12CD34EF56AB78CD90EF17 /* PrepSheetRendererTests.swift */,
 			);
 			path = RefPlaneTests;
 			sourceTree = "<group>";
@@ -296,6 +303,7 @@
 				9960E48DDC404E14A65578E6 /* ThresholdSliderView.swift */,
 				DE01DE01DE01DE01DE010005 /* DepthSettingsView.swift */,
 				FA22AA33BB44CC55DD660003 /* PaywallView.swift */,
+				AB12CD34EF56AB78CD90EF15 /* PrepSheetLayoutView.swift */,
 			);
 			name = Views;
 			sourceTree = "<group>";
@@ -320,6 +328,7 @@
 				B1C2D3E4F5A6B7C8D9E0F108 /* PigmentLookupTable.swift */,
 				DE01DE01DE01DE01DE010001 /* DepthEstimator.swift */,
 				DE01DE01DE01DE01DE010003 /* DepthProcessor.swift */,
+				AB12CD34EF56AB78CD90EF13 /* PrepSheetRenderer.swift */,
 			);
 			name = Processing;
 			sourceTree = "<group>";
@@ -506,6 +515,7 @@
 				0A11B22C33D44E55F667710B /* TestImageFactory.swift in Sources */,
 				0A11B22C33D44E55F6677101 /* ThresholdUtilitiesTests.swift in Sources */,
 				0A11B22C33D44E55F667711C /* ValueStudyProcessorTests.swift in Sources */,
+				AB12CD34EF56AB78CD90EF16 /* PrepSheetRendererTests.swift in Sources */,
 				39137631D8A7F48FEE0A869C /* PigmentDecomposerTests.swift in Sources */,
 				05A536F79A9974610A3BEB13 /* PaintPaletteBuilderTests.swift in Sources */,
 			);
@@ -536,6 +546,8 @@
 				EA4E4DFAEBE44CDA8FFB4B56 /* ControlPanelView.swift in Sources */,
 				C587404452BE4632BD0A58A3 /* ModeBarView.swift in Sources */,
 				097184F56F1D4B69A34C551B /* ValueSettingsView.swift in Sources */,
+				AB12CD34EF56AB78CD90EF12 /* PrepSheetRenderer.swift in Sources */,
+				AB12CD34EF56AB78CD90EF14 /* PrepSheetLayoutView.swift in Sources */,
 				8C646892F8744755A7B478D4 /* ColorSettingsView.swift in Sources */,
 				DEE1B8C3F0794606913F638C /* GridSettingsView.swift in Sources */,
 				9D269B4A36CD4FF1B68B714A /* GridOverlayView.swift in Sources */,

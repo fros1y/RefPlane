@@ -48,6 +48,43 @@ struct PigmentRecipe {
     let deltaE: Float
 }
 
+extension PigmentRecipe {
+    /// The pigment carrying the highest concentration in this mix.
+    var dominantPigmentID: String? {
+        components.max(by: { $0.concentration < $1.concentration })?.pigmentId
+    }
+
+    /// Mixing ratio reduced to small whole-number parts (e.g. 3 : 1),
+    /// keyed by pigment ID — the form painters actually measure by.
+    var simplifiedParts: [String: Int] {
+        let rawParts = components.map { component in
+            (pigmentId: component.pigmentId, parts: max(1, Int((component.concentration * 8).rounded())))
+        }
+        let divisor = rawParts
+            .map(\.parts)
+            .reduce(0) { current, parts in
+                current == 0 ? parts : Self.greatestCommonDivisor(current, parts)
+            }
+
+        return rawParts.reduce(into: [:]) { partialResult, entry in
+            partialResult[entry.pigmentId] = entry.parts / max(1, divisor)
+        }
+    }
+
+    private static func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+        var left = abs(lhs)
+        var right = abs(rhs)
+
+        while right != 0 {
+            let remainder = left % right
+            left = right
+            right = remainder
+        }
+
+        return max(1, left)
+    }
+}
+
 struct DecompositionResult {
     let recipes: [PigmentRecipe]
     /// Union of all pigment IDs used across all recipes.

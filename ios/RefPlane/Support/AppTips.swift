@@ -106,7 +106,7 @@ struct PresetsTip: Tip {
 
 struct ExportTip: Tip {
     static let titleText = "Export Your Study"
-    static let messageText = "Export the processed image with overlays baked in."
+    static let messageText = "Export the current view, or a complete Prep Sheet with reference, values, colors, and mixing recipes."
 
     var id: String { "export-tip" }
     var title: Text { Text(Self.titleText) }

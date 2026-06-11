@@ -342,6 +342,12 @@ struct ExportedImagePayload {
     var imageData: Data
     var contentType: UTType
 }
+
+struct ExportedDocumentPayload {
+    var data: Data
+    var contentType: UTType
+    var filename: String
+}
 import Foundation
 import Observation
 import SwiftUI

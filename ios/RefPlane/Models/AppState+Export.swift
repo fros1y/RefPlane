@@ -28,6 +28,91 @@ extension AppState {
         return ExportedImagePayload(image: image, imageData: imageData, contentType: .png)
     }
 
+    /// Compose the Prep Sheet: reference + value study + color study + recipes
+    /// on a single print-ready page. Value and color renders are re-processed
+    /// on demand from the current source (no caching — export is infrequent).
+    func exportPrepSheet(format: PrepSheetFormat) async throws -> ExportedDocumentPayload {
+        guard let source = displayBaseImage else {
+            throw PrepSheetError.noImageLoaded
+        }
+
+        pipeline.isProcessing = true
+        pipeline.processingLabel = "Composing Prep Sheet…"
+        pipeline.processingIsIndeterminate = false
+        pipeline.processingProgress = 0
+        pipeline.errorMessage = nil
+        defer {
+            pipeline.isProcessing = false
+            pipeline.processingLabel = "Processing…"
+            pipeline.processingProgress = 0
+        }
+
+        // The value panel always needs a concrete grayscale conversion, even
+        // when the user is currently in a color-bearing mode.
+        var valueConfig = transform.valueConfig
+        if valueConfig.grayscaleConversion == .none {
+            valueConfig.grayscaleConversion = .luminance
+        }
+        let colorConfig = transform.colorConfig
+
+        let valueResult = try await processOperation(source, .value, valueConfig, colorConfig) { [weak self] progress in
+            Task { @MainActor [weak self] in
+                self?.pipeline.processingProgress = progress * 0.4
+            }
+        }
+        try Task.checkCancellation()
+
+        let colorResult = try await processOperation(source, .color, valueConfig, colorConfig) { [weak self] progress in
+            Task { @MainActor [weak self] in
+                self?.pipeline.processingProgress = 0.4 + progress * 0.4
+            }
+        }
+        try Task.checkCancellation()
+
+        var referenceImage = source
+        if transform.gridConfig.enabled {
+            referenceImage = renderGridOnto(referenceImage)
+        }
+
+        var valueImage = valueResult.image
+        var colorImage = colorResult.image
+        if depth.depthConfig.enabled, let depthMapImage = depth.depthMap {
+            let depthConfig = depth.depthConfig
+            valueImage = depthEffectOperation(valueImage, depthMapImage, depthConfig) ?? valueImage
+            colorImage = depthEffectOperation(colorImage, depthMapImage, depthConfig) ?? colorImage
+        }
+
+        pipeline.processingProgress = 0.85
+
+        let content = PrepSheetContent(
+            referenceImage: referenceImage,
+            valueImage: valueImage,
+            colorImage: colorImage,
+            paletteColors: colorResult.palette,
+            pigmentRecipes: colorResult.pigmentRecipes,
+            valueLevels: valueConfig.levels,
+            valueDistributionName: valueConfig.distribution.rawValue,
+            colorCount: colorConfig.numShades,
+            usesPigments: colorConfig.paletteSelectionEnabled
+        )
+
+        let data = try PrepSheetRenderer.render(content, format: format)
+        pipeline.processingProgress = 1
+
+        return ExportedDocumentPayload(
+            data: data,
+            contentType: format.contentType,
+            filename: "underpaint-kit-\(Self.prepSheetDateStamp(for: Date())).\(format.fileExtension)"
+        )
+    }
+
+    static func prepSheetDateStamp(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd"
+        return formatter.string(from: date)
+    }
+
     func currentSettingsDescription() -> String {
         let settings = makeExportSettingsSnapshot()
         let pigmentSummary = selectedPigmentDescription(
